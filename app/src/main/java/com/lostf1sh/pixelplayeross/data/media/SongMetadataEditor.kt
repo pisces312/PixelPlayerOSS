@@ -110,8 +110,8 @@ class SongMetadataEditor(
         album: String,
         albumArtist: String?,
         composer: String?,
-        genre: String,
-        lyrics: String
+        genre: String?,
+        lyrics: String?
     ): String? {
         if (title.isBlank()) return "Title cannot be empty"
         if (title.length > MetadataLimits.MAX_TITLE_LENGTH) return "Title too long"
@@ -119,8 +119,8 @@ class SongMetadataEditor(
         if (album.length > MetadataLimits.MAX_ALBUM_LENGTH) return "Album name too long"
         if (!albumArtist.isNullOrBlank() && albumArtist.length > MetadataLimits.MAX_ALBUM_ARTIST_LENGTH) return "Album artist name too long"
         if (!composer.isNullOrBlank() && composer.length > MetadataLimits.MAX_COMPOSER_LENGTH) return "Composer name too long"
-        if (genre.length > MetadataLimits.MAX_GENRE_LENGTH) return "Genre too long"
-        if (lyrics.length > MetadataLimits.MAX_LYRICS_LENGTH) return "Lyrics too long"
+        if (genre != null && genre.length > MetadataLimits.MAX_GENRE_LENGTH) return "Genre too long"
+        if (lyrics != null && lyrics.length > MetadataLimits.MAX_LYRICS_LENGTH) return "Lyrics too long"
         return null
     }
 
@@ -236,8 +236,8 @@ class SongMetadataEditor(
         newAlbum: String,
         newAlbumArtist: String? = null,
         newComposer: String? = null,
-        newGenre: String,
-        newLyrics: String,
+        newGenre: String? = null,
+        newLyrics: String? = null,
         newTrackNumber: Int,
         newDiscNumber: Int?,
         newReplayGainTrackGainDb: String? = null,
@@ -257,9 +257,9 @@ class SongMetadataEditor(
         }
 
         try {
-            val trimmedLyrics = newLyrics.trim()
-            val trimmedGenre = newGenre.trim()
-            val normalizedGenre = trimmedGenre.takeIf { it.isNotBlank() }
+            val trimmedLyrics = newLyrics?.trim() ?: ""
+            val trimmedGenre = newGenre?.trim()
+            val normalizedGenre = trimmedGenre?.takeIf { it.isNotBlank() }
             val replayGainTrackUpdate = parseReplayGainUpdate(
                 rawValue = newReplayGainTrackGainDb,
                 fieldName = "Track ReplayGain"
@@ -783,8 +783,8 @@ class SongMetadataEditor(
         newAlbum: String,
         newAlbumArtist: String?,
         newComposer: String?,
-        newGenre: String,
-        newLyrics: String,
+        newGenre: String?,
+        newLyrics: String?,
         newTrackNumber: Int,
         newDiscNumber: Int?,
         replayGainTrackUpdate: ReplayGainUpdate = ReplayGainUpdate.Keep,
@@ -824,9 +824,9 @@ class SongMetadataEditor(
                 if (!newAlbumArtist.isNullOrBlank()) {
                     propertyMap["ALBUMARTIST"] = arrayOf(newAlbumArtist)
                 }
-                propertyMap.upsertOrRemove("COMPOSER", newComposer)
-                propertyMap.upsertOrRemove("GENRE", newGenre)
-                propertyMap.upsertOrRemove("LYRICS", newLyrics)
+                if (newComposer != null) propertyMap.upsertOrRemove("COMPOSER", newComposer)
+                if (newGenre != null) propertyMap.upsertOrRemove("GENRE", newGenre)
+                if (newLyrics != null) propertyMap.upsertOrRemove("LYRICS", newLyrics)
                 propertyMap["TRACKNUMBER"] = arrayOf(newTrackNumber.toString())
                 if (newDiscNumber != null && newDiscNumber > 0) {
                     propertyMap["DISCNUMBER"] = arrayOf(newDiscNumber.toString())
@@ -900,8 +900,8 @@ class SongMetadataEditor(
         newAlbum: String,
         newAlbumArtist: String?,
         newComposer: String?,
-        newGenre: String,
-        newLyrics: String,
+        newGenre: String?,
+        newLyrics: String?,
         newTrackNumber: Int,
         newDiscNumber: Int?,
         replayGainTrackUpdate: ReplayGainUpdate = ReplayGainUpdate.Keep,
@@ -924,22 +924,28 @@ class SongMetadataEditor(
             if (!newAlbumArtist.isNullOrBlank()) {
                 tag.setField(FieldKey.ALBUM_ARTIST, newAlbumArtist)
             }
-            if (!newComposer.isNullOrBlank()) {
-                tag.setField(FieldKey.COMPOSER, newComposer)
-            } else {
-                tag.deleteField(FieldKey.COMPOSER)
+            if (newComposer != null) {
+                if (newComposer.isNotBlank()) {
+                    tag.setField(FieldKey.COMPOSER, newComposer)
+                } else {
+                    tag.deleteField(FieldKey.COMPOSER)
+                }
             }
-            
-            if (newGenre.isNotBlank()) {
-                tag.setField(FieldKey.GENRE, newGenre)
-            } else {
-                tag.deleteField(FieldKey.GENRE)
+
+            if (newGenre != null) {
+                if (newGenre.isNotBlank()) {
+                    tag.setField(FieldKey.GENRE, newGenre)
+                } else {
+                    tag.deleteField(FieldKey.GENRE)
+                }
             }
-            
-            if (newLyrics.isNotBlank()) {
-                tag.setField(FieldKey.LYRICS, newLyrics)
-            } else {
-                tag.deleteField(FieldKey.LYRICS)
+
+            if (newLyrics != null) {
+                if (newLyrics.isNotBlank()) {
+                    tag.setField(FieldKey.LYRICS, newLyrics)
+                } else {
+                    tag.deleteField(FieldKey.LYRICS)
+                }
             }
             
             tag.setField(FieldKey.TRACK, newTrackNumber.toString())
@@ -1023,8 +1029,8 @@ class SongMetadataEditor(
         newAlbum: String,
         newAlbumArtist: String?,
         newComposer: String?,
-        newGenre: String,
-        newLyrics: String,
+        newGenre: String?,
+        newLyrics: String?,
         newTrackNumber: Int,
         newDiscNumber: Int?,
         replayGainTrackUpdate: ReplayGainUpdate = ReplayGainUpdate.Keep,
@@ -1054,10 +1060,10 @@ class SongMetadataEditor(
             tags.replaceSingleComment("TITLE", newTitle)
             tags.replaceSingleComment("ARTIST", newArtist)
             tags.replaceSingleComment("ALBUMARTIST", newAlbumArtist?.takeIf { it.isNotBlank() })
-            tags.replaceSingleComment("COMPOSER", newComposer)
+            if (newComposer != null) tags.replaceSingleComment("COMPOSER", newComposer)
             tags.replaceSingleComment("ALBUM", newAlbum)
-            tags.replaceSingleComment("GENRE", newGenre)
-            tags.replaceSingleComment("LYRICS", newLyrics)
+            if (newGenre != null) tags.replaceSingleComment("GENRE", newGenre)
+            if (newLyrics != null) tags.replaceSingleComment("LYRICS", newLyrics)
             tags.replaceSingleComment("TRACKNUMBER", newTrackNumber.takeIf { it > 0 }?.toString())
             tags.replaceSingleComment("DISCNUMBER", newDiscNumber?.takeIf { it > 0 }?.toString())
             tags.applyReplayGainUpdate(REPLAYGAIN_TRACK_GAIN_KEY, replayGainTrackUpdate)
@@ -1122,7 +1128,7 @@ class SongMetadataEditor(
         artist: String,
         album: String,
         albumArtist: String?,
-        genre: String,
+        genre: String?,
         trackNumber: Int,
         discNumber: Int?
     ): Boolean {
@@ -1133,7 +1139,9 @@ class SongMetadataEditor(
                 put(MediaStore.Audio.Media.TITLE, title)
                 put(MediaStore.Audio.Media.ARTIST, artist)
                 put(MediaStore.Audio.Media.ALBUM, album)
-                put(MediaStore.Audio.Media.GENRE, genre)
+                if (genre != null) {
+                    put(MediaStore.Audio.Media.GENRE, genre)
+                }
                 val encodedTrack = ((discNumber ?: 0) * 1000) + trackNumber
                 put(MediaStore.Audio.Media.TRACK, encodedTrack)
                 put(MediaStore.Audio.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)

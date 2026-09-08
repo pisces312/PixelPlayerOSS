@@ -59,9 +59,9 @@ class MetadataEditStateHolder @Inject constructor(
         newArtist: String,
         newAlbum: String,
         newAlbumArtist: String,
-        newComposer: String,
-        newGenre: String,
-        newLyrics: String,
+        newComposer: String?,
+        newGenre: String?,
+        newLyrics: String?,
         newTrackNumber: Int,
         newDiscNumber: Int?,
         newReplayGainTrackGainDb: String? = null,
@@ -91,7 +91,7 @@ class MetadataEditStateHolder @Inject constructor(
             coverArtUpdate
         }
 
-        val trimmedLyrics = newLyrics.trim()
+        val trimmedLyrics = newLyrics?.trim() ?: ""
         val normalizedLyrics = trimmedLyrics.takeIf { it.isNotBlank() }
         val parsedLyrics = normalizedLyrics?.let { LyricsUtils.parseLyrics(it) }
         val resolvedSongId = resolveSongIdForMetadataEdit(song)
@@ -110,7 +110,7 @@ class MetadataEditStateHolder @Inject constructor(
             newArtist = newArtist,
             newAlbum = newAlbum,
             newAlbumArtist = newAlbumArtist.trim().takeIf { it.isNotBlank() },
-            newComposer = newComposer.trim().takeIf { it.isNotBlank() },
+            newComposer = newComposer?.trim(),
             newGenre = newGenre,
             newLyrics = trimmedLyrics,
             newTrackNumber = newTrackNumber,
@@ -131,10 +131,12 @@ class MetadataEditStateHolder @Inject constructor(
                 result.updatedAlbumArtUri ?: song.albumArtUriString
             }
             
-            if (normalizedLyrics != null) {
-                musicRepository.updateLyrics(resolvedSongId, normalizedLyrics)
-            } else {
-                musicRepository.resetLyrics(resolvedSongId)
+            if (newLyrics != null) {
+                if (normalizedLyrics != null) {
+                    musicRepository.updateLyrics(resolvedSongId, normalizedLyrics)
+                } else {
+                    musicRepository.resetLyrics(resolvedSongId)
+                }
             }
 
             val updatedSong = song.copy(
@@ -142,8 +144,8 @@ class MetadataEditStateHolder @Inject constructor(
                 artist = newArtist,
                 album = newAlbum,
                 albumArtist = newAlbumArtist.trim().takeIf { it.isNotBlank() },
-                genre = newGenre,
-                lyrics = normalizedLyrics,
+                genre = newGenre ?: song.genre,
+                lyrics = normalizedLyrics ?: song.lyrics,
                 trackNumber = newTrackNumber,
                 discNumber = newDiscNumber,
                 albumArtUriString = refreshedAlbumArtUri,
