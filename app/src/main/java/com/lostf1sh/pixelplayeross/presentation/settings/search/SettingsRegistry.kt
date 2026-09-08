@@ -133,6 +133,18 @@ object SettingsRegistry {
                 onToggle = { viewModel, checked -> viewModel.setExternalArtistImagesEnabled(checked) }
             ),
             SettingSpec(
+                id = "library_allow_delete_songs",
+                itemKey = "item_library_allow_delete_songs",
+                titleRes = R.string.setcat_allow_delete_songs_title,
+                subtitleRes = R.string.setcat_allow_delete_songs_subtitle,
+                category = SettingsCategory.LIBRARY,
+                subscreenRoute = Screen.SettingsCategory.createRoute("library"),
+                type = SettingType.SWITCH,
+                keywordsStatic = listOf("delete", "deletion", "protection", "remove", "file", "safety"),
+                getValue = { it.songDeletionEnabled },
+                onToggle = { viewModel, checked -> viewModel.setSongDeletionEnabled(checked) }
+            ),
+            SettingSpec(
                 id = "library_lyrics_source_priority",
                 itemKey = "item_library_lyrics_source_priority",
                 titleRes = R.string.setcat_lyrics_source_priority_label,

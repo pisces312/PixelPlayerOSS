@@ -83,6 +83,7 @@ data class SettingsUiState(
     val autoScanLrcFiles: Boolean = false,
     val externalLyricsEnabled: Boolean = false,
     val externalArtistImagesEnabled: Boolean = false,
+    val songDeletionEnabled: Boolean = true,
     val blockedDirectories: Set<String> = emptySet(),
     val appRebrandDialogShown: Boolean = false,
     val fullPlayerLoadingTweaks: FullPlayerLoadingTweaks = FullPlayerLoadingTweaks(),
@@ -167,7 +168,8 @@ private sealed interface SettingsUiUpdate {
         val immersiveLyricsEnabled: Boolean,
         val immersiveLyricsTimeout: Long,
         val animatedLyricsBlurEnabled: Boolean,
-        val animatedLyricsBlurStrength: Float
+        val animatedLyricsBlurStrength: Float,
+        val songDeletionEnabled: Boolean
     ) : SettingsUiUpdate
 }
 
@@ -322,7 +324,8 @@ class SettingsViewModel @Inject constructor(
                 userPreferencesRepository.immersiveLyricsEnabledFlow,
                 userPreferencesRepository.immersiveLyricsTimeoutFlow,
                 userPreferencesRepository.animatedLyricsBlurEnabledFlow,
-                userPreferencesRepository.animatedLyricsBlurStrengthFlow
+                userPreferencesRepository.animatedLyricsBlurStrengthFlow,
+                userPreferencesRepository.songDeletionEnabledFlow
             ) { values ->
                 val requestedAudioOutputMode = values[4] as AudioOutputMode
                 SettingsUiUpdate.Group2(
@@ -348,7 +351,8 @@ class SettingsViewModel @Inject constructor(
                     immersiveLyricsEnabled = values[12] as Boolean,
                     immersiveLyricsTimeout = values[13] as Long,
                     animatedLyricsBlurEnabled = values[14] as Boolean,
-                    animatedLyricsBlurStrength = values[15] as Float
+                    animatedLyricsBlurStrength = values[15] as Float,
+                    songDeletionEnabled = values[16] as Boolean
                 )
             }.collect { update ->
                 _uiState.update { state ->
@@ -368,7 +372,8 @@ class SettingsViewModel @Inject constructor(
                         immersiveLyricsEnabled = update.immersiveLyricsEnabled,
                         immersiveLyricsTimeout = update.immersiveLyricsTimeout,
                         animatedLyricsBlurEnabled = update.animatedLyricsBlurEnabled,
-                        animatedLyricsBlurStrength = update.animatedLyricsBlurStrength
+                        animatedLyricsBlurStrength = update.animatedLyricsBlurStrength,
+                        songDeletionEnabled = update.songDeletionEnabled
                     )
                 }
             }
@@ -703,6 +708,12 @@ class SettingsViewModel @Inject constructor(
     fun setAutoScanLrcFiles(enabled: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.setAutoScanLrcFiles(enabled)
+        }
+    }
+
+    fun setSongDeletionEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setSongDeletionEnabled(enabled)
         }
     }
 

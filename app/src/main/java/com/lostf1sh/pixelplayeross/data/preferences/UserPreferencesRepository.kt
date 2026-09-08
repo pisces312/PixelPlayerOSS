@@ -208,6 +208,7 @@ constructor(
         val AUTO_SCAN_LRC_FILES = booleanPreferencesKey("auto_scan_lrc_files")
         val EXTERNAL_LYRICS_ENABLED = booleanPreferencesKey("external_lyrics_enabled")
         val EXTERNAL_ARTIST_IMAGES_ENABLED = booleanPreferencesKey("external_artist_images_enabled")
+        val SONG_DELETION_ENABLED = booleanPreferencesKey("song_deletion_enabled")
 
         val ALBUM_ART_QUALITY = stringPreferencesKey("album_art_quality")
         val ALBUM_ART_CACHE_LIMIT_MB = intPreferencesKey("album_art_cache_limit_mb")
@@ -632,6 +633,21 @@ constructor(
     suspend fun setAutoScanLrcFiles(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.AUTO_SCAN_LRC_FILES] = enabled
+        }
+    }
+
+    /**
+     * When false, deleting song files from the device is blocked (protection mode).
+     * Defaults to true to preserve existing behaviour.
+     */
+    val songDeletionEnabledFlow: Flow<Boolean> =
+        dataStore.data.map { preferences ->
+            preferences[PreferencesKeys.SONG_DELETION_ENABLED] ?: true
+        }
+
+    suspend fun setSongDeletionEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SONG_DELETION_ENABLED] = enabled
         }
     }
 

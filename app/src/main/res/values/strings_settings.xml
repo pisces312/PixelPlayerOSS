@@ -51,6 +51,9 @@
     <string name="setcat_artists_title">Artists</string>
     <string name="setcat_artists_subtitle">Multi-artist parsing and organization options.</string>
     <string name="setcat_filtering">Filtering</string>
+    <string name="setcat_deletion_protection">Deletion Protection</string>
+    <string name="setcat_allow_delete_songs_title">Allow Song Deletion</string>
+    <string name="setcat_allow_delete_songs_subtitle">When off, songs can never be deleted from the device, so a mis-tap cannot destroy files.</string>
     <string name="setcat_min_song_duration">Minimum Song Duration</string>
     <string name="setcat_min_tracks_per_album">Minimum Tracks per Album</string>
     <string name="setcat_album_art_cache_limit">Album Art Cache Limit</string>

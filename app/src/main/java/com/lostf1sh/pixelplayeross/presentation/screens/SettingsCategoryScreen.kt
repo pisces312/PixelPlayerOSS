@@ -482,6 +482,17 @@ fun SettingsCategoryScreen(
                                 )
                             }
 
+                            SettingsSubsection(title = stringResource(R.string.setcat_deletion_protection)) {
+                                SwitchSettingItem(
+                                    title = stringResource(R.string.setcat_allow_delete_songs_title),
+                                    subtitle = stringResource(R.string.setcat_allow_delete_songs_subtitle),
+                                    checked = uiState.songDeletionEnabled,
+                                    onCheckedChange = { settingsViewModel.setSongDeletionEnabled(it) },
+                                    leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.secondary) },
+                                    modifier = Modifier.settingHighlight("item_library_allow_delete_songs", highlightKey)
+                                )
+                            }
+
                             SettingsSubsection(title = stringResource(R.string.setcat_sync_scanning)) {
                                 Box(modifier = Modifier.settingHighlight("item_library_refresh", highlightKey)) {
                                 RefreshLibraryItem(

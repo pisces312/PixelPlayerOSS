@@ -3509,6 +3509,12 @@ class PlayerViewModel @Inject constructor(
 
     fun deleteSelectedFromDevice(activity: Activity, songs: List<Song>, onComplete: () -> Unit) {
         viewModelScope.launch {
+            if (!userPreferencesRepository.songDeletionEnabledFlow.first()) {
+                _toastEvents.emit(context.getString(R.string.song_deletion_protection_blocked))
+                onComplete()
+                return@launch
+            }
+
             val currentSongId = playbackStateHolder.stablePlayerState.value.currentSong?.id
             val deletableSongs = songs.filter { it.id != currentSongId }
 
@@ -3638,6 +3644,12 @@ class PlayerViewModel @Inject constructor(
 
     fun deleteFromDevice(activity: Activity, song: Song, onResult: (Boolean) -> Unit = {}){
         viewModelScope.launch {
+            if (!userPreferencesRepository.songDeletionEnabledFlow.first()) {
+                _toastEvents.emit(context.getString(R.string.song_deletion_protection_blocked))
+                onResult(false)
+                return@launch
+            }
+
             if (playbackStateHolder.stablePlayerState.value.currentSong?.id == song.id) {
                 _toastEvents.emit(context.getString(R.string.player_cannot_delete_currently_playing))
                 onResult(false)
