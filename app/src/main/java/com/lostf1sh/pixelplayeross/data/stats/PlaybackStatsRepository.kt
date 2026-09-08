@@ -56,8 +56,13 @@ class PlaybackStatsRepository @Inject constructor(
         val timestamp: Long,
         val durationMs: Long,
         val startTimestamp: Long? = null,
-        val endTimestamp: Long? = null
-    )
+        val endTimestamp: Long? = null,
+        val playCount: Int = 1
+    ) {
+        /** 归一化后的权重：JSON 缺字段或非法值时退化为 1。 */
+        val weight: Int
+            get() = if (playCount > 0) playCount else 1
+    }
 
     data class PlaybackHistoryEntry(
         val songId: String,
@@ -104,7 +109,8 @@ class PlaybackStatsRepository @Inject constructor(
     data class PlaybackSegment(
         val songId: String,
         val startMillis: Long,
-        val endMillis: Long
+        val endMillis: Long,
+        val playCount: Int = 1
     ) {
         val durationMs: Long
             get() = (endMillis - startMillis).coerceAtLeast(0L)
@@ -112,7 +118,8 @@ class PlaybackStatsRepository @Inject constructor(
 
     data class PlaybackSpan(
         val startMillis: Long,
-        val endMillis: Long
+        val endMillis: Long,
+        val playCount: Int = 1
     ) {
         val durationMs: Long
             get() = (endMillis - startMillis).coerceAtLeast(0L)
@@ -246,7 +253,7 @@ class PlaybackStatsRepository @Inject constructor(
             .groupBy { it.songId }
             .mapValues { (_, eventsForSong) -> mergeSongEvents(eventsForSong) }
 
-        val overallSpans = mergeSpans(segmentsBySong.values.flatten().map { PlaybackSpan(it.startMillis, it.endMillis) })
+        val overallSpans = mergeSpans(segmentsBySong.values.flatten().map { PlaybackSpan(it.startMillis, it.endMillis, it.playCount) })
 
         val effectiveStart = startBound
             ?: overallSpans.minOfOrNull { it.startMillis }
@@ -255,7 +262,7 @@ class PlaybackStatsRepository @Inject constructor(
         val effectiveEnd = overallSpans.maxOfOrNull { it.endMillis } ?: endBound
 
         val totalDuration = overallSpans.sumOf { it.durationMs }
-        val totalPlays = segmentsBySong.values.sumOf { it.size }
+        val totalPlays = segmentsBySong.values.sumOf { segments -> segments.sumOf { it.playCount } }
         val uniqueSongs = segmentsBySong.keys.size
 
         val allSongs = segmentsBySong
@@ -270,7 +277,7 @@ class PlaybackStatsRepository @Inject constructor(
                     artist = artist,
                     albumArtUri = song.albumArtUriString,
                     totalDurationMs = segmentsForSong.sumOf { it.durationMs },
-                    playCount = segmentsForSong.size
+                    playCount = segmentsForSong.sumOf { it.playCount }
                 )
             }
             .sortedWith(
@@ -296,7 +303,7 @@ class PlaybackStatsRepository @Inject constructor(
                 GenrePlaybackSummary(
                     genre = genre,
                     totalDurationMs = flattened.sumOf { it.durationMs },
-                    playCount = flattened.size,
+                    playCount = flattened.sumOf { it.playCount },
                     uniqueArtists = uniqueArtists
                 )
             }
@@ -373,7 +380,7 @@ class PlaybackStatsRepository @Inject constructor(
                 ArtistPlaybackSummary(
                     artist = artist,
                     totalDurationMs = flattened.sumOf { it.durationMs },
-                    playCount = flattened.size,
+                    playCount = flattened.sumOf { it.playCount },
                     uniqueSongs = uniqueSongCount
                 )
             }
@@ -399,7 +406,7 @@ class PlaybackStatsRepository @Inject constructor(
                     album = album,
                     albumArtUri = firstSong?.albumArtUriString,
                     totalDurationMs = flattened.sumOf { it.durationMs },
-                    playCount = flattened.size,
+                    playCount = flattened.sumOf { it.playCount },
                     uniqueSongs = uniqueSongCount
                 )
             }
@@ -569,7 +576,10 @@ class PlaybackStatsRepository @Inject constructor(
             timestamp = safeEnd,
             durationMs = finalDuration,
             startTimestamp = finalStart,
-            endTimestamp = safeEnd
+            endTimestamp = safeEnd,
+            // 旧版 JSON 没有 playCount 字段。Gson 可能用 Unsafe 分配（此时 Int 落 0），
+            // 因此统一经 weight 兜底为 1。
+            playCount = event.weight
         )
     }
 
@@ -580,19 +590,23 @@ class PlaybackStatsRepository @Inject constructor(
         val segments = mutableListOf<PlaybackSegment>()
         var currentStart = sorted.first().startMillis()
         var currentEnd = sorted.first().endMillis()
+        // 区间会被合并成一份时长，但次数必须逐条累加（含带权重事件）。
+        var currentPlayCount = sorted.first().weight
         for (index in 1 until sorted.size) {
             val event = sorted[index]
             val start = event.startMillis()
             val end = event.endMillis()
             if (start <= currentEnd + SEGMENT_JOIN_TOLERANCE_MS) {
                 currentEnd = max(currentEnd, end)
+                currentPlayCount += event.weight
             } else {
-                segments += PlaybackSegment(songId, currentStart, currentEnd)
+                segments += PlaybackSegment(songId, currentStart, currentEnd, currentPlayCount)
                 currentStart = start
                 currentEnd = end
+                currentPlayCount = event.weight
             }
         }
-        segments += PlaybackSegment(songId, currentStart, currentEnd)
+        segments += PlaybackSegment(songId, currentStart, currentEnd, currentPlayCount)
         return segments
     }
 
@@ -602,19 +616,23 @@ class PlaybackStatsRepository @Inject constructor(
         val merged = mutableListOf<PlaybackSpan>()
         var currentStart = sorted.first().startMillis
         var currentEnd = sorted.first().endMillis
+        // 同 [mergeSongEvents]：区间合并成一份时长，次数逐段累加。
+        var currentPlayCount = sorted.first().playCount
         for (index in 1 until sorted.size) {
             val span = sorted[index]
             val start = span.startMillis
             val end = span.endMillis
             if (start <= currentEnd + SEGMENT_JOIN_TOLERANCE_MS) {
                 currentEnd = max(currentEnd, end)
+                currentPlayCount += span.playCount
             } else {
-                merged += PlaybackSpan(currentStart, currentEnd)
+                merged += PlaybackSpan(currentStart, currentEnd, currentPlayCount)
                 currentStart = start
                 currentEnd = end
+                currentPlayCount = span.playCount
             }
         }
-        merged += PlaybackSpan(currentStart, currentEnd)
+        merged += PlaybackSpan(currentStart, currentEnd, currentPlayCount)
         return merged
     }
 
@@ -788,7 +806,7 @@ class PlaybackStatsRepository @Inject constructor(
             start = sorted.first().startMillis,
             end = sorted.first().endMillis,
             totalDuration = sorted.first().durationMs,
-            playCount = 1
+            playCount = sorted.first().playCount
         )
 
         for (index in 1 until sorted.size) {
@@ -799,14 +817,14 @@ class PlaybackStatsRepository @Inject constructor(
             if (gap <= sessionGapThresholdMs) {
                 current.end = max(current.end, spanEnd)
                 current.totalDuration += span.durationMs
-                current.playCount += 1
+                current.playCount += span.playCount
             } else {
                 sessions += current
                 current = ListeningSessionAggregate(
                     start = spanStart,
                     end = spanEnd,
                     totalDuration = span.durationMs,
-                    playCount = 1
+                    playCount = span.playCount
                 )
             }
         }
@@ -889,7 +907,10 @@ class PlaybackStatsRepository @Inject constructor(
                 val overlap = (overlapEnd - overlapStart).coerceAtLeast(0L)
                 if (overlap > 0) {
                     durationByBucket[index] += overlap
-                    playCountByBucket[index] += overlap.toDouble() / spanDuration.toDouble()
+                    // 按区间落在桶内的时长占比折算次数；带权重的导入事件（playCount = N）
+                    // 会把它代表的 N 次播放一并分摊到覆盖到的桶里。
+                    playCountByBucket[index] +=
+                        span.playCount * (overlap.toDouble() / spanDuration.toDouble())
                 }
             }
         }

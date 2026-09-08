@@ -223,6 +223,67 @@ class PlaybackStatsRepositoryTest {
         assertThat(summary.topGenres.single().uniqueArtists).isEqualTo(2)
     }
 
+    @Test
+    fun `loadSummary aggregates a weighted event by its playCount`() = runTest {
+        val repository = createRepository()
+        val zoneId = ZoneId.systemDefault()
+        val start = LocalDate.of(2026, 4, 10)
+            .atTime(16, 0)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val durationMs = 30_000L
+        // 第三方导入的一次事件代表累计 5 次播放。
+        val event = PlaybackStatsRepository.PlaybackEvent(
+            songId = "song-1",
+            timestamp = start + durationMs,
+            durationMs = durationMs,
+            startTimestamp = start,
+            endTimestamp = start + durationMs,
+            playCount = 5
+        )
+
+        val summary = repository.buildSummaryFromEvents(
+            range = StatsTimeRange.DAY,
+            songs = listOf(song("song-1")),
+            allEvents = listOf(event),
+            nowMillis = start + durationMs + 1_000L
+        )
+
+        assertThat(summary.totalPlayCount).isEqualTo(5)
+        assertThat(summary.songs.single().playCount).isEqualTo(5)
+    }
+
+    @Test
+    fun `playCount zero falls back to a weight of one`() = runTest {
+        val repository = createRepository()
+        val zoneId = ZoneId.systemDefault()
+        val start = LocalDate.of(2026, 4, 10)
+            .atTime(17, 0)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val durationMs = 30_000L
+        // Gson 对旧版 JSON 缺失字段可能走 Unsafe 分配，把 playCount 落成 0。
+        val event = PlaybackStatsRepository.PlaybackEvent(
+            songId = "song-1",
+            timestamp = start + durationMs,
+            durationMs = durationMs,
+            startTimestamp = start,
+            endTimestamp = start + durationMs,
+            playCount = 0
+        )
+
+        val summary = repository.buildSummaryFromEvents(
+            range = StatsTimeRange.DAY,
+            songs = listOf(song("song-1")),
+            allEvents = listOf(event),
+            nowMillis = start + durationMs + 1_000L
+        )
+
+        assertThat(summary.totalPlayCount).isEqualTo(1)
+    }
+
     private fun createRepository(): PlaybackStatsRepository {
         val uniqueDir = createTempDirectory(
             "playback-stats-test-${Instant.now().toEpochMilli()}-"
