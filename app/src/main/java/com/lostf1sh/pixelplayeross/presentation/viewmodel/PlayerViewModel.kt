@@ -40,6 +40,7 @@ import com.lostf1sh.pixelplayeross.data.EotStateHolder
 import com.lostf1sh.pixelplayeross.data.database.AlbumArtThemeDao
 import com.lostf1sh.pixelplayeross.data.media.CoverArtUpdate
 import com.lostf1sh.pixelplayeross.data.media.CustomMetadataChanges
+import com.lostf1sh.pixelplayeross.data.media.MetadataValueUpdate
 import com.lostf1sh.pixelplayeross.data.model.Album
 import com.lostf1sh.pixelplayeross.data.model.Artist
 import com.lostf1sh.pixelplayeross.data.model.FolderSource
@@ -4349,6 +4350,18 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             Timber.tag("PlayerViewModel").e("METADATA_EDIT_VM: Starting editSongMetadata via Holder")
 
+            // 评分只落 DB、不写文件标签：先把 rating 从 customMetadataChanges 里剥离，
+            // 其余字段仍走原有的 MediaStore 写权限 + 标签写入流程。
+            val ratingToPersist = (customMetadataChanges.rating as? MetadataValueUpdate.Set)?.value
+            if (ratingToPersist != null) {
+                musicRepository.setSongRating(song.id, ratingToPersist)
+            }
+            val metadataWithoutRating = if (ratingToPersist != null) {
+                customMetadataChanges.copy(rating = MetadataValueUpdate.Keep)
+            } else {
+                customMetadataChanges
+            }
+
             val songId = song.id.toLongOrNull()
             if (songId != null && songId > 0 && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 val intentSender = com.lostf1sh.pixelplayeross.utils.MediaStorePermissionHelper
@@ -4368,7 +4381,7 @@ class PlayerViewModel @Inject constructor(
                         replayGainTrackGainDb = newReplayGainTrackGainDb,
                         replayGainAlbumGainDb = newReplayGainAlbumGainDb,
                         coverArtUpdate = coverArtUpdate,
-                        customMetadataChanges = customMetadataChanges
+                        customMetadataChanges = metadataWithoutRating
                     )
                     _writePermissionRequest.emit(intentSender)
                     return@launch
@@ -4377,7 +4390,7 @@ class PlayerViewModel @Inject constructor(
 
             performMetadataEdit(song, newTitle, newArtist, newAlbum, newAlbumArtist, newComposer, newGenre, newLyrics,
                 newTrackNumber, newDiscNumber, newReplayGainTrackGainDb, newReplayGainAlbumGainDb, coverArtUpdate,
-                customMetadataChanges)
+                metadataWithoutRating)
         }
     }
 

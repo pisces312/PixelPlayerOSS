@@ -762,15 +762,28 @@ class MusicRepositoryImpl @Inject constructor(
     override suspend fun setFavoriteStatus(songId: String, isFavorite: Boolean) = withContext(Dispatchers.IO) {
         val id = songId.toLongOrNull() ?: return@withContext
         if (isFavorite) {
+            // 保留已存在的评分：setFavorite 是 REPLACE，不带 rating 会把它覆盖回 0。
+            val existingRating = favoritesDao.getRating(id) ?: 0
             favoritesDao.setFavorite(
                 com.lostf1sh.pixelplayeross.data.database.FavoritesEntity(
                     songId = id,
-                    isFavorite = true
+                    isFavorite = true,
+                    rating = existingRating
                 )
             )
         } else {
             favoritesDao.removeFavorite(id)
         }
+    }
+
+    override suspend fun setSongRating(songId: String, rating: Int) = withContext(Dispatchers.IO) {
+        val id = songId.toLongOrNull() ?: return@withContext
+        favoritesDao.upsertRating(id, rating.coerceIn(0, 5), System.currentTimeMillis())
+    }
+
+    override suspend fun getSongRating(songId: String): Int? = withContext(Dispatchers.IO) {
+        val id = songId.toLongOrNull() ?: return@withContext null
+        favoritesDao.getRating(id)
     }
 
     override suspend fun getFavoriteSongIdsOnce(): Set<String> = withContext(Dispatchers.IO) {

@@ -199,3 +199,16 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
         )
     }
 }
+
+/**
+ * v6 -> v7: per-song rating stored alongside the favorite flag.
+ *
+ * A 0–5 star rating lives in the same row as the favorite status so a third-party import
+ * (e.g. Poweramp) can carry both over in one upsert. The column is additive and idempotent,
+ * guarded by the same Auto Backup drift check used by the earlier migrations.
+ */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.addColumnIfMissing("favorites", "rating", "`rating` INTEGER NOT NULL DEFAULT 0")
+    }
+}

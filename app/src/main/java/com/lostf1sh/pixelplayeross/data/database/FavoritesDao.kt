@@ -33,6 +33,22 @@ interface FavoritesDao {
     @Query("SELECT * FROM favorites")
     suspend fun getAllFavoritesOnce(): List<FavoritesEntity>
 
+    @Query("SELECT rating FROM favorites WHERE songId = :songId")
+    suspend fun getRating(songId: Long): Int?
+
+    /**
+     * 写入评分而不改变收藏状态：行不存在时插入一行（isFavorite=0），存在时只更新 rating，
+     * 保留 isFavorite 与 timestamp。评分与收藏相互独立。
+     */
+    @Query(
+        """
+        INSERT INTO favorites (songId, isFavorite, timestamp, rating)
+        VALUES (:songId, 0, :timestamp, :rating)
+        ON CONFLICT(songId) DO UPDATE SET rating = excluded.rating
+        """
+    )
+    suspend fun upsertRating(songId: Long, rating: Int, timestamp: Long)
+
     @Query("DELETE FROM favorites")
     suspend fun clearAll()
 

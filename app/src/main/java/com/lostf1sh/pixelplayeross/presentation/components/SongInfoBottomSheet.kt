@@ -131,6 +131,7 @@ fun SongInfoBottomSheet(
 ) {
     val context = LocalContext.current
     var showEditSheet by remember { mutableStateOf(false) }
+    var dbRating by remember { mutableStateOf<Int?>(null) }
     var showArtistPicker by remember { mutableStateOf(false) }
     var showTonePickerDialog by remember { mutableStateOf(false) }
     var toneConfirmationTarget by remember { mutableStateOf<ToneTarget?>(null) }
@@ -294,6 +295,7 @@ fun SongInfoBottomSheet(
         songInfoViewModel.bindSong(song)
         songInfoViewModel.loadAudioMeta(song)
         songInfoViewModel.loadArtistsForSong(song)
+        dbRating = song.id.toLongOrNull()?.let { songInfoViewModel.getSongRating(it) }
     }
 
     LaunchedEffect(musicBrainzState) {
@@ -854,6 +856,7 @@ fun SongInfoBottomSheet(
     EditSongSheet(
         visible = showEditSheet,
         song = song,
+        dbRating = dbRating,
         onDismiss = { showEditSheet = false },
         onSave = { title, artist, album, albumArtist, composer, genre, lyrics, trackNumber, discNumber, replayGainTrackGainDb, replayGainAlbumGainDb, coverArt, customMetadataChanges ->
             onEditSong(

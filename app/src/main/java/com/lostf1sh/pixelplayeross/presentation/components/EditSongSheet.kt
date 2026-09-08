@@ -104,6 +104,7 @@ private fun formatReplayGainForInput(gainDb: Float?): String {
 fun EditSongSheet(
     visible: Boolean,
     song: Song,
+    dbRating: Int? = null,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -139,6 +140,7 @@ fun EditSongSheet(
             ) {
                 EditSongContent(
                     song = song,
+                    dbRating = dbRating,
                     onDismiss = onDismiss,
                     onSave = onSave
                 )
@@ -151,6 +153,7 @@ fun EditSongSheet(
 @Composable
 private fun EditSongContent(
     song: Song,
+    dbRating: Int? = null,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -251,8 +254,8 @@ private fun EditSongContent(
             replayGainTrackGainDb = formatReplayGainForInput(embeddedMetadata?.replayGainTrackGainDb)
             replayGainAlbumGainDb = formatReplayGainForInput(embeddedMetadata?.replayGainAlbumGainDb)
             metadataWasRead = embeddedMetadata != null
-            originalRating = embeddedMetadata?.rating
-            rating = embeddedMetadata?.rating
+            originalRating = dbRating ?: embeddedMetadata?.rating
+            rating = dbRating ?: embeddedMetadata?.rating
             originalCustomFields = embeddedMetadata?.customFields.orEmpty()
             customFields = embeddedMetadata?.customFields.orEmpty()
         }

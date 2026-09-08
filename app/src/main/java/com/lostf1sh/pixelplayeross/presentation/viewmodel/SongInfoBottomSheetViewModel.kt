@@ -13,6 +13,7 @@ import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lostf1sh.pixelplayeross.R
+import com.lostf1sh.pixelplayeross.data.database.FavoritesDao
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.toArtist
 import com.lostf1sh.pixelplayeross.data.model.Artist
@@ -45,6 +46,7 @@ class SongInfoBottomSheetViewModel @Inject constructor(
     private val musicDao: MusicDao,
     private val cloudOfflineRepository: CloudOfflineRepository,
     private val musicBrainzRepository: MusicBrainzRepository,
+    private val favoritesDao: FavoritesDao,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -72,6 +74,11 @@ class SongInfoBottomSheetViewModel @Inject constructor(
         data class Results(val matches: List<MusicBrainzMatch>) : MusicBrainzUiState
         data class Error(val message: String) : MusicBrainzUiState
         data object Applied : MusicBrainzUiState
+    }
+
+    /** 返回数据库中保存的 0–5 评分，无评分时返回 null。 */
+    suspend fun getSongRating(songId: Long): Int? = withContext(Dispatchers.IO) {
+        favoritesDao.getRating(songId)
     }
 
     private val _audioMeta = MutableStateFlow<AudioMeta?>(null)

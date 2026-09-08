@@ -266,6 +266,19 @@ interface MusicRepository {
     suspend fun setFavoriteStatus(songId: String, isFavorite: Boolean)
 
     /**
+     * Persists a 0–5 star rating for a song without touching its favorite status.
+     * @param songId The song ID.
+     * @param rating 0–5.
+     */
+    suspend fun setSongRating(songId: String, rating: Int)
+
+    /**
+     * Returns the stored 0–5 rating for a song, or null when no rating is recorded.
+     * @param songId The song ID.
+     */
+    suspend fun getSongRating(songId: String): Int?
+
+    /**
      * Returns favorite song IDs directly from Room (favorites table).
      */
     suspend fun getFavoriteSongIdsOnce(): Set<String>
