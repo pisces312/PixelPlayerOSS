@@ -19,6 +19,17 @@ interface FavoritesDao {
     @Query("DELETE FROM favorites WHERE songId = :songId")
     suspend fun removeFavorite(songId: Long)
 
+    /**
+     * 软删除：仅清除收藏标记，保留评分。
+     * 取消收藏应调用此方法而非 removeFavorite——直接 DELETE 会连带丢掉评分。
+     */
+    @Query("UPDATE favorites SET isFavorite = 0 WHERE songId = :songId")
+    suspend fun clearFavoriteFlag(songId: Long)
+
+    /** 清除无意义行（既未收藏也未评分），避免表中残留空记录。 */
+    @Query("DELETE FROM favorites WHERE songId = :songId AND isFavorite = 0 AND rating = 0")
+    suspend fun purgeIfEmpty(songId: Long)
+
     @Query("SELECT isFavorite FROM favorites WHERE songId = :songId")
     suspend fun isFavorite(songId: Long): Boolean?
 
