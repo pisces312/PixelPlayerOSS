@@ -4725,6 +4725,14 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Resolves a song id (for example from listening stats) and starts playback. */
+    fun playSongById(songId: String) {
+        viewModelScope.launch {
+            val song = musicRepository.getSong(songId).first() ?: return@launch
+            playSong(song)
+        }
+    }
+
     fun prepareBenchmarkPlayerFromLibrary() {
         viewModelScope.launch {
             repeat(90) { attempt ->

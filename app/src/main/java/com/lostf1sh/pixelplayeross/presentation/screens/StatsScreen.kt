@@ -142,6 +142,7 @@ private const val PULL_TO_REFRESH_MIN_DURATION_MS = 3500L
 @Composable
 fun StatsScreen(
     navController: NavController,
+    onSongClick: (String) -> Unit,
     statsViewModel: StatsViewModel = hiltViewModel()
 ) {
     val uiState by statsViewModel.uiState.collectAsStateWithLifecycle()
@@ -332,6 +333,7 @@ fun StatsScreen(
                     item {
                         SongStatsCard(
                             summary = summary,
+                            onSongClick = onSongClick,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
@@ -2071,6 +2073,7 @@ private fun TopAlbumsCard(
 @Composable
 private fun SongStatsCard(
     summary: PlaybackStatsRepository.PlaybackStatsSummary?,
+    onSongClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -2139,6 +2142,7 @@ private fun SongStatsCard(
                         }
 
                         Surface(
+                            onClick = { onSongClick(songSummary.songId) },
                             shape = RoundedCornerShape(20.dp),
                             color = rowContainerColor
                         ) {
