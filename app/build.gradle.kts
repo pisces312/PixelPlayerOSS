@@ -1,4 +1,5 @@
 import java.util.Properties
+import com.android.build.api.variant.FilterConfiguration
 
 plugins {
     alias(libs.plugins.android.application)
@@ -100,7 +101,18 @@ android {
 
     buildTypes {
         debug {
+            // Separate application id so debug and release can be installed side by side.
             applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            // Ship the debug build through the same R8 pipeline as release: it keeps the
+            // APK size and startup behaviour representative, and stays debuggable because
+            // we keep SourceFile/LineNumberTable (see proguard-rules.pro).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
 
         release {
@@ -147,7 +159,7 @@ android {
             isEnable = enableAbiSplits
             reset()
             if (enableAbiSplits) {
-                include("arm64-v8a", "armeabi-v7a")
+                include("arm64-v8a")
                 isUniversalApk = false
             }
         }
@@ -157,6 +169,18 @@ android {
         abi.enableSplit = true
         density.enableSplit = true
         language.enableSplit = true
+    }
+}
+
+androidComponents {
+    val appVersionName = providers.gradleProperty("APP_VERSION_NAME").getOrElse("0.0.0")
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            val abi = output.filters
+                .firstOrNull { it.filterType == FilterConfiguration.FilterType.ABI }
+                ?.identifier ?: "universal"
+            output.outputFileName.set("pixelplayeross-${abi}-${appVersionName}-${variant.buildType}.apk")
+        }
     }
 }
 
