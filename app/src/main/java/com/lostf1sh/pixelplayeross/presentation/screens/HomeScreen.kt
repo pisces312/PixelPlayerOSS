@@ -82,6 +82,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.CollagePattern
 import com.lostf1sh.pixelplayeross.presentation.components.AiGenerateEntryCard
@@ -92,6 +93,7 @@ import com.lostf1sh.pixelplayeross.presentation.jellyfin.dashboard.JellyfinDashb
 import com.lostf1sh.pixelplayeross.presentation.navidrome.dashboard.NavidromeDashboardViewModel
 import com.lostf1sh.pixelplayeross.presentation.components.DailyMixSection
 import com.lostf1sh.pixelplayeross.presentation.components.DescribePlaylistDialog
+import com.lostf1sh.pixelplayeross.presentation.components.SampleConfig
 import com.lostf1sh.pixelplayeross.presentation.components.HomeGradientTopBar
 import com.lostf1sh.pixelplayeross.presentation.components.HomeOptionsBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
@@ -149,6 +151,8 @@ fun HomeScreen(
     val playbackHistory by playerViewModel.playbackHistory.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
+    val isLibraryEmpty by playlistViewModel.isLibraryEmpty.collectAsStateWithLifecycle()
+    val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
     var showAiPlaylistDialog by remember { mutableStateOf(false) }
 
     val usesFallbackHomeMix = remember(curatedYourMixSongs, dailyMixSongs) {
@@ -332,23 +336,25 @@ fun HomeScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                item(
-                    key = "ai_playlist_entry",
-                    contentType = "ai_playlist_entry"
-                ) {
-                    AiGenerateEntryCard(
-                        configured = isAiConfigured,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        onClick = {
-                            if (isAiConfigured) {
-                                showAiPlaylistDialog = true
-                            } else {
-                                navController.navigateSafely(
-                                    Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
-                                )
+                if (!isLibraryEmpty) {
+                    item(
+                        key = "ai_playlist_entry",
+                        contentType = "ai_playlist_entry"
+                    ) {
+                        AiGenerateEntryCard(
+                            configured = isAiConfigured,
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            onClick = {
+                                if (isAiConfigured) {
+                                    showAiPlaylistDialog = true
+                                } else {
+                                    navController.navigateSafely(
+                                        Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
+                                    )
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
                 if (yourMixSongs.isEmpty()) {
                     item(
@@ -558,9 +564,14 @@ fun HomeScreen(
         state = aiPlaylistPreviewState,
         title = stringResource(R.string.ai_playlist_dialog_title),
         subtitle = stringResource(R.string.ai_playlist_dialog_subtitle),
-        sampleSizeOptions = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
-        sampleSize = aiLibrarySampleSize,
-        onSampleSizeChange = playlistViewModel::setAiLibrarySampleSize,
+        sampleConfig = SampleConfig(
+            modes = AiLibrarySampleMode.entries,
+            mode = aiLibrarySampleMode,
+            sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
+            size = aiLibrarySampleSize,
+            onModeChange = playlistViewModel::setAiLibrarySampleMode,
+            onSizeChange = playlistViewModel::setAiLibrarySampleSize
+        ),
         onGenerate = playlistViewModel::generateAiPlaylistPreview,
         onSave = { name, songIds ->
             playlistViewModel.createPlaylist(name = name, songIds = songIds)

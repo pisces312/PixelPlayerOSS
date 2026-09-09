@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProvider
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,7 +49,11 @@ constructor(private val dataStore: DataStore<Preferences>) {
          * or cleared without touching unrelated user preferences.
          */
         fun allAiPreferenceKeyNames(): Set<String> =
-            setOf(Keys.AI_PROVIDER.name, Keys.LIBRARY_SAMPLE_SIZE.name) +
+            setOf(
+                Keys.AI_PROVIDER.name,
+                Keys.LIBRARY_SAMPLE_SIZE.name,
+                Keys.LIBRARY_SAMPLE_MODE.name
+            ) +
                     AiProvider.entries.flatMap { provider ->
                         listOfNotNull(
                             Keys.getApiKey(provider).name,
@@ -63,6 +68,8 @@ constructor(private val dataStore: DataStore<Preferences>) {
         val AI_PROVIDER = stringPreferencesKey("ai_provider")
 
         val LIBRARY_SAMPLE_SIZE = intPreferencesKey("ai_library_sample_size")
+
+        val LIBRARY_SAMPLE_MODE = stringPreferencesKey("ai_library_sample_mode")
 
         fun getApiKey(provider: AiProvider) = stringPreferencesKey("${provider.keyPrefix}_api_key")
 
@@ -138,5 +145,14 @@ constructor(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setLibrarySampleSize(size: Int) {
         dataStore.edit { preferences -> preferences[Keys.LIBRARY_SAMPLE_SIZE] = size }
+    }
+
+    fun getLibrarySampleMode(): Flow<AiLibrarySampleMode> =
+            dataStore.data.map { preferences ->
+                AiLibrarySampleMode.fromName(preferences[Keys.LIBRARY_SAMPLE_MODE])
+            }
+
+    suspend fun setLibrarySampleMode(mode: AiLibrarySampleMode) {
+        dataStore.edit { preferences -> preferences[Keys.LIBRARY_SAMPLE_MODE] = mode.name }
     }
 }

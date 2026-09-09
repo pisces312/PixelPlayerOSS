@@ -11,6 +11,7 @@
     <string name="ai_section_credentials">Credentials &amp; model</string>
     <string name="ai_api_key_label">API Key</string>
     <string name="ai_api_key_placeholder">Not set</string>
+    <string name="ai_endpoint_resolved">Endpoint: %1$s</string>
     <string name="ai_base_url_label">Base URL</string>
     <string name="ai_base_url_placeholder">https://example.com/v1</string>
     <string name="ai_model_label">Model</string>
@@ -37,15 +38,21 @@
     <string name="ai_playlist_entry_action">Start</string>
     <string name="ai_playlist_dialog_title">AI Playlist</string>
     <string name="ai_playlist_dialog_subtitle">Describe a mood or moment — songs are matched from your library</string>
+    <string name="ai_playlist_sample_mode_label">Library slice</string>
+    <string name="ai_sample_mode_most_played">Most played</string>
+    <string name="ai_sample_mode_most_played_hint">Stable list, so asking twice costs one request</string>
+    <string name="ai_sample_mode_random">Random</string>
+    <string name="ai_sample_mode_random_hint">Fresh shuffle every time, reaches songs you never play</string>
     <string name="ai_playlist_sample_size_label">Songs sent to the model</string>
     <string name="ai_playlist_sample_size_value">%1$d songs</string>
     <string name="ai_playlist_sample_size_hint">A random slice of your library. More songs means better matches and more tokens.</string>
+    <string name="ai_playlist_name_label">Playlist name</string>
 
     <!-- Status messages -->
     <string name="ai_status_models_loaded">%1$d models available</string>
     <string name="ai_status_test_ok">Connection OK</string>
     <string name="ai_status_cache_cleared">AI cache cleared</string>
-    <string name="ai_error_unauthorized">Unauthorized — check the API key</string>
+    <string name="ai_error_unauthorized">Unauthorized — check the API key and the endpoint it belongs to</string>
     <string name="ai_error_quota">Quota exhausted</string>
     <string name="ai_error_model_not_found">Model not found — check the model id</string>
     <string name="ai_error_rate_limited">Rate limited — try again later</string>

@@ -15,6 +15,7 @@ import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylist
 import com.lostf1sh.pixelplayeross.data.model.toPlaylistSource
 import com.lostf1sh.pixelplayeross.data.playlist.M3uManager
 import com.lostf1sh.pixelplayeross.data.playlist.NlpPlaylistGenerator
+import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.ai.AiPlaylistGenerator
 import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiErrorKind
@@ -432,6 +433,26 @@ class PlaylistViewModel @Inject constructor(
     fun setAiLibrarySampleSize(size: Int) {
         viewModelScope.launch { aiPreferences.setLibrarySampleSize(size) }
     }
+
+    val aiLibrarySampleMode: StateFlow<AiLibrarySampleMode> =
+            aiPreferences
+                    .getLibrarySampleMode()
+                    .stateIn(
+                            viewModelScope,
+                            SharingStarted.WhileSubscribed(5_000),
+                            AiLibrarySampleMode.MOST_PLAYED
+                    )
+
+    fun setAiLibrarySampleMode(mode: AiLibrarySampleMode) {
+        viewModelScope.launch { aiPreferences.setLibrarySampleMode(mode) }
+    }
+
+    /** Starts out true so the AI entry stays hidden until the library size is known. */
+    val isLibraryEmpty: StateFlow<Boolean> =
+            musicRepository
+                    .getSongCountFlow()
+                    .map { it == 0 }
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     /** Clears the AI preview when its dialog closes. */
     fun resetAiPlaylistPreview() {

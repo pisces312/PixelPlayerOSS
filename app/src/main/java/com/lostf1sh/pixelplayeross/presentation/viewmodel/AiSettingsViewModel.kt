@@ -40,6 +40,8 @@ constructor(
         val apiKey: String = "",
         val model: String = "",
         val baseUrl: String = "",
+        /** Endpoint actually used, derived from the key for providers with a fixed url. */
+        val endpoint: String = "",
         val thinkingEnabled: Boolean = false,
         val availableModels: List<String> = emptyList(),
         val modelsLoading: Boolean = false,
@@ -71,6 +73,7 @@ constructor(
                                     apiKey = apiKey,
                                     model = model,
                                     baseUrl = baseUrl,
+                                    endpoint = baseUrl.ifBlank { provider.resolveBaseUrl(apiKey) },
                                     thinkingEnabled = thinking
                             )
                         }

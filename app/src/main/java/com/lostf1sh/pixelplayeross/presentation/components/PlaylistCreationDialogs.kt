@@ -6,6 +6,7 @@
 
 package com.lostf1sh.pixelplayeross.presentation.components
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.MutableTransitionState
@@ -85,6 +86,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -99,8 +101,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.NlpPlaylistPreviewState
 import com.lostf1sh.pixelplayeross.ui.theme.RoundedSans
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.math.max
 import kotlin.math.min
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
@@ -203,6 +208,21 @@ fun PlaylistCreationTypeDialog(
 }
 
 /**
+ * Controls over which slice of the library the model is shown.
+ *
+ * Only the AI flow needs this; the offline engine reads the whole library and has no such knob, so
+ * it passes null and the pickers are hidden.
+ */
+data class SampleConfig(
+    val modes: List<AiLibrarySampleMode>,
+    val mode: AiLibrarySampleMode,
+    val sizes: List<Int>,
+    val size: Int,
+    val onModeChange: (AiLibrarySampleMode) -> Unit,
+    val onSizeChange: (Int) -> Unit
+)
+
+/**
  * "Describe it" creation mode: the user types a natural-language description
  * ("songs to lift weights to"), the offline NLP engine ranks the library against it,
  * and the matched songs are previewed before being saved as a regular playlist.
@@ -217,13 +237,19 @@ fun DescribePlaylistDialog(
     onDismiss: () -> Unit,
     title: String = stringResource(R.string.presentation_batch_e_describe_playlist_title),
     subtitle: String = stringResource(R.string.presentation_batch_e_describe_playlist_subtitle),
-    sampleSizeOptions: List<Int> = emptyList(),
-    sampleSize: Int = sampleSizeOptions.firstOrNull() ?: 0,
-    onSampleSizeChange: (Int) -> Unit = {}
+    sampleConfig: SampleConfig? = null
 ) {
     if (!visible) return
 
     var description by rememberSaveable { mutableStateOf("") }
+    var playlistName by rememberSaveable { mutableStateOf("") }
+
+    // A finished generation gets a fresh default name; the user can still overwrite it.
+    LaunchedEffect(state) {
+        if (state.hasResult && state.songs.isNotEmpty()) {
+            playlistName = timestampName()
+        }
+    }
 
     val dialogShape = AbsoluteSmoothCornerShape(
         cornerRadiusTL = 24.dp,
@@ -283,12 +309,18 @@ fun DescribePlaylistDialog(
                     }
                 )
 
-                if (sampleSizeOptions.isNotEmpty()) {
-                    SampleSizeDropdown(
-                            options = sampleSizeOptions,
-                            selected = sampleSize,
+                if (sampleConfig != null) {
+                    SampleModeDropdown(
+                            modes = sampleConfig.modes,
+                            selected = sampleConfig.mode,
                             enabled = !state.isGenerating,
-                            onSelect = onSampleSizeChange
+                            onSelect = sampleConfig.onModeChange
+                    )
+                    SampleSizeDropdown(
+                            options = sampleConfig.sizes,
+                            selected = sampleConfig.size,
+                            enabled = !state.isGenerating,
+                            onSelect = sampleConfig.onSizeChange
                     )
                 }
 
@@ -328,6 +360,13 @@ fun DescribePlaylistDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
+                        OutlinedTextField(
+                            value = playlistName,
+                            onValueChange = { playlistName = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(stringResource(R.string.ai_playlist_name_label)) },
+                            singleLine = true
+                        )
                         Text(
                             text = pluralStringResource(
                                 R.plurals.presentation_batch_e_describe_result_count,
@@ -376,9 +415,9 @@ fun DescribePlaylistDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     FilledTonalButton(
                         onClick = {
-                            onSave(description.trim(), state.songs.map { it.id })
+                            onSave(playlistName.trim().ifBlank { timestampName() }, state.songs.map { it.id })
                         },
-                        enabled = state.songs.isNotEmpty() && !state.isGenerating && description.isNotBlank()
+                        enabled = state.songs.isNotEmpty() && !state.isGenerating && playlistName.isNotBlank()
                     ) {
                         Text(text = stringResource(R.string.presentation_batch_e_describe_save))
                     }
@@ -497,3 +536,61 @@ private fun SampleSizeDropdown(
         }
     }
 }
+
+/**
+ * Picks how the library slice is chosen: the most played titles (stable, so repeated prompts hit
+ * the response cache) or a fresh shuffle (every song stays reachable).
+ */
+@Composable
+private fun SampleModeDropdown(
+    modes: List<AiLibrarySampleMode>,
+    selected: AiLibrarySampleMode,
+    enabled: Boolean,
+    onSelect: (AiLibrarySampleMode) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+                value = stringResource(sampleModeLabel(selected)),
+                onValueChange = {},
+                readOnly = true,
+                enabled = enabled,
+                label = { Text(stringResource(R.string.ai_playlist_sample_mode_label)) },
+                supportingText = { Text(stringResource(sampleModeHint(selected))) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier =
+                        Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth(),
+                singleLine = true
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            modes.forEach { mode ->
+                DropdownMenuItem(
+                        text = { Text(stringResource(sampleModeLabel(mode))) },
+                        onClick = {
+                            onSelect(mode)
+                            expanded = false
+                        }
+                )
+            }
+        }
+    }
+}
+
+@StringRes
+private fun sampleModeLabel(mode: AiLibrarySampleMode): Int =
+        when (mode) {
+            AiLibrarySampleMode.MOST_PLAYED -> R.string.ai_sample_mode_most_played
+            AiLibrarySampleMode.RANDOM -> R.string.ai_sample_mode_random
+        }
+
+@StringRes
+private fun sampleModeHint(mode: AiLibrarySampleMode): Int =
+        when (mode) {
+            AiLibrarySampleMode.MOST_PLAYED -> R.string.ai_sample_mode_most_played_hint
+            AiLibrarySampleMode.RANDOM -> R.string.ai_sample_mode_random_hint
+        }
+
+/** Default playlist name: when the list was generated. Editable before saving. */
+private fun timestampName(): String =
+        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))

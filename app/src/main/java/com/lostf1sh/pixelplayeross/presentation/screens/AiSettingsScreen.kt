@@ -70,7 +70,11 @@ fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
                     singleLine = true,
                     visualTransformation =
                             if (uiState.apiKey.isBlank()) VisualTransformation.None
-                            else PasswordVisualTransformation()
+                            else PasswordVisualTransformation(),
+                    supportingText =
+                            if (!uiState.provider.hasConfigurableUrl && uiState.endpoint.isNotBlank()) {
+                                { Text(stringResource(R.string.ai_endpoint_resolved, uiState.endpoint)) }
+                            } else null
             )
             if (uiState.provider.hasConfigurableUrl) {
                 OutlinedTextField(

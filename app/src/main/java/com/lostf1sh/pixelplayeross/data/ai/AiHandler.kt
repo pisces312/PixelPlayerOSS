@@ -106,7 +106,9 @@ constructor(
         val provider = preferences.getProvider()
         val apiKey = preferences.getApiKey(provider).first()
         val baseUrl =
-                preferences.getBaseUrl(provider).first().ifBlank { provider.defaultBaseUrl }
+                preferences.getBaseUrl(provider).first().ifBlank {
+                    provider.resolveBaseUrl(apiKey)
+                }
         return Triple(provider, apiKey, baseUrl)
     }
 

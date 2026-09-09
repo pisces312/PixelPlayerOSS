@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.data.ai
 
+import com.lostf1sh.pixelplayeross.data.database.EngagementDao
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
@@ -23,6 +24,7 @@ class AiPlaylistGenerator
 constructor(
     private val handler: AiHandler,
     private val preferences: AiPreferencesRepository,
+    private val engagementDao: EngagementDao,
     private val musicRepository: MusicRepository
 ) {
 
@@ -34,20 +36,41 @@ constructor(
                 if (songs.isEmpty()) return@withContext emptyList()
 
                 val sampleSize = preferences.getLibrarySampleSize().first()
-                val raw = handler.generate(description, librarySample(songs, sampleSize))
+                val sampleMode = preferences.getLibrarySampleMode().first()
+                val raw = handler.generate(description, librarySample(songs, sampleMode, sampleSize))
                 resolve(parse(raw), songs, maxLength)
             }
 
     /**
-     * A random subset of the library sent as context.
+     * The slice of the library sent as context, chosen according to [mode].
      *
-     * Random rather than sorted: a fixed prefix (by title, by date added, ...) would permanently
-     * exclude everything past the cut-off, and those songs could never be suggested. Reshuffling
-     * on every request means every song stays reachable and two runs over the same description
-     * surface different corners of the library.
+     * [AiLibrarySampleMode.MOST_PLAYED] is deterministic, so asking twice costs one request.
+     * [AiLibrarySampleMode.RANDOM] reshuffles every time: a fixed ordering (by title, by play
+     * count, ...) permanently excludes everything past the cut-off, and those songs could never be
+     * suggested — shuffling keeps every song reachable.
      */
-    private fun librarySample(songs: List<Song>, size: Int): String =
-            songs.shuffled().take(size).joinToString("\n") { "${it.title} - ${it.displayArtist}" }
+    private suspend fun librarySample(
+        songs: List<Song>,
+        mode: AiLibrarySampleMode,
+        size: Int
+    ): String {
+        val picked =
+                when (mode) {
+                    AiLibrarySampleMode.MOST_PLAYED -> mostPlayed(songs, size)
+                    AiLibrarySampleMode.RANDOM -> songs.shuffled().take(size)
+                }
+        return picked.joinToString("\n") { "${it.title} - ${it.displayArtist}" }
+    }
+
+    private suspend fun mostPlayed(songs: List<Song>, size: Int): List<Song> {
+        val counts =
+                engagementDao.getAllEngagements().associate { it.songId to it.playCount }
+        return songs.sortedWith(
+                        compareByDescending<Song> { counts[it.id] ?: 0 }
+                                .thenBy { it.title.lowercase() }
+                )
+                .take(size)
+    }
 
     /** Reads 'Title - Artist' lines, tolerating numbering, bullets and code fences. */
     private fun parse(raw: String): List<Suggestion> =
