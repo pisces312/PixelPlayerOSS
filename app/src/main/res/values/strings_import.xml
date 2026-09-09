@@ -2,8 +2,12 @@
 <resources>
     <!-- Entry point -->
     <string name="import_section_title">Import</string>
-    <string name="import_from_poweramp">Import from Poweramp</string>
-    <string name="import_from_poweramp_subtitle">Restore playlists, ratings, play counts and history from a .poweramp-backup file</string>
+    <string name="import_entry_title">Third-party import</string>
+    <string name="import_entry_subtitle">Import playlists, ratings and play stats from other players</string>
+    <string name="import_screen_title">Third-party import</string>
+    <string name="import_source_section">Choose a source</string>
+    <string name="import_source_poweramp_subtitle">Import from a .poweramp-backup file</string>
+    <string name="import_source_more_coming">More sources coming soon</string>
 
     <!-- Wizard: common -->
     <string name="import_wizard_cancel">Cancel</string>

@@ -3,6 +3,7 @@ package com.lostf1sh.pixelplayeross.presentation.settings.search
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.presentation.model.SettingsCategory
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
+import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafely
 
 object SettingsRegistry {
 
@@ -143,16 +144,6 @@ object SettingsRegistry {
                 keywordsStatic = listOf("delete", "deletion", "protection", "remove", "file", "safety"),
                 getValue = { it.songDeletionEnabled },
                 onToggle = { viewModel, checked -> viewModel.setSongDeletionEnabled(checked) }
-            ),
-            SettingSpec(
-                id = "library_import_poweramp",
-                itemKey = "item_library_import_poweramp",
-                titleRes = R.string.import_from_poweramp,
-                subtitleRes = R.string.import_from_poweramp_subtitle,
-                category = SettingsCategory.LIBRARY,
-                subscreenRoute = Screen.SettingsCategory.createRoute("library"),
-                type = SettingType.ACTION,
-                keywordsStatic = listOf("import", "poweramp", "backup", "playlist", "rating", "history", "play count")
             ),
             SettingSpec(
                 id = "library_lyrics_source_priority",
@@ -563,6 +554,17 @@ object SettingsRegistry {
                 subscreenRoute = Screen.SettingsCategory.createRoute("backup_restore"),
                 type = SettingType.NAVIGABLE_CARD,
                 keywordsStatic = listOf("restore", "import", "backup", "recover")
+            ),
+            SettingSpec(
+                id = "backup_import_third_party",
+                itemKey = "item_backup_import_third_party",
+                titleRes = R.string.import_entry_title,
+                subtitleRes = R.string.import_entry_subtitle,
+                category = SettingsCategory.BACKUP_RESTORE,
+                subscreenRoute = Screen.SettingsCategory.createRoute("backup_restore"),
+                type = SettingType.ACTION,
+                keywordsStatic = listOf("import", "poweramp", "third party", "backup", "playlist", "rating", "history", "play count"),
+                onAction = { navController -> navController.navigateSafely(Screen.ThirdPartyImport.route) }
             ),
 
             // --- DEVELOPER CATEGORY ---

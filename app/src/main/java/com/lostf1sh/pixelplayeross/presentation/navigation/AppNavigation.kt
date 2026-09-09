@@ -60,6 +60,7 @@ import com.lostf1sh.pixelplayeross.presentation.screens.YearDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.DuplicateSongsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsCategoryScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.import.ThirdPartyImportScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.EqualizerScreen
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
@@ -265,6 +266,17 @@ fun AppNavigation(
                             onBackClick = { navController.popBackStack() }
                         )
                     }
+                }
+            }
+            composable(
+                route = Screen.ThirdPartyImport.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    ThirdPartyImportScreen(navController = navController)
                 }
             }
             composable(

@@ -80,6 +80,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Science
@@ -173,7 +174,6 @@ import com.lostf1sh.pixelplayeross.data.preferences.NavBarStyle
 import com.lostf1sh.pixelplayeross.data.preferences.ThemePreference
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.model.LyricsSourcePreference
-import com.lostf1sh.pixelplayeross.presentation.screens.import.PowerampImportEntry
 import com.lostf1sh.pixelplayeross.presentation.components.CollapsibleCommonTopBar
 import com.lostf1sh.pixelplayeross.presentation.components.ExpressiveTopBarContent
 import com.lostf1sh.pixelplayeross.presentation.components.FileExplorerDialog
@@ -499,12 +499,6 @@ fun SettingsCategoryScreen(
                                     onCheckedChange = { settingsViewModel.setSongDeletionEnabled(it) },
                                     leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.secondary) },
                                     modifier = Modifier.settingHighlight("item_library_allow_delete_songs", highlightKey)
-                                )
-                            }
-
-                            SettingsSubsection(title = stringResource(R.string.import_section_title)) {
-                                PowerampImportEntry(
-                                    modifier = Modifier.settingHighlight("item_library_import_poweramp", highlightKey)
                                 )
                             }
 
@@ -1123,6 +1117,32 @@ fun SettingsCategoryScreen(
                                     onPrimaryAction = { showImportFlow = true },
                                     enabled = !uiState.isDataTransferInProgress,
                                     modifier = Modifier.settingHighlight("item_backup_import", highlightKey)
+                                )
+                            }
+
+                            SettingsSubsection(
+                                title = stringResource(R.string.import_section_title),
+                                addBottomSpace = false
+                            ) {
+                                SettingsItem(
+                                    title = stringResource(R.string.import_entry_title),
+                                    subtitle = stringResource(R.string.import_entry_subtitle),
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.FileUpload,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.ChevronRight,
+                                            contentDescription = stringResource(R.string.cd_open),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    },
+                                    modifier = Modifier.settingHighlight("item_backup_import_third_party", highlightKey),
+                                    onClick = { navController.navigateSafely(Screen.ThirdPartyImport.route) }
                                 )
                             }
 

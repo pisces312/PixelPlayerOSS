@@ -10,6 +10,7 @@ sealed class Screen(val route: String) {
     object Search : Screen("search")
     object Library : Screen("library")
     object Settings : Screen("settings")
+    object ThirdPartyImport : Screen("third_party_import")
     object Accounts : Screen("settings_accounts?highlightKey={highlightKey}") {
         fun createRoute(highlightKey: String? = null) =
             if (highlightKey != null) "settings_accounts?highlightKey=$highlightKey" else "settings_accounts"
