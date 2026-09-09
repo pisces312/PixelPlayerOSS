@@ -68,7 +68,8 @@ class ModuleSchemaValidator @Inject constructor(
             BackupSection.TRANSITIONS -> validateTransitions(jsonElement.asJsonArray, errors)
             BackupSection.GLOBAL_SETTINGS,
             BackupSection.QUICK_FILL,
-            BackupSection.EQUALIZER -> {
+            BackupSection.EQUALIZER,
+            BackupSection.AI_PROVIDER_CONFIG -> {
                 validatePreferenceEntries(jsonElement, section.key, errors)
             }
         }

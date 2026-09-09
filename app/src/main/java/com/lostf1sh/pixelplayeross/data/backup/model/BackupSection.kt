@@ -77,6 +77,13 @@ enum class BackupSection(
         description = "Your custom equalizer presets and audio profiles.",
         iconRes = R.drawable.rounded_surround_sound_24,
         sinceVersion = 3
+    ),
+    AI_PROVIDER_CONFIG(
+        key = "ai_provider_config",
+        label = "AI Provider Config",
+        description = "AI provider, model, endpoint and API key used for playlist generation.",
+        iconRes = R.drawable.rounded_auto_awesome_24,
+        sinceVersion = 4
     );
 
     companion object {

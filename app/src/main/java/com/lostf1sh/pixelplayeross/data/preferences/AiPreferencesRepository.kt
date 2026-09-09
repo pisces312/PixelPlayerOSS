@@ -41,6 +41,10 @@ constructor(private val dataStore: DataStore<Preferences>) {
         /** How many song titles are sent to the model as context for a generation request. */
         const val DEFAULT_LIBRARY_SAMPLE_SIZE = 300
 
+        private const val TYPE_STRING = "string"
+        private const val TYPE_INT = "int"
+        private const val TYPE_BOOLEAN = "boolean"
+
         /** Choices offered for [DEFAULT_LIBRARY_SAMPLE_SIZE]; larger means better recall, more tokens. */
         val LIBRARY_SAMPLE_SIZE_OPTIONS: List<Int> = listOf(50, 100, 200, 300, 500)
 
@@ -161,4 +165,67 @@ constructor(private val dataStore: DataStore<Preferences>) {
     suspend fun setLibrarySampleMode(mode: AiLibrarySampleMode) {
         dataStore.edit { preferences -> preferences[Keys.LIBRARY_SAMPLE_MODE] = mode.name }
     }
+
+    /**
+     * Every stored AI preference, as type-tagged entries for backup.
+     *
+     * API keys are included verbatim: the backup is a file the user exports and re-imports on
+     * their own device, and re-entering a key by hand defeats the point of restoring. Backups
+     * can be encrypted from the export screen.
+     */
+    suspend fun exportForBackup(): List<PreferenceBackupEntry> {
+        val aiKeys = allAiPreferenceKeyNames()
+        return dataStore.data.first().asMap().mapNotNull { (key, value) ->
+            if (key.name !in aiKeys) return@mapNotNull null
+            when (value) {
+                is String -> PreferenceBackupEntry(key.name, TYPE_STRING, stringValue = value)
+                is Int -> PreferenceBackupEntry(key.name, TYPE_INT, intValue = value)
+                is Boolean -> PreferenceBackupEntry(key.name, TYPE_BOOLEAN, booleanValue = value)
+                else -> null
+            }
+        }
+    }
+
+    /**
+     * Applies [entries], optionally dropping the current AI keys first.
+     *
+     * Keys outside the AI namespace are ignored, so a tampered or foreign payload cannot touch
+     * unrelated settings. Clearing and writing happen in one edit, so a failure leaves the old
+     * configuration intact rather than half-applied.
+     */
+    suspend fun importFromBackup(entries: List<PreferenceBackupEntry>, clearExisting: Boolean) {
+        val aiKeys = allAiPreferenceKeyNames()
+        dataStore.edit { preferences ->
+            if (clearExisting) {
+                preferences.asMap().keys
+                        .filter { it.name in aiKeys }
+                        .forEach { key ->
+                            @Suppress("UNCHECKED_CAST") preferences.remove(key as Preferences.Key<Any>)
+                        }
+            }
+            entries.forEach { entry ->
+                if (entry.key !in aiKeys) return@forEach
+                when (entry.type) {
+                    TYPE_STRING ->
+                            preferences[stringPreferencesKey(entry.key)] = entry.stringValue ?: ""
+                    TYPE_INT -> preferences[intPreferencesKey(entry.key)] = entry.intValue ?: 0
+                    TYPE_BOOLEAN ->
+                            preferences[booleanPreferencesKey(entry.key)] =
+                                    entry.booleanValue ?: false
+                }
+            }
+        }
+    }
+
+    suspend fun clearAll() {
+        val aiKeys = allAiPreferenceKeyNames()
+        dataStore.edit { preferences ->
+            preferences.asMap().keys
+                    .filter { it.name in aiKeys }
+                    .forEach { key ->
+                        @Suppress("UNCHECKED_CAST") preferences.remove(key as Preferences.Key<Any>)
+                    }
+        }
+    }
+
 }

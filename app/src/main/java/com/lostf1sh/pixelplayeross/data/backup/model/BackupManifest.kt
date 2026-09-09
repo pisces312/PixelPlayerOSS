@@ -9,7 +9,8 @@ data class BackupManifest(
     val modules: Map<String, BackupModuleInfo> = emptyMap()
 ) {
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 3
+        /** 4: adds the `ai_provider_config` module. */
+        const val CURRENT_SCHEMA_VERSION = 4
         const val MIN_SUPPORTED_VERSION = 1
         const val MANIFEST_FILENAME = "manifest.json"
     }
