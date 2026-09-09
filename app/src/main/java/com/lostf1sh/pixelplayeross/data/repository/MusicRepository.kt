@@ -304,6 +304,23 @@ interface MusicRepository {
      */
     fun getGenres(): Flow<List<com.lostf1sh.pixelplayeross.data.model.Genre>>
 
+    /**
+     * Year buckets for the Years tab (L1). Known years are ordered by [sortOption]; the
+     * "unknown year" bucket (year <= 0), when non-empty, is always appended last.
+     */
+    fun getYearBuckets(
+        sortOption: com.lostf1sh.pixelplayeross.data.model.SortOption
+    ): Flow<List<com.lostf1sh.pixelplayeross.data.model.YearBucket>>
+
+    /**
+     * All songs of one year (Year detail L2), sorted in SQL by [sortOption], non-paged.
+     * year = 0 means the unknown-year bucket.
+     */
+    fun getSongsByYear(
+        year: Int,
+        sortOption: com.lostf1sh.pixelplayeross.data.model.SortOption
+    ): Flow<List<Song>>
+
     suspend fun getLyrics(
         song: Song,
         sourcePreference: LyricsSourcePreference = LyricsSourcePreference.EMBEDDED_FIRST,

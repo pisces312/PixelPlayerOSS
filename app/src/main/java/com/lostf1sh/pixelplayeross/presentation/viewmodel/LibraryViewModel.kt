@@ -21,5 +21,7 @@ class LibraryViewModel @Inject constructor(
 
     val favoriteSongCountFlow = libraryStateHolder.favoriteSongCountFlow
 
+    val yearBucketsFlow = libraryStateHolder.yearBucketsFlow
+
     val isLoadingLibrary = libraryStateHolder.isLoadingLibrary
 }

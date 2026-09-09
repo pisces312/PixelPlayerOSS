@@ -284,6 +284,7 @@ private data class LibraryScreenPlayerProjection(
     val currentArtistSortOption: SortOption = SortOption.ArtistNameAZ,
     val currentFavoriteSortOption: SortOption = SortOption.LikedSongDateLiked,
     val currentFolderSortOption: SortOption = SortOption.FolderNameAZ,
+    val currentYearSortOption: SortOption = SortOption.YearBucketNewest,
     val isAlbumsListView: Boolean = false,
     val isSdCardAvailable: Boolean = false,
     val musicFolders: ImmutableList<MusicFolder> = persistentListOf(),
@@ -305,6 +306,7 @@ private fun PlayerUiState.toLibraryScreenProjection(): LibraryScreenPlayerProjec
         currentArtistSortOption = currentArtistSortOption,
         currentFavoriteSortOption = currentFavoriteSortOption,
         currentFolderSortOption = currentFolderSortOption,
+        currentYearSortOption = currentYearSortOption,
         isAlbumsListView = isAlbumsListView,
         isSdCardAvailable = isSdCardAvailable,
         musicFolders = musicFolders,
@@ -631,6 +633,7 @@ fun LibraryScreen(
         LibraryTabId.LIKED,
         LibraryTabId.FOLDERS -> isSelectionMode
         LibraryTabId.ARTISTS -> isArtistSelectionMode
+        LibraryTabId.YEARS -> false
     }
     val canHandleFolderBack by remember {
         derivedStateOf {
@@ -670,6 +673,7 @@ fun LibraryScreen(
                         showMultiSelectionSheet = false
                     }
 
+                    LibraryTabId.YEARS -> Unit
                 }
             }
 
@@ -980,6 +984,7 @@ fun LibraryScreen(
                         val currentSelectedSortOption: SortOption? = when (currentTabId) {
                             LibraryTabId.SONGS -> playerUiState.currentSongSortOption
                             LibraryTabId.ALBUMS -> playerUiState.currentAlbumSortOption
+                            LibraryTabId.YEARS -> playerUiState.currentYearSortOption
                             LibraryTabId.ARTISTS -> playerUiState.currentArtistSortOption
                             LibraryTabId.PLAYLISTS -> playlistUiState.currentPlaylistSortOption
                             LibraryTabId.LIKED -> playerUiState.currentFavoriteSortOption
@@ -990,13 +995,13 @@ fun LibraryScreen(
                             LibraryTabId.SONGS -> songsShowLocateButton
                             LibraryTabId.LIKED -> likedShowLocateButton
                             LibraryTabId.FOLDERS -> foldersShowLocateButton
-                            else -> false
+                            LibraryTabId.ALBUMS, LibraryTabId.YEARS, LibraryTabId.ARTISTS, LibraryTabId.PLAYLISTS -> false
                         }
                         val locateAction = when (currentTabId) {
                             LibraryTabId.SONGS -> songsLocateAction
                             LibraryTabId.LIKED -> likedLocateAction
                             LibraryTabId.FOLDERS -> foldersLocateAction
-                            else -> null
+                            LibraryTabId.ALBUMS, LibraryTabId.YEARS, LibraryTabId.ARTISTS, LibraryTabId.PLAYLISTS -> null
                         }
 
                         val onSortOptionChanged: (SortOption) -> Unit = remember(playerViewModel, playlistViewModel, currentTabId) {
@@ -1004,6 +1009,7 @@ fun LibraryScreen(
                                 when (currentTabId) {
                                     LibraryTabId.SONGS -> playerViewModel.sortSongs(option)
                                     LibraryTabId.ALBUMS -> playerViewModel.sortAlbums(option)
+                                    LibraryTabId.YEARS -> playerViewModel.sortYears(option)
                                     LibraryTabId.ARTISTS -> playerViewModel.sortArtists(option)
                                     LibraryTabId.PLAYLISTS -> playlistViewModel.sortPlaylists(option)
                                     LibraryTabId.LIKED -> playerViewModel.sortFavoriteSongs(option)
@@ -1405,6 +1411,17 @@ fun LibraryScreen(
                                         )
                                     }
 
+                                    LibraryTabId.YEARS -> {
+                                        YearsTabContent(
+                                            libraryViewModel = libraryViewModel,
+                                            navController = navController,
+                                            bottomBarHeight = bottomBarHeightDp,
+                                            isRefreshing = isRefreshing,
+                                            onRefresh = onRefresh,
+                                            storageFilter = playerUiState.currentStorageFilter
+                                        )
+                                    }
+
                                     LibraryTabId.LIKED -> {
                                         LibraryFavoritesTab(
                                             favoriteSongs = favoritePagingItems,
@@ -1492,6 +1509,7 @@ fun LibraryScreen(
                                 LibraryTabId.SONGS,
                                 LibraryTabId.LIKED,
                                 LibraryTabId.FOLDERS -> selectedSongs.size
+                                LibraryTabId.YEARS -> 0
                             }
                             SelectionCountPill(
                                 selectedCount = selectionCount,
@@ -2503,6 +2521,7 @@ private fun targetPageForTabIndex(
 private fun LibraryTabId.iconRes(): Int = when (this) {
     LibraryTabId.SONGS -> R.drawable.rounded_music_note_24
     LibraryTabId.ALBUMS -> R.drawable.rounded_album_24
+    LibraryTabId.YEARS -> R.drawable.rounded_calendar_view_week_24
     LibraryTabId.ARTISTS -> R.drawable.rounded_artist_24
     LibraryTabId.PLAYLISTS -> R.drawable.rounded_playlist_play_24
     LibraryTabId.FOLDERS -> R.drawable.rounded_folder_24

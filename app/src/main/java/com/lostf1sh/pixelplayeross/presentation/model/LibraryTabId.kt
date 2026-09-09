@@ -44,6 +44,14 @@ enum class LibraryTabId(
             SortOption.AlbumDateAdded
         )
     ),
+    Years(
+        stableKey = "YEARS",
+        labelRes = R.string.library_tab_years,
+        sortOptions = listOf(
+            SortOption.YearBucketNewest,
+            SortOption.YearBucketOldest
+        )
+    ),
     Artists(
         stableKey = "ARTIST",
         labelRes = R.string.library_tab_artists,

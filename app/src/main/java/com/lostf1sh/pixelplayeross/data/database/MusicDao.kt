@@ -88,6 +88,12 @@ private const val SONG_LIST_PROJECTION = """
     mb_recording_id, mb_release_id, mb_artist_id
 """
 
+/** Year aggregation row for the Years smart category; [songCount] is the number of songs in that year. */
+data class YearBucketRow(
+    val year: Int,
+    val songCount: Int
+)
+
 data class DeviceCapabilitySongRow(
     val filePath: String,
     val contentUriString: String,
@@ -1578,6 +1584,82 @@ interface MusicDao {
 
     @Query("SELECT custom_image_uri FROM artists WHERE id = :artistId")
     suspend fun getArtistCustomImage(artistId: Long): String?
+
+    /**
+     * Year aggregation buckets for the Years smart category (year > 0), newest/oldest first
+     * according to [sortOrder]. Tracks with no year (year <= 0) are counted separately by
+     * [getUnknownYearCount] and appended last by the repository.
+     */
+    @Query("""
+        SELECT year AS year, COUNT(*) AS songCount
+        FROM songs
+        WHERE year > 0
+        AND (:applyDirectoryFilter = 0 OR id < 0 OR parent_directory_path IN (:allowedParentDirs))
+        GROUP BY year
+        ORDER BY
+            CASE WHEN :sortOrder = 'year_bucket_oldest' THEN year END ASC,
+            CASE WHEN :sortOrder = 'year_bucket_newest' THEN year END DESC,
+            year DESC
+    """)
+    fun getYearBuckets(
+        allowedParentDirs: List<String>,
+        applyDirectoryFilter: Boolean,
+        sortOrder: String
+    ): Flow<List<YearBucketRow>>
+
+    /** Count of tracks with no year tag (year <= 0), reactive. */
+    @Query("""
+        SELECT COUNT(*) FROM songs
+        WHERE year <= 0
+        AND (:applyDirectoryFilter = 0 OR id < 0 OR parent_directory_path IN (:allowedParentDirs))
+    """)
+    fun getUnknownYearCount(
+        allowedParentDirs: List<String>,
+        applyDirectoryFilter: Boolean
+    ): Flow<Int>
+
+    /**
+     * All songs of one year (year = 0 is the unknown-year bucket), non-paged and reactive.
+     * The LEFT JOINs only exist to support rating / play count / last played sorting; both
+     * tables are one-to-one on the song key so no row fan-out occurs. `song_engagements.song_id`
+     * is TEXT, hence the CAST. Sort keys are documented in SortOption.YEAR_SONGS.
+     */
+    @Query("""
+        SELECT """ + SONG_LIST_PROJECTION + """
+        FROM songs
+        LEFT JOIN favorites ON songs.id = favorites.songId
+        LEFT JOIN song_engagements ON CAST(songs.id AS TEXT) = song_engagements.song_id
+        WHERE ((:year = 0 AND songs.year <= 0) OR songs.year = :year)
+        AND (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
+        ORDER BY
+            CASE WHEN :sortOrder = 'year_song_play_count' THEN song_engagements.play_count END DESC,
+            CASE WHEN :sortOrder = 'year_song_play_count_asc' THEN song_engagements.play_count END ASC,
+            CASE WHEN :sortOrder = 'year_song_release' THEN songs.album_name END COLLATE NOCASE ASC,
+            CASE WHEN :sortOrder = 'year_song_release' THEN songs.disc_number END ASC,
+            CASE WHEN :sortOrder = 'year_song_release' THEN songs.track_number END ASC,
+            CASE WHEN :sortOrder = 'year_song_title_az' THEN songs.title END COLLATE NOCASE ASC,
+            CASE WHEN :sortOrder = 'year_song_title_za' THEN songs.title END COLLATE NOCASE DESC,
+            CASE WHEN :sortOrder = 'year_song_artist' THEN songs.artist_name END COLLATE NOCASE ASC,
+            CASE WHEN :sortOrder = 'year_song_artist_desc' THEN songs.artist_name END COLLATE NOCASE DESC,
+            CASE WHEN :sortOrder = 'year_song_album' THEN songs.album_name END COLLATE NOCASE ASC,
+            CASE WHEN :sortOrder = 'year_song_album_desc' THEN songs.album_name END COLLATE NOCASE DESC,
+            CASE WHEN :sortOrder = 'year_song_date_added' THEN songs.date_added END DESC,
+            CASE WHEN :sortOrder = 'year_song_date_added_asc' THEN songs.date_added END ASC,
+            CASE WHEN :sortOrder = 'year_song_duration' THEN songs.duration END DESC,
+            CASE WHEN :sortOrder = 'year_song_duration_asc' THEN songs.duration END ASC,
+            CASE WHEN :sortOrder = 'year_song_rating_high' THEN favorites.rating END DESC,
+            CASE WHEN :sortOrder = 'year_song_rating_low' THEN favorites.rating END ASC,
+            CASE WHEN :sortOrder = 'year_song_last_played' THEN song_engagements.last_played_timestamp END DESC,
+            CASE WHEN :sortOrder = 'year_song_last_played_asc' THEN song_engagements.last_played_timestamp END ASC,
+            songs.title COLLATE NOCASE ASC,
+            songs.id ASC
+    """)
+    fun getSongsByYear(
+        year: Int,
+        allowedParentDirs: List<String>,
+        applyDirectoryFilter: Boolean,
+        sortOrder: String
+    ): Flow<List<SongEntity>>
 
     @Query("""
         SELECT * FROM songs

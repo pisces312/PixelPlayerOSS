@@ -187,6 +187,9 @@ data class PlaybackAudioMetadata(
     val bitDepth: Int? = null
 )
 
+private val DEFAULT_LIBRARY_TAB_ORDER: List<String> =
+    listOf("SONGS", "ALBUMS", "YEARS", "ARTIST", "PLAYLISTS", "FOLDERS", "LIKED")
+
 private data class SortOptionsSnapshot(
     val songSort: SortOption,
     val albumSort: SortOption,
@@ -948,17 +951,17 @@ class PlayerViewModel @Inject constructor(
 
     val libraryTabsFlow: StateFlow<ImmutableList<String>> = userPreferencesRepository.libraryTabsOrderFlow
         .map { orderJson ->
-            if (orderJson != null) {
-                try {
-                    Json.decodeFromString<List<String>>(orderJson).toImmutableList()
-                } catch (e: Exception) {
-                    persistentListOf("SONGS", "ALBUMS", "ARTIST", "PLAYLISTS", "FOLDERS", "LIKED")
-                }
-            } else {
-                persistentListOf("SONGS", "ALBUMS", "ARTIST", "PLAYLISTS", "FOLDERS", "LIKED")
+            val stored = orderJson?.let {
+                runCatching { Json.decodeFromString<List<String>>(it) }.getOrNull()
             }
+            // Tabs added in newer versions (e.g. YEARS) are absent from a stored order, so
+            // always re-union with the default order instead of trusting the stored list alone.
+            val merged = LinkedHashSet<String>()
+            stored?.forEach { merged.add(it) }
+            DEFAULT_LIBRARY_TAB_ORDER.forEach { merged.add(it) }
+            merged.toList().toImmutableList()
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), persistentListOf("SONGS", "ALBUMS", "ARTIST", "PLAYLISTS", "FOLDERS", "LIKED"))
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DEFAULT_LIBRARY_TAB_ORDER.toImmutableList())
 
     private val _loadedTabs = MutableStateFlow(emptySet<String>())
     private var lastBlockedDirectories: Set<String>? = null
@@ -976,6 +979,7 @@ class PlayerViewModel @Inject constructor(
                 when (tabId) {
                     LibraryTabId.SONGS -> SortOption.SONGS
                     LibraryTabId.ALBUMS -> SortOption.ALBUMS
+                    LibraryTabId.YEARS -> SortOption.YEARS
                     LibraryTabId.ARTISTS -> SortOption.ARTISTS
                     LibraryTabId.PLAYLISTS -> SortOption.PLAYLISTS
                     LibraryTabId.FOLDERS -> SortOption.FOLDERS
@@ -1567,6 +1571,11 @@ class PlayerViewModel @Inject constructor(
                     SortOption.LIKED,
                     SortOption.LikedSongDateLiked
                 )
+                val initialYearSort = resolveSortOption(
+                    userPreferencesRepository.yearsSortOptionFlow.first(),
+                    SortOption.YEARS,
+                    SortOption.YearBucketNewest
+                )
 
                 _playerUiState.update {
                     it.copy(
@@ -1574,7 +1583,8 @@ class PlayerViewModel @Inject constructor(
                         currentAlbumSortOption = initialAlbumSort,
                         currentArtistSortOption = initialArtistSort,
                         currentFolderSortOption = initialFolderSort,
-                        currentFavoriteSortOption = initialLikedSort
+                        currentFavoriteSortOption = initialLikedSort,
+                        currentYearSortOption = initialYearSort
                     )
                 }
 
@@ -1583,6 +1593,7 @@ class PlayerViewModel @Inject constructor(
                 sortArtists(initialArtistSort, persist = false)
                 sortFolders(initialFolderSort, persist = false)
                 sortFavoriteSongs(initialLikedSort, persist = false)
+                sortYears(initialYearSort, persist = false)
             }
 
             viewModelScope.launch {
@@ -1705,6 +1716,11 @@ class PlayerViewModel @Inject constructor(
                             currentFavoriteSortOption = snapshot.favoriteSort,
                         )
                     }
+                }
+            }
+            viewModelScope.launch {
+                libraryStateHolder.currentYearSortOption.collect { yearSort ->
+                    _playerUiState.update { it.copy(currentYearSortOption = yearSort) }
                 }
             }
             viewModelScope.launch {
@@ -3894,6 +3910,10 @@ class PlayerViewModel @Inject constructor(
 
     fun sortFolders(sortOption: SortOption, persist: Boolean = true) {
         libraryStateHolder.sortFolders(sortOption, persist)
+    }
+
+    fun sortYears(sortOption: SortOption, persist: Boolean = true) {
+        libraryStateHolder.sortYears(sortOption, persist)
     }
 
     fun setFoldersPlaylistView(isPlaylistView: Boolean) {

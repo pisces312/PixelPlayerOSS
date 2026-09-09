@@ -122,6 +122,12 @@ private fun libraryEmptySpec(
             titleRes = R.string.lib_empty_playlists_title,
             subtitleRes = R.string.lib_empty_playlists_subtitle
         )
+
+        LibraryTabId.YEARS -> LibraryEmptySpec(
+            iconRes = R.drawable.rounded_calendar_view_week_24,
+            titleRes = R.string.lib_empty_years_title,
+            subtitleRes = R.string.lib_empty_years_subtitle
+        )
     }
 }
 

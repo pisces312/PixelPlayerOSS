@@ -13,6 +13,7 @@ import com.lostf1sh.pixelplayeross.data.model.LibraryTabId
 import com.lostf1sh.pixelplayeross.data.model.MusicFolder
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.model.SortOption
+import com.lostf1sh.pixelplayeross.data.model.YearBucket
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import kotlinx.collections.immutable.ImmutableList
@@ -150,6 +151,18 @@ class LibraryStateHolder @Inject constructor(
         }
         .flowOn(Dispatchers.IO)
 
+    private val _currentYearSortOption = MutableStateFlow<SortOption>(SortOption.YearBucketNewest)
+    val currentYearSortOption = _currentYearSortOption.asStateFlow()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val yearBucketsFlow: kotlinx.coroutines.flow.Flow<ImmutableList<YearBucket>> =
+        _currentYearSortOption.flatMapLatest { sortOption ->
+            musicRepository.getYearBuckets(sortOption)
+        }
+            .map { buckets -> buckets.toImmutableList() }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
+
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val favoriteSongCountFlow: kotlinx.coroutines.flow.Flow<Int> = effectiveStorageFilter
         .flatMapLatest { filter -> musicRepository.getFavoriteSongCountFlow(filter) }
@@ -204,6 +217,9 @@ class LibraryStateHolder @Inject constructor(
 
             val likedSortKey = userPreferencesRepository.likedSongsSortOptionFlow.first()
             _currentFavoriteSortOption.value = SortOption.LIKED.find { it.storageKey == likedSortKey } ?: SortOption.LikedSongDateLiked
+
+            val yearsSortKey = userPreferencesRepository.yearsSortOptionFlow.first()
+            _currentYearSortOption.value = SortOption.YEARS.find { it.storageKey == yearsSortKey } ?: SortOption.YearBucketNewest
 
             _currentStorageFilter.value = userPreferencesRepository.lastStorageFilterFlow.first()
         }
@@ -381,6 +397,18 @@ class LibraryStateHolder @Inject constructor(
                 sortFoldersList(_musicFolders.value, sortOption).toImmutableList()
             }
             _musicFolders.value = sorted
+        }
+    }
+
+    fun sortYears(sortOption: SortOption, persist: Boolean = true) {
+        scope?.launch {
+            if (persist && _currentYearSortOption.value.storageKey == sortOption.storageKey) {
+                return@launch
+            }
+            if (persist) {
+                userPreferencesRepository.setYearsSortOption(sortOption.storageKey)
+            }
+            _currentYearSortOption.value = sortOption
         }
     }
 

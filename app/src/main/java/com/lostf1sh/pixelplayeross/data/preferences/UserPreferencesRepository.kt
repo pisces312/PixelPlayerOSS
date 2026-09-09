@@ -112,6 +112,8 @@ constructor(
         val PLAYLISTS_SORT_OPTION = stringPreferencesKey("playlists_sort_option")
         val FOLDERS_SORT_OPTION = stringPreferencesKey("folders_sort_option")
         val LIKED_SONGS_SORT_OPTION = stringPreferencesKey("liked_songs_sort_option")
+        val YEARS_SORT_OPTION = stringPreferencesKey("years_sort_option")
+        val YEAR_DETAIL_SORT_OPTION = stringPreferencesKey("year_detail_sort_option")
 
         val LAST_LIBRARY_TAB_INDEX =
                 intPreferencesKey("last_library_tab_index")
@@ -1093,6 +1095,26 @@ constructor(
                         .storageKey
             }
 
+    val yearsSortOptionFlow: Flow<String> =
+            dataStore.data.map { preferences ->
+                SortOption.fromStorageKey(
+                                preferences[PreferencesKeys.YEARS_SORT_OPTION],
+                                SortOption.YEARS,
+                                SortOption.YearBucketNewest
+                        )
+                        .storageKey
+            }
+
+    val yearDetailSortOptionFlow: Flow<String> =
+            dataStore.data.map { preferences ->
+                SortOption.fromStorageKey(
+                                preferences[PreferencesKeys.YEAR_DETAIL_SORT_OPTION],
+                                SortOption.YEAR_SONGS,
+                                SortOption.YearSongPlayCount
+                        )
+                        .storageKey
+            }
+
     suspend fun setSongsSortOption(optionKey: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.SONGS_SORT_OPTION] = optionKey
@@ -1127,6 +1149,18 @@ constructor(
     suspend fun setLikedSongsSortOption(optionKey: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.LIKED_SONGS_SORT_OPTION] = optionKey
+        }
+    }
+
+    suspend fun setYearsSortOption(optionKey: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.YEARS_SORT_OPTION] = optionKey
+        }
+    }
+
+    suspend fun setYearDetailSortOption(optionKey: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.YEAR_DETAIL_SORT_OPTION] = optionKey
         }
     }
 

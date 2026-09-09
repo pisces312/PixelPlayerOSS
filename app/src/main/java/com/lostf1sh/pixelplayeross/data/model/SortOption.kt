@@ -310,6 +310,143 @@ sealed class SortOption(
         direction = SortDirection.Descending
     )
 
+    // --- Year bucket list sort options (L1 Years tab: newest/oldest) ---
+    object YearBucketNewest : SortOption(
+        storageKey = "year_bucket_newest",
+        displayName = "Newest First",
+        methodLabel = "Year",
+        methodKey = "year_bucket_year",
+        direction = SortDirection.Descending
+    )
+    object YearBucketOldest : SortOption(
+        storageKey = "year_bucket_oldest",
+        displayName = "Oldest First",
+        methodLabel = "Year",
+        methodKey = "year_bucket_year",
+        direction = SortDirection.Ascending
+    )
+
+    // --- Year detail song sort options (L2: songs inside one year bucket) ---
+    object YearSongPlayCount : SortOption(
+        storageKey = "year_song_play_count",
+        displayName = "Most Played",
+        methodLabel = "Play Count",
+        methodKey = "year_song_play_count",
+        direction = SortDirection.Descending
+    )
+    object YearSongPlayCountAsc : SortOption(
+        storageKey = "year_song_play_count_asc",
+        displayName = "Least Played",
+        methodLabel = "Play Count",
+        methodKey = "year_song_play_count",
+        direction = SortDirection.Ascending
+    )
+    object YearSongRelease : SortOption(
+        storageKey = "year_song_release",
+        displayName = "Release Order",
+        methodLabel = "Release",
+        methodKey = "year_song_release",
+        direction = SortDirection.Ascending
+    )
+    object YearSongTitleAZ : SortOption(
+        storageKey = "year_song_title_az",
+        displayName = "Title (A-Z)",
+        methodLabel = "Title",
+        methodKey = "year_song_title",
+        direction = SortDirection.Ascending
+    )
+    object YearSongTitleZA : SortOption(
+        storageKey = "year_song_title_za",
+        displayName = "Title (Z-A)",
+        methodLabel = "Title",
+        methodKey = "year_song_title",
+        direction = SortDirection.Descending
+    )
+    object YearSongArtist : SortOption(
+        storageKey = "year_song_artist",
+        displayName = "Artist (A-Z)",
+        methodLabel = "Artist",
+        methodKey = "year_song_artist",
+        direction = SortDirection.Ascending
+    )
+    object YearSongArtistDesc : SortOption(
+        storageKey = "year_song_artist_desc",
+        displayName = "Artist (Z-A)",
+        methodLabel = "Artist",
+        methodKey = "year_song_artist",
+        direction = SortDirection.Descending
+    )
+    object YearSongAlbum : SortOption(
+        storageKey = "year_song_album",
+        displayName = "Album (A-Z)",
+        methodLabel = "Album",
+        methodKey = "year_song_album",
+        direction = SortDirection.Ascending
+    )
+    object YearSongAlbumDesc : SortOption(
+        storageKey = "year_song_album_desc",
+        displayName = "Album (Z-A)",
+        methodLabel = "Album",
+        methodKey = "year_song_album",
+        direction = SortDirection.Descending
+    )
+    object YearSongDateAdded : SortOption(
+        storageKey = "year_song_date_added",
+        displayName = "Recently Added",
+        methodLabel = "Date Added",
+        methodKey = "year_song_date_added",
+        direction = SortDirection.Descending
+    )
+    object YearSongDateAddedAsc : SortOption(
+        storageKey = "year_song_date_added_asc",
+        displayName = "Oldest Added",
+        methodLabel = "Date Added",
+        methodKey = "year_song_date_added",
+        direction = SortDirection.Ascending
+    )
+    object YearSongDuration : SortOption(
+        storageKey = "year_song_duration",
+        displayName = "Longest",
+        methodLabel = "Duration",
+        methodKey = "year_song_duration",
+        direction = SortDirection.Descending
+    )
+    object YearSongDurationAsc : SortOption(
+        storageKey = "year_song_duration_asc",
+        displayName = "Shortest",
+        methodLabel = "Duration",
+        methodKey = "year_song_duration",
+        direction = SortDirection.Ascending
+    )
+    object YearSongRatingHigh : SortOption(
+        storageKey = "year_song_rating_high",
+        displayName = "Highest Rated",
+        methodLabel = "Rating",
+        methodKey = "year_song_rating",
+        direction = SortDirection.Descending
+    )
+    object YearSongRatingLow : SortOption(
+        storageKey = "year_song_rating_low",
+        displayName = "Lowest Rated",
+        methodLabel = "Rating",
+        methodKey = "year_song_rating",
+        direction = SortDirection.Ascending
+    )
+    object YearSongLastPlayed : SortOption(
+        storageKey = "year_song_last_played",
+        displayName = "Recently Played",
+        methodLabel = "Last Played",
+        methodKey = "year_song_last_played",
+        direction = SortDirection.Descending
+    )
+    object YearSongLastPlayedAsc : SortOption(
+        storageKey = "year_song_last_played_asc",
+        displayName = "Least Recently Played",
+        methodLabel = "Last Played",
+        methodKey = "year_song_last_played",
+        direction = SortDirection.Ascending
+    )
+
     val canFlipDirection: Boolean
         get() = direction != null && flipDirection().storageKey != storageKey
 
@@ -405,8 +542,37 @@ sealed class SortOption(
             )
         }
 
+        val YEARS: List<SortOption> by lazy {
+            listOf(
+                YearBucketNewest,
+                YearBucketOldest
+            )
+        }
+
+        val YEAR_SONGS: List<SortOption> by lazy {
+            listOf(
+                YearSongPlayCount,
+                YearSongPlayCountAsc,
+                YearSongRelease,
+                YearSongTitleAZ,
+                YearSongTitleZA,
+                YearSongArtist,
+                YearSongArtistDesc,
+                YearSongAlbum,
+                YearSongAlbumDesc,
+                YearSongDateAdded,
+                YearSongDateAddedAsc,
+                YearSongDuration,
+                YearSongDurationAsc,
+                YearSongRatingHigh,
+                YearSongRatingLow,
+                YearSongLastPlayed,
+                YearSongLastPlayedAsc
+            )
+        }
+
         private val ALL: List<SortOption> by lazy {
-            SONGS + ALBUMS + ARTISTS + PLAYLISTS + FOLDERS + LIKED
+            SONGS + ALBUMS + ARTISTS + PLAYLISTS + FOLDERS + LIKED + YEARS + YEAR_SONGS
         }
 
         private val defaultOptionByMethodKey: Map<String, SortOption> by lazy {

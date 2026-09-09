@@ -56,6 +56,7 @@ import com.lostf1sh.pixelplayeross.presentation.screens.RecentlyPlayedScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.AboutScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SearchScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.StatsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.YearDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.DuplicateSongsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsCategoryScreen
@@ -442,6 +443,24 @@ fun AppNavigation(
                     ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                         ArtistDetailScreen(
                             artistId = artistId,
+                            navController = navController,
+                            playerViewModel = playerViewModel
+                        )
+                    }
+                }
+            }
+            composable(
+                route = Screen.YearDetail.route,
+                arguments = listOf(navArgument("year") { type = NavType.IntType }),
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) { backStackEntry ->
+                val year = backStackEntry.arguments?.getInt("year")
+                if (year != null) {
+                    ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                        YearDetailScreen(
                             navController = navController,
                             playerViewModel = playerViewModel
                         )

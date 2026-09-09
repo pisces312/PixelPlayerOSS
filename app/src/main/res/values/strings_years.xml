@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Years smart category -->
+    <string name="library_tab_years">Years</string>
+    <string name="unknown_year">Unknown Year</string>
+
+    <string name="lib_empty_years_title">No years available</string>
+    <string name="lib_empty_years_subtitle">Release years appear here once your songs carry year tags.</string>
+
+    <string name="year_detail_empty">No songs in this year.</string>
+    <string name="year_detail_play">Play</string>
+    <string name="year_detail_shuffle">Shuffle</string>
+    <string name="year_detail_sort">Sort</string>
+    <string name="year_detail_sort_by">Sort by</string>
+    <string name="year_detail_back">Navigate up</string>
+</resources>

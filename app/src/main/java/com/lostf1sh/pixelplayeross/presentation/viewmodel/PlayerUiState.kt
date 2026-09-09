@@ -45,6 +45,7 @@ data class PlayerUiState(
     val currentAlbumSortOption: SortOption = SortOption.AlbumTitleAZ,
     val currentArtistSortOption: SortOption = SortOption.ArtistNameAZ,
     val currentFolderSortOption: SortOption = SortOption.FolderNameAZ,
+    val currentYearSortOption: SortOption = SortOption.YearBucketNewest,
     val folderBackGestureNavigationEnabled: Boolean = true,
     val currentSongSortOption: SortOption = SortOption.SongTitleAZ,
     val searchHistory: ImmutableList<SearchHistoryItem> = persistentListOf(),
