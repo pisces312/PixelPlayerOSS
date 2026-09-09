@@ -1256,7 +1256,11 @@ fun SettingsCategoryScreen(
                             }
                         }
                         SettingsCategory.AI -> {
-                            AiSettingsSection()
+                            AiSettingsSection(
+                                onOpenRequestLog = {
+                                    navController.navigateSafely(Screen.AiRequestLog.route)
+                                }
+                            )
                         }
                         SettingsCategory.EQUALIZER -> {
                         }

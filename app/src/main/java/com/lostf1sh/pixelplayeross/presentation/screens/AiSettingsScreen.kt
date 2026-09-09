@@ -37,7 +37,10 @@ import android.widget.Toast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
+fun AiSettingsSection(
+    viewModel: AiSettingsViewModel = hiltViewModel(),
+    onOpenRequestLog: () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val usage by viewModel.usage.collectAsStateWithLifecycle()
     val status by viewModel.status.collectAsStateWithLifecycle()
@@ -135,6 +138,11 @@ fun AiSettingsSection(viewModel: AiSettingsViewModel = hiltViewModel()) {
                     label = stringResource(R.string.ai_action_clear_cache),
                     enabled = true,
                     onClick = viewModel::clearCache
+            )
+            ActionRow(
+                    label = stringResource(R.string.ai_action_request_log),
+                    enabled = true,
+                    onClick = onOpenRequestLog
             )
         }
 

@@ -11,6 +11,7 @@ sealed class Screen(val route: String) {
     object Library : Screen("library")
     object Settings : Screen("settings")
     object ThirdPartyImport : Screen("third_party_import")
+    object AiRequestLog : Screen("ai_request_log")
     object Accounts : Screen("settings_accounts?highlightKey={highlightKey}") {
         fun createRoute(highlightKey: String? = null) =
             if (highlightKey != null) "settings_accounts?highlightKey=$highlightKey" else "settings_accounts"

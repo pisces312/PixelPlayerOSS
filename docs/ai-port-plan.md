@@ -21,9 +21,13 @@
 
 ## 1. 目标与边界
 
-**做**：本地曲库 + OpenAI 兼容 REST 端点 → 自然语言生成歌单（AI Playlist）。
-**不做**：Gemini / Google SDK、细粒度采样参数、AI 请求文件日志（`AiRequestLogStore`）、
+**做**：本地曲库 + OpenAI 兼容 REST 端点 → 自然语言生成歌单（AI Playlist）+ AI 请求文件日志（`AiRequestLogStore`）。
+**不做**：Gemini / Google SDK、细粒度采样参数、
 用户画像摘要（`UserProfileDigestGenerator`）、provider 故障转移链（`AiProviderSupport.buildProviderChain`）。
+
+> 2026-09-09 追加：`AiRequestLogStore` 从「不做」改为「做」。理由：AI 功能仍在密集迭代
+> （MiMo endpoint 解析、401 排查），缺完整 prompt/response 记录时只能靠 adb 抓 UI 文本反推。
+> 落地形态见 §10。
 
 **Provider 范围（最小集）**：`MIMO`（小米 MiMo）、`VOLCANO`（火山引擎 Ark）、`CUSTOM`（自定义 base_url）。
 三者均为 OpenAI 兼容 `/chat/completions` 协议。
@@ -230,6 +234,10 @@ presentation/screens/AiSettingsScreen.kt
 presentation/viewmodel/AiSettingsViewModel.kt
 presentation/components/AiGenerateEntryCard.kt
 presentation/components/AiPlaylistSheet.kt
+data/ai/AiRequestLog.kt                    # 单请求模型（JSON 落盘）
+data/ai/AiRequestLogStore.kt               # cacheDir/ai_logs/，50 条上限
+presentation/viewmodel/AiRequestLogViewModel.kt
+presentation/screens/AiRequestLogScreen.kt
 ```
 资源：`res/values/strings_ai.xml` + `res/values-zh-rCN/strings_ai.xml`、图标按需复制（AutoAwesome 等）。
 
@@ -265,8 +273,30 @@ di/ 相关模块（AppModule 等，注册 client/dao/handler/repo）
       参数与 error 展示）。
       验证：`assembleDebug` 通过。
 - [ ] **S6 联调**：装真机，配置火山/自定义端点，跑通「主页入口 → 描述 → 生成歌单 → 播放」。
-- [ ] **S7 提交推送**：分「数据/偏好/网络/业务」一个 commit、「UI + strings」一个 commit，
+- [x] **S7 提交推送**：分「数据/偏好/网络/业务」一个 commit、「UI + strings」一个 commit，
       push `pisces/port`（不 pick 到 master，master 无 AI 需求）。
+- [x] **S8 AI 请求日志**（见 §10）：`AiRequestLog` + `AiRequestLogStore` + `AiHandler` 三处埋点
+      + 浏览页 + 设置入口 + 单测。
+- [ ] **S9 AI 配置纳入备份**：`BackupSection.AI_PROVIDER_CONFIG`（含明文 api key）。
+- [ ] **S10 正向链路真机联调**：「描述 → 生成 → 播放」完整跑通（错误路径已验）。
+
+---
+
+## 10. AI 请求日志（S8）
+
+**形态**：一次请求 = `cacheDir/ai_logs/` 下一个 JSON 文件，最多 50 条（超出删最旧）。
+放 cacheDir 是刻意的——调试产物，不进备份、系统可回收。单条字段超 64k 字符截断并打 `truncated` 标记。
+
+**埋点三处**（`AiHandler.generate`）：缓存命中 / 请求失败（catch 后原样 rethrow）/ 成功返回。
+凭据 `?key=…`、`?access_token=…`、`?secret=…` 在落盘前由 `AiRequestLogStore.redactUrl` 打码。
+
+**入口**：设置 → AI → Request log。详情页支持复制全文 / 复制 response / 通过 FileProvider 分享原文件。
+
+**调试方式**：`adb shell run-as <pkg> ls cache/ai_logs` 或直接 `adb pull`，单文件即完整
+prompt + response + token 用量。
+
+**合规**：`AiRequestLog` / `AiRequestLogStore` 为原作者原创实现，从 china-only 分支移植，
+文件头注明 `Original work, GPL-3.0-or-later`；Screen/ViewModel/设置接线在 OSS 侧重写。
 
 ---
 

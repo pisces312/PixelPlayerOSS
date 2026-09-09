@@ -22,7 +22,8 @@ constructor(
     private val client: OpenAiCompatibleClient,
     private val preferences: AiPreferencesRepository,
     private val cacheDao: AiCacheDao,
-    private val usageDao: AiUsageDao
+    private val usageDao: AiUsageDao,
+    private val requestLogStore: AiRequestLogStore
 ) {
 
     /** Model ids offered by the active provider, or null when the call failed. */
@@ -62,10 +63,25 @@ constructor(
 
         val cached = cacheDao.getCache(hash)
         if (cached != null && System.currentTimeMillis() - cached.timestamp < CACHE_TTL_MILLIS) {
+            requestLogStore.write(
+                AiRequestLog(
+                    timestamp = System.currentTimeMillis(),
+                    status = AiRequestLog.STATUS_FROM_CACHE,
+                    promptType = PROMPT_TYPE_PLAYLIST,
+                    provider = provider.displayName,
+                    model = model,
+                    endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions"),
+                    systemPrompt = AiSystemPromptEngine.systemPrompt(),
+                    userPrompt = userPrompt,
+                    responseText = cached.responseJson
+                )
+            )
             return cached.responseJson
         }
 
+        val requestStart = System.currentTimeMillis()
         val result =
+            try {
                 client.chat(
                         baseUrl = baseUrl,
                         apiKey = apiKey,
@@ -74,6 +90,23 @@ constructor(
                         userPrompt = userPrompt,
                         thinkingEnabled = thinking
                 )
+            } catch (t: Throwable) {
+                requestLogStore.write(
+                    AiRequestLog(
+                        timestamp = System.currentTimeMillis(),
+                        status = AiRequestLog.STATUS_FAILED,
+                        promptType = PROMPT_TYPE_PLAYLIST,
+                        provider = provider.displayName,
+                        model = model,
+                        endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions"),
+                        durationMs = System.currentTimeMillis() - requestStart,
+                        systemPrompt = AiSystemPromptEngine.systemPrompt(),
+                        userPrompt = userPrompt,
+                        errorMessage = t.message ?: t.javaClass.simpleName
+                    )
+                )
+                throw t
+            }
 
         val now = System.currentTimeMillis()
 
@@ -93,6 +126,23 @@ constructor(
                         provider = provider.name,
                         model = model,
                         promptType = PROMPT_TYPE_PLAYLIST,
+                        promptTokens = result.promptTokens,
+                        outputTokens = result.outputTokens,
+                        thoughtTokens = result.thoughtTokens
+                )
+        )
+        requestLogStore.write(
+                AiRequestLog(
+                        timestamp = now,
+                        status = AiRequestLog.STATUS_SUCCESS,
+                        promptType = PROMPT_TYPE_PLAYLIST,
+                        provider = provider.displayName,
+                        model = model,
+                        endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions"),
+                        durationMs = now - requestStart,
+                        systemPrompt = AiSystemPromptEngine.systemPrompt(),
+                        userPrompt = userPrompt,
+                        responseText = result.content,
                         promptTokens = result.promptTokens,
                         outputTokens = result.outputTokens,
                         thoughtTokens = result.thoughtTokens

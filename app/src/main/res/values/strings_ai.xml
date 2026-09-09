@@ -26,6 +26,19 @@
     <string name="ai_section_actions">Diagnostics</string>
     <string name="ai_action_test">Test connection</string>
     <string name="ai_action_clear_cache">Clear cache</string>
+    <string name="ai_action_request_log">Request log</string>
+
+    <string name="ai_request_log_title">AI request log</string>
+    <string name="ai_request_log_detail_title">AI request detail</string>
+    <string name="ai_request_log_empty">No AI requests recorded yet</string>
+    <string name="ai_request_log_clear_all">Clear all</string>
+    <string name="ai_request_log_clear_all_message">Delete all %1$d request logs?</string>
+    <string name="ai_request_log_status_success">Success</string>
+    <string name="ai_request_log_status_failed">Failed</string>
+    <string name="ai_request_log_status_cached">From cache</string>
+    <string name="ai_request_log_copy_all">Copy all</string>
+    <string name="ai_request_log_copy_response">Copy response</string>
+    <string name="ai_request_log_share">Share</string>
 
     <string name="ai_section_usage">Usage</string>
     <string name="ai_usage_summary">Prompt %1$d · Output %2$d · Thinking %3$d</string>

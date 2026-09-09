@@ -55,6 +55,7 @@ import com.lostf1sh.pixelplayeross.presentation.screens.RecentlyPlayedScreen
 
 import com.lostf1sh.pixelplayeross.presentation.screens.AboutScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SearchScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.AiRequestLogScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.StatsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.YearDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.DuplicateSongsScreen
@@ -350,6 +351,17 @@ fun AppNavigation(
                         navController = navController,
                         onSongClick = { songId -> playerViewModel.playSongById(songId) }
                     )
+                }
+            }
+            composable(
+                route = Screen.AiRequestLog.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    AiRequestLogScreen(navController = navController)
                 }
             }
             composable(
