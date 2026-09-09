@@ -1,7 +1,6 @@
 package com.lostf1sh.pixelplayeross.presentation.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,7 +27,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
-import com.lostf1sh.pixelplayeross.utils.formatListeningDurationCompact
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -69,28 +67,14 @@ fun MergedRecentlyPlayedSongItem(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box {
-                SmartImage(
-                    model = item.song.albumArtUriString,
-                    contentDescription = item.song.title,
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(14.dp)),
-                    shape = RoundedCornerShape(14.dp)
-                )
-                if (item.playCount > 1) {
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.align(Alignment.TopEnd)
-                    ) {
-                        Text(
-                            text = "${item.playCount}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
-                    }
-                }
-            }
+            SmartImage(
+                model = item.song.albumArtUriString,
+                contentDescription = item.song.title,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp)
+            )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -103,17 +87,24 @@ fun MergedRecentlyPlayedSongItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = item.song.displayArtist,
+                    text = "${item.song.displayArtist} · ${DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).format(Instant.ofEpochMilli(item.lastPlayedTimestamp).atZone(ZoneId.systemDefault()))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = supportingColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = "${formatListeningDurationCompact(item.totalDurationMs)} • ${DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).format(Instant.ofEpochMilli(item.lastPlayedTimestamp).atZone(ZoneId.systemDefault()))}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = supportingColor
-                )
+            }
+            if (item.playCount > 1) {
+                Badge(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    contentColor = supportingColor
+                ) {
+                    Text(
+                        text = "×${item.playCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = supportingColor
+                    )
+                }
             }
             FilledIconButton(
                 onClick = onMoreOptionsClick,

@@ -38,7 +38,10 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.stats.StatsTimeRange
+import com.lostf1sh.pixelplayeross.presentation.stats.displayNameRes
 import androidx.compose.foundation.lazy.items
 
 private val RecentlyPlayedRangeChipHeight = 44.dp
@@ -61,7 +64,7 @@ fun RecentlyPlayedRangeSelector(
     ) {
         items(StatsTimeRange.entries, key = { it.name }) { range ->
             RecentlyPlayedRangeChip(
-                label = range.displayName,
+                label = stringResource(range.displayNameRes()),
                 selected = selected == range,
                 onClick = { onRangeSelected(range) },
                 modifier = Modifier.animateItem(

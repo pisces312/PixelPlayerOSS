@@ -73,6 +73,7 @@ import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.stats.PlaybackStatsRepository
 import com.lostf1sh.pixelplayeross.data.stats.StatsTimeRange
+import com.lostf1sh.pixelplayeross.presentation.stats.displayNameRes
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.PlaylistBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedRangeSelector
@@ -638,7 +639,7 @@ private fun RecentlyPlayedEmptyState(
             Text(
                 text = stringResource(
                     R.string.presentation_batch_b_recent_empty_title,
-                    range.displayName.lowercase()
+                    stringResource(range.displayNameRes())
                 ),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
@@ -732,7 +733,15 @@ private fun resolveDayLabel(
     return when (date) {
         nowDate -> context.getString(R.string.presentation_batch_b_date_today)
         nowDate.minusDays(1) -> context.getString(R.string.presentation_batch_b_date_yesterday)
-        else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
+        else -> {
+            val locale = Locale.getDefault()
+            val pattern = if (locale.language == "zh") {
+                "M月d日 EEE"
+            } else {
+                android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMddEEE")
+            }
+            date.format(DateTimeFormatter.ofPattern(pattern, locale))
+        }
     }
 }
 
