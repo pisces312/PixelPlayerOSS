@@ -82,6 +82,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.CollagePattern
 import com.lostf1sh.pixelplayeross.presentation.components.AiGenerateEntryCard
 import com.lostf1sh.pixelplayeross.presentation.components.AlbumArtCollage
@@ -551,11 +552,15 @@ fun HomeScreen(
         }
     }
     val aiPlaylistPreviewState by playlistViewModel.aiPlaylistPreviewState.collectAsStateWithLifecycle()
+    val aiLibrarySampleSize by playlistViewModel.aiLibrarySampleSize.collectAsStateWithLifecycle()
     DescribePlaylistDialog(
         visible = showAiPlaylistDialog,
         state = aiPlaylistPreviewState,
         title = stringResource(R.string.ai_playlist_dialog_title),
         subtitle = stringResource(R.string.ai_playlist_dialog_subtitle),
+        sampleSizeOptions = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
+        sampleSize = aiLibrarySampleSize,
+        onSampleSizeChange = playlistViewModel::setAiLibrarySampleSize,
         onGenerate = playlistViewModel::generateAiPlaylistPreview,
         onSave = { name, songIds ->
             playlistViewModel.createPlaylist(name = name, songIds = songIds)

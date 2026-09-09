@@ -75,16 +75,21 @@ constructor(
                         thinkingEnabled = thinking
                 )
 
+        val now = System.currentTimeMillis()
+
+        // The library sample is reshuffled per request, so prompts rarely repeat and stale rows
+        // would otherwise pile up forever.
+        cacheDao.clearOldCache(now - CACHE_TTL_MILLIS)
         cacheDao.insert(
                 AiCacheEntity(
                         promptHash = hash,
                         responseJson = result.content,
-                        timestamp = System.currentTimeMillis()
+                        timestamp = now
                 )
         )
         usageDao.insertUsage(
                 AiUsageEntity(
-                        timestamp = System.currentTimeMillis(),
+                        timestamp = now,
                         provider = provider.name,
                         model = model,
                         promptType = PROMPT_TYPE_PLAYLIST,

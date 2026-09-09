@@ -68,6 +68,10 @@ import androidx.compose.material3.LargeExtendedFloatingActionButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumExtendedFloatingActionButton
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -212,7 +216,10 @@ fun DescribePlaylistDialog(
     onSave: (name: String, songIds: List<String>) -> Unit,
     onDismiss: () -> Unit,
     title: String = stringResource(R.string.presentation_batch_e_describe_playlist_title),
-    subtitle: String = stringResource(R.string.presentation_batch_e_describe_playlist_subtitle)
+    subtitle: String = stringResource(R.string.presentation_batch_e_describe_playlist_subtitle),
+    sampleSizeOptions: List<Int> = emptyList(),
+    sampleSize: Int = sampleSizeOptions.firstOrNull() ?: 0,
+    onSampleSizeChange: (Int) -> Unit = {}
 ) {
     if (!visible) return
 
@@ -275,6 +282,15 @@ fun DescribePlaylistDialog(
                         Text(text = stringResource(R.string.presentation_batch_e_describe_playlist_hint))
                     }
                 )
+
+                if (sampleSizeOptions.isNotEmpty()) {
+                    SampleSizeDropdown(
+                            options = sampleSizeOptions,
+                            selected = sampleSize,
+                            enabled = !state.isGenerating,
+                            onSelect = onSampleSizeChange
+                    )
+                }
 
                 FilledTonalButton(
                     onClick = { onGenerate(description.trim()) },
@@ -432,6 +448,50 @@ private fun CreationModeCard(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = contentColor.copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Picks how many song titles are sent to the model as context.
+ *
+ * Only shown for the AI flow: the offline engine reads the whole library anyway, so it has no
+ * such knob.
+ */
+@Composable
+private fun SampleSizeDropdown(
+    options: List<Int>,
+    selected: Int,
+    enabled: Boolean,
+    onSelect: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+                value = stringResource(R.string.ai_playlist_sample_size_value, selected),
+                onValueChange = {},
+                readOnly = true,
+                enabled = enabled,
+                label = { Text(stringResource(R.string.ai_playlist_sample_size_label)) },
+                supportingText = { Text(stringResource(R.string.ai_playlist_sample_size_hint)) },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier =
+                        Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                                .fillMaxWidth(),
+                singleLine = true
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { size ->
+                DropdownMenuItem(
+                        text = {
+                            Text(stringResource(R.string.ai_playlist_sample_size_value, size))
+                        },
+                        onClick = {
+                            onSelect(size)
+                            expanded = false
+                        }
                 )
             }
         }

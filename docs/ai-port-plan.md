@@ -119,6 +119,10 @@ Provider 枚举：`MIMO("Xiaomi MiMo (CN)", requiresApiKey=true)`、`VOLCANO("Vo
 - `AiPlaylistGenerator.kt`：prompt → 模型返回歌名列表 → 本地模糊匹配（复用现有
   `data/playlist/nlp/LocalMetadataHeuristics.kt` + DAO 查询）→ 生成 Playlist 写入
   `PlaylistPreferencesRepository` / `LocalPlaylistDao`。
+  曲库样本**随机**抽取（`songs.shuffled().take(n)`）：固定前缀（按标题/日期排序）会让 cutoff
+  之后的歌永远无法被选中。n 由用户在前一个下拉框选择（50/100/200/300/500，默认 300），
+  存 `ai_library_sample_size`。代价：prompt 每次不同 → 响应缓存基本不命中，所以
+  `AiHandler` 写缓存前先清理过期行，避免 `ai_cache` 无限增长。
 - `AiSystemPromptEngine.kt`：固定 Vibe-Engine 人设 + 拼接曲库统计（总量/艺人/流派样本，脱敏不含绝对路径）。
 
 ---

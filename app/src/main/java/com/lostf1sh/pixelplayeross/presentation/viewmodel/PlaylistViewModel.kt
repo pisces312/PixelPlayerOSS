@@ -419,6 +419,20 @@ class PlaylistViewModel @Inject constructor(
         }
     }
 
+    /** How many song titles are handed to the model; the user picks this next to the prompt. */
+    val aiLibrarySampleSize: StateFlow<Int> =
+            aiPreferences
+                    .getLibrarySampleSize()
+                    .stateIn(
+                            viewModelScope,
+                            SharingStarted.WhileSubscribed(5_000),
+                            AiPreferencesRepository.DEFAULT_LIBRARY_SAMPLE_SIZE
+                    )
+
+    fun setAiLibrarySampleSize(size: Int) {
+        viewModelScope.launch { aiPreferences.setLibrarySampleSize(size) }
+    }
+
     /** Clears the AI preview when its dialog closes. */
     fun resetAiPlaylistPreview() {
         _aiPlaylistPreviewState.value = NlpPlaylistPreviewState()

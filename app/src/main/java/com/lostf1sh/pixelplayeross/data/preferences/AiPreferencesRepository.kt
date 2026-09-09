@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProvider
 import javax.inject.Inject
@@ -36,12 +37,18 @@ constructor(private val dataStore: DataStore<Preferences>) {
         /** Cached AI answers are reused for this long before the provider is called again. */
         const val CACHE_TTL_MILLIS = 30 * 60 * 1000L
 
+        /** How many song titles are sent to the model as context for a generation request. */
+        const val DEFAULT_LIBRARY_SAMPLE_SIZE = 300
+
+        /** Choices offered for [DEFAULT_LIBRARY_SAMPLE_SIZE]; larger means better recall, more tokens. */
+        val LIBRARY_SAMPLE_SIZE_OPTIONS: List<Int> = listOf(50, 100, 200, 300, 500)
+
         /**
          * All keys owned by the AI module, used by backup/export so AI settings can be included
          * or cleared without touching unrelated user preferences.
          */
         fun allAiPreferenceKeyNames(): Set<String> =
-            setOf(Keys.AI_PROVIDER.name) +
+            setOf(Keys.AI_PROVIDER.name, Keys.LIBRARY_SAMPLE_SIZE.name) +
                     AiProvider.entries.flatMap { provider ->
                         listOfNotNull(
                             Keys.getApiKey(provider).name,
@@ -54,6 +61,8 @@ constructor(private val dataStore: DataStore<Preferences>) {
 
     private object Keys {
         val AI_PROVIDER = stringPreferencesKey("ai_provider")
+
+        val LIBRARY_SAMPLE_SIZE = intPreferencesKey("ai_library_sample_size")
 
         fun getApiKey(provider: AiProvider) = stringPreferencesKey("${provider.keyPrefix}_api_key")
 
@@ -115,5 +124,19 @@ constructor(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setThinkingEnabled(provider: AiProvider, enabled: Boolean) {
         dataStore.edit { preferences -> preferences[Keys.getThinkingEnabled(provider)] = enabled }
+    }
+
+    /**
+     * How many song titles are handed to the model when generating a playlist.
+     *
+     * Global rather than per provider: it is a cost/coverage trade-off, not a provider feature.
+     */
+    fun getLibrarySampleSize(): Flow<Int> =
+            dataStore.data.map { preferences ->
+                preferences[Keys.LIBRARY_SAMPLE_SIZE] ?: DEFAULT_LIBRARY_SAMPLE_SIZE
+            }
+
+    suspend fun setLibrarySampleSize(size: Int) {
+        dataStore.edit { preferences -> preferences[Keys.LIBRARY_SAMPLE_SIZE] = size }
     }
 }

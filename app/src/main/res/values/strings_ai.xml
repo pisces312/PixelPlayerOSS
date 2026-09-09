@@ -37,6 +37,9 @@
     <string name="ai_playlist_entry_action">Start</string>
     <string name="ai_playlist_dialog_title">AI Playlist</string>
     <string name="ai_playlist_dialog_subtitle">Describe a mood or moment — songs are matched from your library</string>
+    <string name="ai_playlist_sample_size_label">Songs sent to the model</string>
+    <string name="ai_playlist_sample_size_value">%1$d songs</string>
+    <string name="ai_playlist_sample_size_hint">A random slice of your library. More songs means better matches and more tokens.</string>
 
     <!-- Status messages -->
     <string name="ai_status_models_loaded">%1$d models available</string>

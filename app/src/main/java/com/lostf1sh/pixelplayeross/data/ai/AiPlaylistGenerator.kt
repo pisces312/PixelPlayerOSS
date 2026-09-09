@@ -1,11 +1,13 @@
 package com.lostf1sh.pixelplayeross.data.ai
 
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 /**
@@ -20,6 +22,7 @@ class AiPlaylistGenerator
 @Inject
 constructor(
     private val handler: AiHandler,
+    private val preferences: AiPreferencesRepository,
     private val musicRepository: MusicRepository
 ) {
 
@@ -30,20 +33,21 @@ constructor(
                 val songs = musicRepository.getAllSongsOnce()
                 if (songs.isEmpty()) return@withContext emptyList()
 
-                val raw = handler.generate(description, librarySample(songs))
+                val sampleSize = preferences.getLibrarySampleSize().first()
+                val raw = handler.generate(description, librarySample(songs, sampleSize))
                 resolve(parse(raw), songs, maxLength)
             }
 
     /**
-     * A bounded, stable slice of the library sent as context.
+     * A random subset of the library sent as context.
      *
-     * Sorted by title rather than shuffled so the same description produces the same prompt and
-     * therefore hits the response cache.
+     * Random rather than sorted: a fixed prefix (by title, by date added, ...) would permanently
+     * exclude everything past the cut-off, and those songs could never be suggested. Reshuffling
+     * on every request means every song stays reachable and two runs over the same description
+     * surface different corners of the library.
      */
-    private fun librarySample(songs: List<Song>): String =
-            songs.sortedBy { it.title }
-                    .take(SAMPLE_SIZE)
-                    .joinToString("\n") { "${it.title} - ${it.displayArtist}" }
+    private fun librarySample(songs: List<Song>, size: Int): String =
+            songs.shuffled().take(size).joinToString("\n") { "${it.title} - ${it.displayArtist}" }
 
     /** Reads 'Title - Artist' lines, tolerating numbering, bullets and code fences. */
     private fun parse(raw: String): List<Suggestion> =
@@ -126,7 +130,6 @@ constructor(
 
     private companion object {
         const val DEFAULT_MAX_LENGTH = 25
-        const val SAMPLE_SIZE = 300
 
         const val TITLE_THRESHOLD = 0.5f
         const val ARTIST_WEIGHT = 0.25f
