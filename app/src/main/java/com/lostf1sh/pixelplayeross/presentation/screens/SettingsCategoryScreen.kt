@@ -12,6 +12,7 @@ import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.StringRes
 import android.os.Environment
 import android.os.SystemClock
 import android.text.format.Formatter
@@ -36,6 +37,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -62,6 +64,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ClearAll
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Language
@@ -69,6 +72,7 @@ import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Style
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
@@ -87,6 +91,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledIconButton
@@ -181,6 +186,7 @@ import com.lostf1sh.pixelplayeross.presentation.viewmodel.M3uSyncViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.SettingsViewModel
 import com.lostf1sh.pixelplayeross.ui.theme.RoundedSans
+import com.lostf1sh.pixelplayeross.utils.AppLogCollector
 import com.lostf1sh.pixelplayeross.presentation.components.rememberModalSheetState
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
@@ -229,6 +235,8 @@ fun SettingsCategoryScreen(
     var showRegenerateAllPalettesDialog by remember { mutableStateOf(false) }
     var showExportDataDialog by remember { mutableStateOf(false) }
     var showImportFlow by remember { mutableStateOf(false) }
+    var showLogLevelDialog by remember { mutableStateOf(false) }
+    var selectedLogLevel by remember { mutableStateOf(AppLogCollector.getMinimumPriority()) }
     var exportSections by remember { mutableStateOf(BackupSection.defaultSelection) }
     var importFileUri by remember { mutableStateOf<Uri?>(null) }
     var showExportEncryptionDialog by remember { mutableStateOf(false) }
@@ -1117,6 +1125,33 @@ fun SettingsCategoryScreen(
                                     modifier = Modifier.settingHighlight("item_backup_import", highlightKey)
                                 )
                             }
+
+                            SettingsSubsection(
+                                title = stringResource(R.string.settings_diagnostics_section),
+                                addBottomSpace = false
+                            ) {
+                                SettingsItem(
+                                    title = stringResource(R.string.settings_log_level_title),
+                                    subtitle = stringResource(
+                                        R.string.settings_log_level_subtitle,
+                                        stringResource(logLevelLabelRes(selectedLogLevel))
+                                    ),
+                                    leadingIcon = { Icon(Icons.Outlined.Tune, null, tint = MaterialTheme.colorScheme.secondary) },
+                                    onClick = { showLogLevelDialog = true }
+                                )
+                                SettingsItem(
+                                    title = stringResource(R.string.settings_export_logs_title),
+                                    subtitle = stringResource(R.string.settings_export_logs_subtitle),
+                                    leadingIcon = { Icon(Icons.Outlined.Description, null, tint = MaterialTheme.colorScheme.secondary) },
+                                    onClick = { settingsViewModel.exportDiagnosticLogs() }
+                                )
+                                SettingsItem(
+                                    title = stringResource(R.string.settings_trigger_crash_title),
+                                    subtitle = stringResource(R.string.settings_trigger_crash_subtitle),
+                                    leadingIcon = { Icon(Icons.Outlined.Warning, null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = { settingsViewModel.triggerTestCrash() }
+                                )
+                            }
                         }
                         SettingsCategory.DEVELOPER -> {
                             SettingsSubsection(title = stringResource(R.string.setcat_experiments)) {
@@ -1596,6 +1631,81 @@ fun SettingsCategoryScreen(
             )
         }
     }
+
+    if (showLogLevelDialog) {
+        LogLevelSelectionDialog(
+            selectedLevel = selectedLogLevel,
+            onLevelSelected = { level ->
+                selectedLogLevel = level
+                AppLogCollector.setMinimumPriority(level)
+            },
+            onDismiss = { showLogLevelDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun LogLevelSelectionDialog(
+    selectedLevel: Int,
+    onLevelSelected: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val levels = listOf(
+        android.util.Log.VERBOSE to R.string.log_level_verbose,
+        android.util.Log.DEBUG to R.string.log_level_debug,
+        android.util.Log.INFO to R.string.log_level_info,
+        android.util.Log.WARN to R.string.log_level_warning,
+        android.util.Log.ERROR to R.string.log_level_error
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_log_level_title)) },
+        text = {
+            Column {
+                levels.forEach { (level, labelRes) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = selectedLevel == level,
+                                onClick = {
+                                    onLevelSelected(level)
+                                    onDismiss()
+                                }
+                            )
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedLevel == level,
+                            onClick = {
+                                onLevelSelected(level)
+                                onDismiss()
+                            }
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(labelRes))
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.dismiss))
+            }
+        }
+    )
+}
+
+@StringRes
+private fun logLevelLabelRes(priority: Int): Int = when (priority) {
+    android.util.Log.VERBOSE -> R.string.log_level_verbose
+    android.util.Log.DEBUG -> R.string.log_level_debug
+    android.util.Log.INFO -> R.string.log_level_info
+    android.util.Log.WARN -> R.string.log_level_warning
+    android.util.Log.ERROR -> R.string.log_level_error
+    else -> R.string.log_level_warning
 }
 
 private fun buildBackupSelectionSummary(context: Context, selected: Set<BackupSection>): String {

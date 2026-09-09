@@ -22,6 +22,7 @@ import com.lostf1sh.pixelplayeross.presentation.viewmodel.ThemeStateHolder
 import com.lostf1sh.pixelplayeross.utils.AlbumArtCacheManager
 import com.lostf1sh.pixelplayeross.utils.AlbumArtUtils
 import com.lostf1sh.pixelplayeross.utils.AppLocaleManager
+import com.lostf1sh.pixelplayeross.utils.AppLogCollector
 import com.lostf1sh.pixelplayeross.utils.CrashHandler
 import com.lostf1sh.pixelplayeross.utils.MediaMetadataRetrieverPool
 import dagger.hilt.android.HiltAndroidApp
@@ -100,6 +101,8 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
         if (BuildConfig.BUILD_TYPE != "benchmark") {
             CrashHandler.install(this)
         }
+
+        AppLogCollector.install(this)
 
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())

@@ -15,7 +15,8 @@ data class CrashLogData(
     val timestamp: Long,
     val formattedDate: String,
     val exceptionMessage: String,
-    val stackTrace: String
+    val stackTrace: String,
+    val diagnosticLog: String? = null
 ) {
     /**
      * Returns the full crash log formatted for display or sharing.
@@ -28,6 +29,11 @@ data class CrashLogData(
             appendLine()
             appendLine("Stack Trace:")
             appendLine(stackTrace)
+            diagnosticLog?.let {
+                appendLine()
+                appendLine("=== Diagnostic Log ===")
+                appendLine(it)
+            }
         }
     }
 }
@@ -43,6 +49,7 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
     private const val KEY_TIMESTAMP = "crash_timestamp"
     private const val KEY_EXCEPTION_MESSAGE = "crash_exception_message"
     private const val KEY_STACK_TRACE = "crash_stack_trace"
+    private const val KEY_DIAGNOSTIC_LOG = "crash_diagnostic_log"
 
     private lateinit var appContext: Context
     private var defaultHandler: Thread.UncaughtExceptionHandler? = null
@@ -73,12 +80,14 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         val timestamp = System.currentTimeMillis()
         val stackTrace = getStackTraceString(throwable)
         val exceptionMessage = throwable.message ?: throwable.javaClass.simpleName
+        val diagnosticLog = AppLogCollector.collectCrashAttachment()
 
         prefs.edit().apply {
             putBoolean(KEY_HAS_CRASH, true)
             putLong(KEY_TIMESTAMP, timestamp)
             putString(KEY_EXCEPTION_MESSAGE, exceptionMessage)
             putString(KEY_STACK_TRACE, stackTrace)
+            putString(KEY_DIAGNOSTIC_LOG, diagnosticLog)
             commit()
         }
     }
@@ -108,6 +117,7 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
         val timestamp = prefs.getLong(KEY_TIMESTAMP, 0)
         val exceptionMessage = prefs.getString(KEY_EXCEPTION_MESSAGE, "Unknown error") ?: "Unknown error"
         val stackTrace = prefs.getString(KEY_STACK_TRACE, "") ?: ""
+        val diagnosticLog = prefs.getString(KEY_DIAGNOSTIC_LOG, null)
 
         val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
         val formattedDate = dateFormat.format(Date(timestamp))
@@ -116,7 +126,8 @@ object CrashHandler : Thread.UncaughtExceptionHandler {
             timestamp = timestamp,
             formattedDate = formattedDate,
             exceptionMessage = exceptionMessage,
-            stackTrace = stackTrace
+            stackTrace = stackTrace,
+            diagnosticLog = diagnosticLog
         )
     }
 

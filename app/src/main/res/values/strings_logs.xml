@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Diagnostics / log collector -->
+    <string name="settings_diagnostics_section">Diagnostics</string>
+    <string name="settings_log_level_title">Log level</string>
+    <string name="settings_log_level_subtitle">Current: %1$s</string>
+    <string name="settings_export_logs_title">Export diagnostic logs</string>
+    <string name="settings_export_logs_subtitle">Share recent app logs for troubleshooting</string>
+    <string name="settings_trigger_crash_title">Trigger test crash</string>
+    <string name="settings_trigger_crash_subtitle">Force an uncaught exception to verify the crash handler</string>
+
+    <string name="log_level_verbose">Verbose</string>
+    <string name="log_level_debug">Debug</string>
+    <string name="log_level_info">Info</string>
+    <string name="log_level_warning">Warning</string>
+    <string name="log_level_error">Error</string>
+</resources>

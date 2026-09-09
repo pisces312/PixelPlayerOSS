@@ -48,6 +48,7 @@ import com.lostf1sh.pixelplayeross.data.preferences.LaunchTab
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.service.player.HiFiCapabilityChecker
 import com.lostf1sh.pixelplayeross.utils.AppLocaleManager
+import com.lostf1sh.pixelplayeross.utils.AppLogCollector
 import java.io.File
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -1105,6 +1106,13 @@ class SettingsViewModel @Inject constructor(
     fun removeBackupHistoryEntry(entry: BackupHistoryEntry) {
         viewModelScope.launch {
             backupManager.removeBackupHistoryEntry(entry.uri)
+        }
+    }
+
+    fun exportDiagnosticLogs() {
+        viewModelScope.launch {
+            val file = AppLogCollector.exportLogs()
+            AppLogCollector.shareLogFile(file)
         }
     }
 
