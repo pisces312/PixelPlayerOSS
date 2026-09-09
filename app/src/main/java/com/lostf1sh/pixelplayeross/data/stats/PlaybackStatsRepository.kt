@@ -485,10 +485,14 @@ class PlaybackStatsRepository @Inject constructor(
             .toList()
     }
 
+    /**
+     * 批量导入播放事件。
+     * @return 写入是否成功（false = 落盘失败，调用方不应把计数当成已生效）。
+     */
     suspend fun importEventsFromBackup(
         events: List<PlaybackEvent>,
         clearExisting: Boolean = true
-    ) = withContext(Dispatchers.IO) {
+    ): Boolean = withContext(Dispatchers.IO) {
         val writeSucceeded = updateEventsAtomically { existingEvents ->
             val base = if (clearExisting) {
                 emptyList()
@@ -507,6 +511,7 @@ class PlaybackStatsRepository @Inject constructor(
         if (writeSucceeded) {
             notifyStatsChanged()
         }
+        writeSucceeded
     }
 
     fun requestRefresh() {

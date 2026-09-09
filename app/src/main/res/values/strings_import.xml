@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Entry point -->
+    <string name="import_section_title">Import</string>
+    <string name="import_from_poweramp">Import from Poweramp</string>
+    <string name="import_from_poweramp_subtitle">Restore playlists, ratings, play counts and history from a .poweramp-backup file</string>
+
+    <!-- Wizard: common -->
+    <string name="import_wizard_cancel">Cancel</string>
+    <string name="import_wizard_back">Back</string>
+    <string name="import_wizard_next">Next</string>
+    <string name="import_wizard_start">Start import</string>
+    <string name="import_wizard_done">Done</string>
+
+    <!-- Parsing -->
+    <string name="import_parsing_title">Reading backup…</string>
+    <string name="import_parsing_body">Parsing the Poweramp backup and matching it against your library.</string>
+
+    <!-- Preview -->
+    <string name="import_preview_title">Backup preview</string>
+    <string name="import_preview_songs">Songs</string>
+    <string name="import_preview_playlists">Playlists</string>
+    <string name="import_preview_matched">Matched</string>
+    <string name="import_preview_match_rate">Match rate</string>
+    <string name="import_preview_rated">Rated songs</string>
+    <string name="import_preview_played">Played songs</string>
+    <string name="import_preview_unresolved_hint">%1$d songs could not be matched to your library and will be skipped.</string>
+
+    <!-- Options -->
+    <string name="import_options_title">Import options</string>
+    <string name="import_options_mode">Import mode</string>
+    <string name="import_options_mode_merge">Merge (recommended)</string>
+    <string name="import_options_mode_merge_desc">Add to your existing data. Ratings and favorites are never downgraded.</string>
+    <string name="import_options_mode_replace">Replace</string>
+    <string name="import_options_mode_replace_desc">Overwrite playback history and play counts with the backup.</string>
+    <string name="import_options_playlists">Playlists</string>
+    <string name="import_options_playlists_desc">Recreate Poweramp playlists, appending to same-named ones.</string>
+    <string name="import_options_history">Playback history</string>
+    <string name="import_options_history_desc">One weighted event per song, dated at its last play.</string>
+    <string name="import_options_engagement">Play counts</string>
+    <string name="import_options_engagement_desc">Add imported play counts to the per-song statistics.</string>
+    <string name="import_options_favorites">Favorites &amp; ratings</string>
+    <string name="import_options_favorites_desc">Store ratings, and mark highly rated songs as favorites.</string>
+    <string name="import_options_threshold">Favorite threshold</string>
+    <string name="import_options_threshold_desc">Rating ≥ %1$d becomes a favorite. %2$d songs will be marked.</string>
+
+    <!-- Importing -->
+    <string name="import_importing_title">Importing…</string>
+    <string name="import_step_parsing">Reading backup</string>
+    <string name="import_step_matching">Matching songs</string>
+    <string name="import_step_playlists">Playlists</string>
+    <string name="import_step_history">History</string>
+    <string name="import_step_engagement">Play counts</string>
+    <string name="import_step_favorites">Favorites</string>
+
+    <!-- Result -->
+    <string name="import_result_title">Import complete</string>
+    <string name="import_result_matched">Matched songs</string>
+    <string name="import_result_unresolved">Unmatched</string>
+    <string name="import_result_playlists_created">Playlists created</string>
+    <string name="import_result_playlists_merged">Playlists merged</string>
+    <string name="import_result_history">History events</string>
+    <string name="import_result_engagement">Play counts</string>
+    <string name="import_result_favorites">Favorites</string>
+    <string name="import_result_ratings">Ratings saved</string>
+    <string name="import_result_skipped_empty">Empty playlists skipped</string>
+    <string name="import_result_unresolved_examples">Not matched: %1$s</string>
+
+    <!-- Error -->
+    <string name="import_error_title">Import failed</string>
+</resources>

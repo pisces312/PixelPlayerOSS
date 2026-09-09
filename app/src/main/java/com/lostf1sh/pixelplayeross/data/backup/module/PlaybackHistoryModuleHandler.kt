@@ -38,22 +38,26 @@ class PlaybackHistoryModuleHandler @Inject constructor(
 
     override suspend fun snapshot(): String = export()
 
-    override suspend fun restore(payload: String) = withContext(Dispatchers.IO) {
-        val type = TypeToken.getParameterized(List::class.java, PlaybackHistoryBackupEntry::class.java).type
-        val entries: List<PlaybackHistoryBackupEntry> = gson.fromJson(payload, type)
-        playbackStatsRepository.importEventsFromBackup(
-            events = entries.map { entry ->
-                PlaybackStatsRepository.PlaybackEvent(
-                    songId = entry.songId,
-                    timestamp = entry.timestamp,
-                    durationMs = entry.durationMs,
-                    startTimestamp = entry.startTimestamp,
-                    endTimestamp = entry.endTimestamp
-                )
-            },
-            clearExisting = true
-        )
+    override suspend fun restore(payload: String) {
+        withContext(Dispatchers.IO) {
+            val type = TypeToken.getParameterized(List::class.java, PlaybackHistoryBackupEntry::class.java).type
+            val entries: List<PlaybackHistoryBackupEntry> = gson.fromJson(payload, type)
+            playbackStatsRepository.importEventsFromBackup(
+                events = entries.map { entry ->
+                    PlaybackStatsRepository.PlaybackEvent(
+                        songId = entry.songId,
+                        timestamp = entry.timestamp,
+                        durationMs = entry.durationMs,
+                        startTimestamp = entry.startTimestamp,
+                        endTimestamp = entry.endTimestamp
+                    )
+                },
+                clearExisting = true
+            )
+        }
     }
 
-    override suspend fun rollback(snapshot: String) = restore(snapshot)
+    override suspend fun rollback(snapshot: String) {
+        restore(snapshot)
+    }
 }

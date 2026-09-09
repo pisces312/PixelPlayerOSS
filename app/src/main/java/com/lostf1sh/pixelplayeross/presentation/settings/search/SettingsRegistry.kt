@@ -145,6 +145,16 @@ object SettingsRegistry {
                 onToggle = { viewModel, checked -> viewModel.setSongDeletionEnabled(checked) }
             ),
             SettingSpec(
+                id = "library_import_poweramp",
+                itemKey = "item_library_import_poweramp",
+                titleRes = R.string.import_from_poweramp,
+                subtitleRes = R.string.import_from_poweramp_subtitle,
+                category = SettingsCategory.LIBRARY,
+                subscreenRoute = Screen.SettingsCategory.createRoute("library"),
+                type = SettingType.ACTION,
+                keywordsStatic = listOf("import", "poweramp", "backup", "playlist", "rating", "history", "play count")
+            ),
+            SettingSpec(
                 id = "library_lyrics_source_priority",
                 itemKey = "item_library_lyrics_source_priority",
                 titleRes = R.string.setcat_lyrics_source_priority_label,

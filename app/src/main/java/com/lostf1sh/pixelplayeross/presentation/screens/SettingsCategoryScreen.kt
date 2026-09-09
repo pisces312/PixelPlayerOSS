@@ -168,6 +168,7 @@ import com.lostf1sh.pixelplayeross.data.preferences.NavBarStyle
 import com.lostf1sh.pixelplayeross.data.preferences.ThemePreference
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.model.LyricsSourcePreference
+import com.lostf1sh.pixelplayeross.presentation.screens.import.PowerampImportEntry
 import com.lostf1sh.pixelplayeross.presentation.components.CollapsibleCommonTopBar
 import com.lostf1sh.pixelplayeross.presentation.components.ExpressiveTopBarContent
 import com.lostf1sh.pixelplayeross.presentation.components.FileExplorerDialog
@@ -490,6 +491,12 @@ fun SettingsCategoryScreen(
                                     onCheckedChange = { settingsViewModel.setSongDeletionEnabled(it) },
                                     leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.secondary) },
                                     modifier = Modifier.settingHighlight("item_library_allow_delete_songs", highlightKey)
+                                )
+                            }
+
+                            SettingsSubsection(title = stringResource(R.string.import_section_title)) {
+                                PowerampImportEntry(
+                                    modifier = Modifier.settingHighlight("item_library_import_poweramp", highlightKey)
                                 )
                             }
 

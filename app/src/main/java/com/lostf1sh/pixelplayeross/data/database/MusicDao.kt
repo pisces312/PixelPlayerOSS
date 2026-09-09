@@ -234,6 +234,13 @@ interface MusicDao {
     @Query("SELECT id FROM songs WHERE source_type = 0")
     suspend fun getAllMediaStoreSongIds(): List<Long>
 
+    /**
+     * 导入匹配用批量投影。
+     * 一次性载入全部本地歌曲供 SongMatcher 建内存索引（路径 / 文件名 / 元数据三级匹配）。
+     */
+    @Query("SELECT id, file_path, title, artist_name, album_name, duration FROM songs WHERE source_type = 0")
+    suspend fun getAllLocalSongsForImport(): List<ImportSongProjection>
+
     @Query("DELETE FROM songs WHERE id IN (:songIds)")
     suspend fun deleteSongsByIds(songIds: List<Long>)
 
