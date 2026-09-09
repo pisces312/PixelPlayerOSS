@@ -9,6 +9,11 @@
     <string name="presentation_batch_g_stats_cd_refresh">Refresh listening stats</string>
     <string name="presentation_batch_g_stats_hero_listening">Listening</string>
     <string name="presentation_batch_g_stats_hero_plays">Plays</string>
+    <string name="presentation_batch_g_stats_hero_songs">Songs</string>
+    <string name="presentation_batch_g_stats_hero_artists">Artists</string>
+    <string name="presentation_batch_g_stats_period_previous">Previous period</string>
+    <string name="presentation_batch_g_stats_period_next">Next period</string>
+    <string name="presentation_batch_g_stats_period_reset">Reset to current period</string>
     <string name="presentation_batch_g_stats_em_dash">—</string>
     <string name="presentation_batch_g_stats_section_listening_habits">Listening habits</string>
     <string name="presentation_batch_g_stats_empty_no_habits_title">No habits yet</string>

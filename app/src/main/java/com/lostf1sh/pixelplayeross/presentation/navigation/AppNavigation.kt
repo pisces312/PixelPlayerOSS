@@ -64,6 +64,7 @@ import com.lostf1sh.pixelplayeross.presentation.screens.SettingsCategoryScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.import.ThirdPartyImportScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.EqualizerScreen
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.StatsViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
 import kotlinx.coroutines.flow.first
 import com.lostf1sh.pixelplayeross.presentation.components.ScreenWrapper
@@ -346,10 +347,27 @@ fun AppNavigation(
                 popEnterTransition = { popEnterTransition() },
                 popExitTransition = { popExitTransition() },
             ) {
+                val statsViewModel: StatsViewModel = hiltViewModel()
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                     StatsScreen(
                         navController = navController,
-                        onSongClick = { songId -> playerViewModel.playSongById(songId) }
+                        onSongClick = { songId -> playerViewModel.playSongById(songId) },
+                        onArtistClick = { name ->
+                            statsViewModel.resolveArtistId(name)?.let { artistId ->
+                                navController.navigateSafely(Screen.ArtistDetail.createRoute(artistId))
+                            }
+                        },
+                        onAlbumClick = { name ->
+                            statsViewModel.resolveAlbumId(name)?.let { albumId ->
+                                navController.navigateSafely(Screen.AlbumDetail.createRoute(albumId))
+                            }
+                        },
+                        onGenreClick = { genre ->
+                            navController.navigateSafely(
+                                Screen.GenreDetail.createRoute(java.net.URLEncoder.encode(genre, "UTF-8"))
+                            )
+                        },
+                        statsViewModel = statsViewModel
                     )
                 }
             }

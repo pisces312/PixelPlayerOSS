@@ -6,6 +6,7 @@ import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import com.lostf1sh.pixelplayeross.data.stats.PlaybackStatsRepository
 import com.lostf1sh.pixelplayeross.data.stats.PlaybackStatsRepository.PlaybackStatsSummary
+import com.lostf1sh.pixelplayeross.data.stats.StatsPeriod
 import com.lostf1sh.pixelplayeross.data.stats.StatsTimeRange
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -30,6 +31,7 @@ class StatsViewModel @Inject constructor(
 
     data class StatsUiState(
         val selectedRange: StatsTimeRange = StatsTimeRange.WEEK,
+        val selectedPeriod: StatsPeriod = StatsPeriod(StatsTimeRange.WEEK),
         val isLoading: Boolean = true,
         val isRefreshing: Boolean = false,
         val summary: PlaybackStatsSummary? = null,
@@ -51,7 +53,7 @@ class StatsViewModel @Inject constructor(
     init {
         observeStatsRefreshFlow()
         refreshRange(
-            range = StatsTimeRange.WEEK,
+            period = StatsPeriod.current(StatsTimeRange.WEEK),
             showLoading = true,
             updateWeeklyOverview = true
         )
@@ -62,10 +64,33 @@ class StatsViewModel @Inject constructor(
         if (range == _uiState.value.selectedRange && !_uiState.value.isLoading) {
             return
         }
+        val period = StatsPeriod.current(range)
         refreshRange(
-            range = range,
+            period = period,
             showLoading = true,
-            updateWeeklyOverview = range == StatsTimeRange.WEEK
+            updateWeeklyOverview = range == StatsTimeRange.WEEK && period.anchorMillis == null
+        )
+    }
+
+    fun onPeriodShift(steps: Int) {
+        val current = _uiState.value.selectedPeriod
+        val shifted = current.shift(steps, System.currentTimeMillis())
+        if (shifted == current) return
+        refreshRange(
+            period = shifted,
+            showLoading = true,
+            updateWeeklyOverview = shifted.range == StatsTimeRange.WEEK && shifted.anchorMillis == null
+        )
+    }
+
+    fun onPeriodReset() {
+        val current = _uiState.value.selectedPeriod
+        val reset = StatsPeriod.current(current.range)
+        if (reset == current) return
+        refreshRange(
+            period = reset,
+            showLoading = true,
+            updateWeeklyOverview = reset.range == StatsTimeRange.WEEK
         )
     }
 
@@ -108,20 +133,20 @@ class StatsViewModel @Inject constructor(
     }
 
     private fun refreshRange(
-        range: StatsTimeRange,
+        period: StatsPeriod,
         showLoading: Boolean = true,
         updateWeeklyOverview: Boolean = false
     ) {
         viewModelScope.launch {
             if (showLoading) {
-                _uiState.update { it.copy(isLoading = true, isRefreshing = false, selectedRange = range) }
+                _uiState.update { it.copy(isLoading = true, isRefreshing = false, selectedRange = period.range, selectedPeriod = period) }
             } else {
-                _uiState.update { it.copy(isRefreshing = true, selectedRange = range) }
+                _uiState.update { it.copy(isRefreshing = true, selectedRange = period.range, selectedPeriod = period) }
             }
             val summary = runCatching {
                 withContext(Dispatchers.IO) {
                     val songs = loadSongs()
-                    playbackStatsRepository.loadSummary(range, songs)
+                    playbackStatsRepository.loadSummary(period, songs)
                 }
             }
             summary.getOrNull()?.let { loaded ->
@@ -134,10 +159,11 @@ class StatsViewModel @Inject constructor(
                     isLoading = false,
                     isRefreshing = false,
                     summary = summary.getOrNull(),
-                    selectedRange = range
+                    selectedRange = period.range,
+                    selectedPeriod = period
                 )
             }
-            summary.exceptionOrNull()?.let { Timber.e(it, "Failed to load stats for range %s", range) }
+            summary.exceptionOrNull()?.let { Timber.e(it, "Failed to load stats for range %s", period) }
         }
     }
 
@@ -146,18 +172,26 @@ class StatsViewModel @Inject constructor(
             playbackStatsRepository.refreshFlow
                 .drop(1)
                 .collectLatest {
-                    val selectedRange = _uiState.value.selectedRange
+                    val selectedPeriod = _uiState.value.selectedPeriod
                     refreshRange(
-                        range = selectedRange,
+                        period = selectedPeriod,
                         showLoading = false,
-                        updateWeeklyOverview = selectedRange == StatsTimeRange.WEEK
+                        updateWeeklyOverview = selectedPeriod.range == StatsTimeRange.WEEK && selectedPeriod.anchorMillis == null
                     )
-                    if (selectedRange != StatsTimeRange.WEEK) {
+                    if (selectedPeriod.range != StatsTimeRange.WEEK || selectedPeriod.anchorMillis != null) {
                         refreshWeeklyOverview()
                     }
                     refreshHomeOverview()
                 }
         }
+    }
+
+    fun resolveArtistId(name: String): Long? {
+        return cachedSongs?.firstOrNull { it.displayArtist.equals(name, ignoreCase = true) }?.artistId
+    }
+
+    fun resolveAlbumId(name: String): Long? {
+        return cachedSongs?.firstOrNull { it.album.equals(name, ignoreCase = true) }?.albumId
     }
 
     fun requestStatsRefresh() {

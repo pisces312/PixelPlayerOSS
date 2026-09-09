@@ -66,7 +66,9 @@ class PlaybackStatsRepository @Inject constructor(
 
     data class PlaybackHistoryEntry(
         val songId: String,
-        val timestamp: Long
+        val timestamp: Long,
+        /** How long this play actually lasted; 0 when unknown. */
+        val durationMs: Long = 0L
     )
 
     data class SongPlaybackSummary(
@@ -187,10 +189,6 @@ class PlaybackStatsRepository @Inject constructor(
             endTimestamp = coercedTimestamp
         )
         val writeSucceeded = updateEventsAtomically { events ->
-            val cutoff = sanitizedEvent.endMillis() - MAX_HISTORY_AGE_MS
-            if (cutoff > 0) {
-                events.removeAll { it.endMillis() < cutoff }
-            }
             events += sanitizedEvent
             events
         }
@@ -203,11 +201,17 @@ class PlaybackStatsRepository @Inject constructor(
         range: StatsTimeRange,
         songs: List<Song>,
         nowMillis: Long = System.currentTimeMillis()
+    ): PlaybackStatsSummary = loadSummary(StatsPeriod(range), songs, nowMillis)
+
+    suspend fun loadSummary(
+        period: StatsPeriod,
+        songs: List<Song>,
+        nowMillis: Long = System.currentTimeMillis()
     ): PlaybackStatsSummary = withContext(Dispatchers.IO) {
         val zoneId = ZoneId.systemDefault()
         val allEvents = readEvents()
         buildSummaryFromEvents(
-            range = range,
+            period = period,
             songs = songs,
             nowMillis = nowMillis,
             allEvents = allEvents,
@@ -221,8 +225,22 @@ class PlaybackStatsRepository @Inject constructor(
         nowMillis: Long,
         allEvents: List<PlaybackEvent>,
         zoneId: ZoneId = ZoneId.systemDefault()
+    ): PlaybackStatsSummary = buildSummaryFromEvents(
+        period = StatsPeriod(range),
+        songs = songs,
+        nowMillis = nowMillis,
+        allEvents = allEvents,
+        zoneId = zoneId
+    )
+
+    internal fun buildSummaryFromEvents(
+        period: StatsPeriod,
+        songs: List<Song>,
+        nowMillis: Long,
+        allEvents: List<PlaybackEvent>,
+        zoneId: ZoneId = ZoneId.systemDefault()
     ): PlaybackStatsSummary {
-        val (startBound, endBound) = range.resolveBounds(allEvents, nowMillis, zoneId)
+        val (startBound, endBound) = period.resolveBounds(allEvents, nowMillis, zoneId)
         val filteredEvents = allEvents.mapNotNull { event ->
             val start = event.startMillis()
             val end = event.endMillis()
@@ -352,9 +370,9 @@ class PlaybackStatsRepository @Inject constructor(
         val averageSessionsPerDay = if (daySpan > 0) totalSessions.toDouble() / daySpan else 0.0
 
         val timelineBuckets = createTimelineBuckets(
-            range = range,
+            range = period.range,
             zoneId = zoneId,
-            now = Instant.ofEpochMilli(endBound),
+            anchor = Instant.ofEpochMilli(period.anchorMillis ?: nowMillis),
             spans = overallSpans,
             fallbackStart = effectiveStart ?: endBound
         )
@@ -428,18 +446,18 @@ class PlaybackStatsRepository @Inject constructor(
         }
         val peakDayLabel = peakDay?.key?.getDisplayName(TextStyle.FULL, Locale.US)
         val peakDayDuration = peakDay?.value?.sumOf { it.durationMs } ?: 0L
-        val dayListeningDistribution = if (range == StatsTimeRange.DAY || range == StatsTimeRange.WEEK) {
+        val dayListeningDistribution = if (period.range == StatsTimeRange.DAY || period.range == StatsTimeRange.WEEK) {
             computeDayListeningDistribution(
                 spans = overallSpans,
                 zoneId = zoneId,
-                range = range,
+                range = period.range,
                 startBound = startBound,
                 endBound = endBound
             )
         } else null
 
         return PlaybackStatsSummary(
-            range = range,
+            range = period.range,
             startTimestamp = startBound,
             endTimestamp = endBound,
             totalDurationMs = totalDuration,
@@ -479,7 +497,8 @@ class PlaybackStatsRepository @Inject constructor(
             .map { event ->
                 PlaybackHistoryEntry(
                     songId = event.songId,
-                    timestamp = event.timestamp.coerceAtLeast(0L)
+                    timestamp = event.timestamp.coerceAtLeast(0L),
+                    durationMs = event.durationMs.coerceAtLeast(0L)
                 )
             }
             .toList()
@@ -931,21 +950,21 @@ class PlaybackStatsRepository @Inject constructor(
     private fun createTimelineBuckets(
         range: StatsTimeRange,
         zoneId: ZoneId,
-        now: Instant,
+        anchor: Instant,
         spans: List<PlaybackSpan>,
         fallbackStart: Long
     ): List<TimelineBucket> {
         return when (range) {
-            StatsTimeRange.DAY -> createDayBuckets(zoneId, now)
-            StatsTimeRange.WEEK -> createWeekBuckets(zoneId, now)
-            StatsTimeRange.MONTH -> createMonthBuckets(zoneId, now)
-            StatsTimeRange.YEAR -> createYearBuckets(zoneId, now)
-            StatsTimeRange.ALL -> createAllTimeBuckets(zoneId, spans, fallbackStart, now)
+            StatsTimeRange.DAY -> createDayBuckets(zoneId, anchor)
+            StatsTimeRange.WEEK -> createWeekBuckets(zoneId, anchor)
+            StatsTimeRange.MONTH -> createMonthBuckets(zoneId, anchor)
+            StatsTimeRange.YEAR -> createYearBuckets(zoneId, anchor)
+            StatsTimeRange.ALL -> createAllTimeBuckets(zoneId, spans, fallbackStart, anchor)
         }
     }
 
-    private fun createDayBuckets(zoneId: ZoneId, now: Instant): List<TimelineBucket> {
-        val dayStart = now.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant()
+    private fun createDayBuckets(zoneId: ZoneId, anchor: Instant): List<TimelineBucket> {
+        val dayStart = anchor.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant()
         val formatter = DateTimeFormatter.ofPattern("ha", Locale.US)
         return (0 until 6).map { index ->
             val bucketStart = dayStart.plus(Duration.ofHours((index * 4).toLong()))
@@ -960,8 +979,8 @@ class PlaybackStatsRepository @Inject constructor(
         }
     }
 
-    private fun createWeekBuckets(zoneId: ZoneId, now: Instant): List<TimelineBucket> {
-        val startOfWeek = now.atZone(zoneId)
+    private fun createWeekBuckets(zoneId: ZoneId, anchor: Instant): List<TimelineBucket> {
+        val startOfWeek = anchor.atZone(zoneId)
             .toLocalDate()
             .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         return (0 until 7).map { index ->
@@ -977,37 +996,23 @@ class PlaybackStatsRepository @Inject constructor(
         }
     }
 
-    private fun createMonthBuckets(zoneId: ZoneId, now: Instant): List<TimelineBucket> {
-        val yearMonth = YearMonth.from(now.atZone(zoneId))
-        val daysInMonth = yearMonth.lengthOfMonth()
-        val bucketCount = 4
-        return buildList {
-            repeat(bucketCount) { index ->
-                val startDay = index * 7 + 1
-                if (startDay > daysInMonth) {
-                    return@repeat
-                }
-                val endDay = if (index == bucketCount - 1) {
-                    daysInMonth
-                } else {
-                    minOf(startDay + 6, daysInMonth)
-                }
-                val start = yearMonth.atDay(startDay).atStartOfDay(zoneId).toInstant()
-                val end = yearMonth.atDay(endDay).plusDays(1).atStartOfDay(zoneId).toInstant()
-                add(
-                    TimelineBucket(
-                        label = "Week ${index + 1}",
-                        startMillis = start.toEpochMilli(),
-                        endMillis = end.toEpochMilli(),
-                        inclusiveEnd = false
-                    )
-                )
-            }
+    /** One bucket per day: a month split into four "weeks" hides which days were actually busy. */
+    private fun createMonthBuckets(zoneId: ZoneId, anchor: Instant): List<TimelineBucket> {
+        val yearMonth = YearMonth.from(anchor.atZone(zoneId))
+        return (1..yearMonth.lengthOfMonth()).map { day ->
+            val start = yearMonth.atDay(day).atStartOfDay(zoneId).toInstant()
+            val end = yearMonth.atDay(day).plusDays(1).atStartOfDay(zoneId).toInstant()
+            TimelineBucket(
+                label = day.toString(),
+                startMillis = start.toEpochMilli(),
+                endMillis = end.toEpochMilli(),
+                inclusiveEnd = false
+            )
         }
     }
 
-    private fun createYearBuckets(zoneId: ZoneId, now: Instant): List<TimelineBucket> {
-        val year = Year.from(now.atZone(zoneId))
+    private fun createYearBuckets(zoneId: ZoneId, anchor: Instant): List<TimelineBucket> {
+        val year = Year.from(anchor.atZone(zoneId))
         return (1..12).map { monthIndex ->
             val start = year.atMonth(monthIndex).atDay(1).atStartOfDay(zoneId).toInstant()
             val end = year.atMonth(monthIndex).atEndOfMonth().plusDays(1).atStartOfDay(zoneId).toInstant()
@@ -1024,11 +1029,11 @@ class PlaybackStatsRepository @Inject constructor(
         zoneId: ZoneId,
         spans: List<PlaybackSpan>,
         fallbackStart: Long,
-        now: Instant
+        anchor: Instant
     ): List<TimelineBucket> {
         val allSpans = if (spans.isEmpty()) listOf(PlaybackSpan(fallbackStart, fallbackStart)) else spans
         val minTimestamp = allSpans.minOfOrNull { it.startMillis } ?: fallbackStart
-        val maxTimestamp = allSpans.maxOfOrNull { it.endMillis } ?: now.toEpochMilli()
+        val maxTimestamp = allSpans.maxOfOrNull { it.endMillis } ?: anchor.toEpochMilli()
         val startYear = Instant.ofEpochMilli(minTimestamp).atZone(zoneId).year
         val endYear = Instant.ofEpochMilli(maxTimestamp).atZone(zoneId).year
         if (startYear > endYear) return emptyList()
@@ -1045,48 +1050,27 @@ class PlaybackStatsRepository @Inject constructor(
         }
     }
 
-    private fun StatsTimeRange.resolveBounds(
+    /**
+     * Absolute bounds of [period].
+     *
+     * The upper bound is capped at `now` so the current period never reports time that has not
+     * happened yet; past periods end at their own last millisecond.
+     */
+    private fun StatsPeriod.resolveBounds(
         events: List<PlaybackEvent>,
         nowMillis: Long,
         zoneId: ZoneId
     ): Pair<Long?, Long> {
-        val nowInstant = Instant.ofEpochMilli(nowMillis)
-        return when (this) {
-            StatsTimeRange.DAY -> {
-                val start = nowInstant.atZone(zoneId).toLocalDate().atStartOfDay(zoneId).toInstant().toEpochMilli()
-                start to nowMillis
-            }
-            StatsTimeRange.WEEK -> {
-                val start = nowInstant.atZone(zoneId)
-                    .toLocalDate()
-                    .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-                    .atStartOfDay(zoneId)
-                    .toInstant()
-                    .toEpochMilli()
-                start to nowMillis
-            }
-            StatsTimeRange.MONTH -> {
-                val start = YearMonth.from(nowInstant.atZone(zoneId))
-                    .atDay(1)
-                    .atStartOfDay(zoneId)
-                    .toInstant()
-                    .toEpochMilli()
-                start to nowMillis
-            }
-            StatsTimeRange.YEAR -> {
-                val start = nowInstant.atZone(zoneId)
-                    .toLocalDate()
-                    .withDayOfYear(1)
-                    .atStartOfDay(zoneId)
-                    .toInstant()
-                    .toEpochMilli()
-                start to nowMillis
-            }
-            StatsTimeRange.ALL -> {
-                val start = events.minOfOrNull { it.startMillis() }
-                start to nowMillis
-            }
-        }
+        val start = startDate(nowMillis, zoneId)
+            ?: return events.minOfOrNull { it.startMillis() } to nowMillis
+
+        val startMillis = start.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val endExclusive = endDateExclusive(nowMillis, zoneId)
+            ?.atStartOfDay(zoneId)
+            ?.toInstant()
+            ?.toEpochMilli()
+            ?: nowMillis
+        return startMillis to min(nowMillis, endExclusive - 1L).coerceAtLeast(startMillis)
     }
 
     private data class TimelineBucket(
@@ -1123,7 +1107,6 @@ class PlaybackStatsRepository @Inject constructor(
         private const val MAX_PLAYBACK_HISTORY_LIMIT = 5_000
         private const val MAX_FILE_UPDATE_RETRIES = 3
         private const val UNKNOWN_ARTIST = "Unknown Artist"
-        private val MAX_HISTORY_AGE_MS = TimeUnit.DAYS.toMillis(730)
         private const val SEGMENT_JOIN_TOLERANCE_MS = 0L
         private const val MAX_SONG_STATS_COUNT = 100
     }

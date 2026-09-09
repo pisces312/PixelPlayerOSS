@@ -42,9 +42,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoGraph
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.automirrored.rounded.NavigateBefore
+import androidx.compose.material.icons.automirrored.rounded.NavigateNext
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.Hearing
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -56,6 +60,7 @@ import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LinearWavyProgressIndicator
@@ -107,6 +112,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.stats.PlaybackStatsRepository
+import com.lostf1sh.pixelplayeross.data.stats.StatsPeriod
 import com.lostf1sh.pixelplayeross.data.stats.StatsTimeRange
 import com.lostf1sh.pixelplayeross.presentation.components.CollapsibleCommonTopBar
 import com.lostf1sh.pixelplayeross.presentation.components.ExpressiveTopBarContent
@@ -118,6 +124,10 @@ import com.lostf1sh.pixelplayeross.utils.formatListeningDurationCompact
 import com.lostf1sh.pixelplayeross.utils.formatListeningDurationLong
 import androidx.compose.ui.platform.LocalContext
 import java.util.Locale
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import android.text.format.DateFormat as AndroidDateFormat
 import kotlin.math.roundToInt
 import kotlin.math.PI
@@ -143,6 +153,9 @@ private const val PULL_TO_REFRESH_MIN_DURATION_MS = 3500L
 fun StatsScreen(
     navController: NavController,
     onSongClick: (String) -> Unit,
+    onArtistClick: (String) -> Unit = {},
+    onAlbumClick: (String) -> Unit = {},
+    onGenreClick: (String) -> Unit = {},
     statsViewModel: StatsViewModel = hiltViewModel()
 ) {
     val uiState by statsViewModel.uiState.collectAsStateWithLifecycle()
@@ -315,12 +328,14 @@ fun StatsScreen(
                     item {
                         TopArtistsCard(
                             summary = summary,
+                            onArtistClick = onArtistClick,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
                     item {
                         TopAlbumsCard(
                             summary = summary,
+                            onAlbumClick = onAlbumClick,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
@@ -386,6 +401,11 @@ fun StatsScreen(
                         indicatorSpacing = tabIndicatorExtraSpacing,
                         showIndicator = showRangeTabIndicator,
                     )
+                    PeriodSelector(
+                        period = uiState.selectedPeriod,
+                        onShift = statsViewModel::onPeriodShift,
+                        onReset = statsViewModel::onPeriodReset
+                    )
                 }
             }
         }
@@ -399,31 +419,45 @@ private fun StatsHeroSection(
     modifier: Modifier = Modifier
 ) {
     val hasData = (summary?.totalDurationMs ?: 0L) > 0 || (summary?.totalPlayCount ?: 0) > 0
-    
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        maxItemsInEachRow = 2
     ) {
+        val half = Modifier.weight(1f, fill = false)
         HeroCard(
             title = stringResource(R.string.presentation_batch_g_stats_hero_listening),
             value = if (hasData) formatListeningDurationCompact(summary?.totalDurationMs ?: 0L) else "--",
+            icon = Icons.Outlined.Hearing,
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
+            modifier = half
         )
-
         HeroCard(
             title = stringResource(R.string.presentation_batch_g_stats_hero_plays),
             value = if (hasData) "${summary?.totalPlayCount ?: 0}" else "--",
+            icon = Icons.Outlined.PlayCircleOutline,
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
             contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
+            modifier = half
+        )
+        HeroCard(
+            title = stringResource(R.string.presentation_batch_g_stats_hero_songs),
+            value = if (hasData) "${summary?.uniqueSongs ?: 0}" else "--",
+            icon = Icons.Outlined.LibraryMusic,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = half
+        )
+        HeroCard(
+            title = stringResource(R.string.presentation_batch_g_stats_hero_artists),
+            value = if (hasData) "${summary?.topArtists?.size ?: 0}" else "--",
+            icon = Icons.Outlined.Face,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            modifier = half
         )
     }
 }
@@ -432,6 +466,7 @@ private fun StatsHeroSection(
 private fun HeroCard(
     title: String,
     value: String,
+    icon: ImageVector,
     containerColor: Color,
     contentColor: Color,
     modifier: Modifier = Modifier
@@ -441,20 +476,28 @@ private fun HeroCard(
             .clip(RoundedCornerShape(24.dp))
             .background(containerColor)
             .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Medium,
-            color = contentColor.copy(alpha = 0.85f)
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = contentColor.copy(alpha = 0.74f)
         )
-        Text(
-            text = value,
-            style = ExpTitleTypography.displayMedium.copy(fontSize = 32.sp),
-            fontWeight = FontWeight.Bold,
-            color = contentColor
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = value,
+                style = ExpTitleTypography.displayMedium.copy(fontSize = 28.sp),
+                fontWeight = FontWeight.Bold,
+                color = contentColor
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                color = contentColor.copy(alpha = 0.85f)
+            )
+        }
     }
 }
 
@@ -685,6 +728,69 @@ private fun RangeTabsHeader(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PeriodSelector(
+    period: StatsPeriod,
+    onShift: (Int) -> Unit,
+    onReset: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (period.range == StatsTimeRange.ALL) return
+    val context = LocalContext.current
+    val nowMillis = remember { System.currentTimeMillis() }
+    val formatter = remember(period.range) {
+        val pattern = when (period.range) {
+            StatsTimeRange.DAY -> AndroidDateFormat.getBestDateTimePattern(Locale.getDefault(), "yyyyMMdd")
+            StatsTimeRange.WEEK -> AndroidDateFormat.getBestDateTimePattern(Locale.getDefault(), "yyyyMMdd")
+            StatsTimeRange.MONTH -> AndroidDateFormat.getBestDateTimePattern(Locale.getDefault(), "yyyyMMMM")
+            StatsTimeRange.YEAR -> AndroidDateFormat.getBestDateTimePattern(Locale.getDefault(), "yyyy")
+            StatsTimeRange.ALL -> ""
+        }
+        DateTimeFormatter.ofPattern(pattern, Locale.getDefault())
+    }
+    val anchorDate = remember(period.anchorMillis) {
+        java.time.Instant.ofEpochMilli(period.anchorMillis ?: nowMillis)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+    }
+    val label = formatter.format(anchorDate)
+    val offset = period.periodsFromCurrent(nowMillis)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = { onShift(1) },
+            enabled = offset > 0
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.NavigateBefore,
+                contentDescription = stringResource(R.string.presentation_batch_g_stats_period_previous)
+            )
+        }
+        TextButton(onClick = onReset, enabled = offset != 0) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        IconButton(
+            onClick = { onShift(-1) },
+            enabled = true
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.NavigateNext,
+                contentDescription = stringResource(R.string.presentation_batch_g_stats_period_next)
+            )
         }
     }
 }
@@ -1866,6 +1972,7 @@ private fun categoryPaletteFor(dimension: CategoryDimension): CategoryChartPalet
 @Composable
 private fun TopArtistsCard(
     summary: PlaybackStatsRepository.PlaybackStatsSummary?,
+    onArtistClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val containerColor = MaterialTheme.colorScheme.secondaryContainer
@@ -1894,54 +2001,63 @@ private fun TopArtistsCard(
                 )
             } else {
                 val maxDuration = artists.maxOf { it.totalDurationMs }.coerceAtLeast(1L)
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     artists.forEachIndexed { index, artistSummary ->
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        Surface(
+                            onClick = { onArtistClick(artistSummary.artist) },
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                ArtistAvatar(
-                                    name = artistSummary.artist,
-                                    containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
-                                    contentColor = MaterialTheme.colorScheme.secondary
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = stringResource(
-                                            R.string.presentation_batch_g_stats_ranked_artist,
-                                            index + 1,
-                                            artistSummary.artist
-                                        ),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = contentColor,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    ArtistAvatar(
+                                        name = artistSummary.artist,
+                                        containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f),
+                                        contentColor = MaterialTheme.colorScheme.secondary
                                     )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.presentation_batch_g_stats_ranked_artist,
+                                                index + 1,
+                                                artistSummary.artist
+                                            ),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = contentColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                R.string.presentation_batch_g_stats_plays_tracks,
+                                                artistSummary.playCount,
+                                                artistSummary.uniqueSongs
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = supportingColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                     Text(
-                                        text = stringResource(
-                                            R.string.presentation_batch_g_stats_plays_tracks,
-                                            artistSummary.playCount,
-                                            artistSummary.uniqueSongs
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = supportingColor,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        text = formatListeningDurationCompact(artistSummary.totalDurationMs),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = supportingColor
                                     )
                                 }
-                                Text(
-                                    text = formatListeningDurationCompact(artistSummary.totalDurationMs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = supportingColor
+                                LinearProgressIndicator(
+                                    progress = { (artistSummary.totalDurationMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    trackColor = contentColor.copy(alpha = 0.18f)
                                 )
                             }
-                            LinearProgressIndicator(
-                                progress = { (artistSummary.totalDurationMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.secondary,
-                                trackColor = contentColor.copy(alpha = 0.18f)
-                            )
                         }
                     }
                 }
@@ -1983,6 +2099,7 @@ private fun ArtistAvatar(
 @Composable
 private fun TopAlbumsCard(
     summary: PlaybackStatsRepository.PlaybackStatsSummary?,
+    onAlbumClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val containerColor = MaterialTheme.colorScheme.tertiaryContainer
@@ -2011,57 +2128,66 @@ private fun TopAlbumsCard(
                 )
             } else {
                 val maxDuration = albums.maxOf { it.totalDurationMs }.coerceAtLeast(1L)
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     albums.forEachIndexed { index, albumSummary ->
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        Surface(
+                            onClick = { onAlbumClick(albumSummary.album) },
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                SmartImage(
-                                    model = albumSummary.albumArtUri,
-                                    contentDescription = albumSummary.album,
-                                    modifier = Modifier
-                                        .size(56.dp)
-                                        .clip(RoundedCornerShape(16.dp)),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = stringResource(
-                                            R.string.presentation_batch_g_stats_ranked_album,
-                                            index + 1,
-                                            albumSummary.album
-                                        ),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = contentColor,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    SmartImage(
+                                        model = albumSummary.albumArtUri,
+                                        contentDescription = albumSummary.album,
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(RoundedCornerShape(16.dp)),
+                                        shape = RoundedCornerShape(16.dp)
                                     )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stringResource(
+                                                R.string.presentation_batch_g_stats_ranked_album,
+                                                index + 1,
+                                                albumSummary.album
+                                            ),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = contentColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = stringResource(
+                                                R.string.presentation_batch_g_stats_plays_tracks,
+                                                albumSummary.playCount,
+                                                albumSummary.uniqueSongs
+                                            ),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = supportingColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                     Text(
-                                        text = stringResource(
-                                            R.string.presentation_batch_g_stats_plays_tracks,
-                                            albumSummary.playCount,
-                                            albumSummary.uniqueSongs
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = supportingColor,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        text = formatListeningDurationCompact(albumSummary.totalDurationMs),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = supportingColor
                                     )
                                 }
-                                Text(
-                                    text = formatListeningDurationCompact(albumSummary.totalDurationMs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = supportingColor
+                                LinearProgressIndicator(
+                                    progress = { (albumSummary.totalDurationMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    trackColor = contentColor.copy(alpha = 0.18f)
                                 )
                             }
-                            LinearProgressIndicator(
-                                progress = { (albumSummary.totalDurationMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.tertiary,
-                                trackColor = contentColor.copy(alpha = 0.18f)
-                            )
                         }
                     }
                 }
