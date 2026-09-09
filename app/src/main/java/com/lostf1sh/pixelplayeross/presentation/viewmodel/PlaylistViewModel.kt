@@ -15,21 +15,30 @@ import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylist
 import com.lostf1sh.pixelplayeross.data.model.toPlaylistSource
 import com.lostf1sh.pixelplayeross.data.playlist.M3uManager
 import com.lostf1sh.pixelplayeross.data.playlist.NlpPlaylistGenerator
+import com.lostf1sh.pixelplayeross.data.ai.AiPlaylistGenerator
+import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
+import com.lostf1sh.pixelplayeross.data.ai.provider.AiErrorKind
+import com.lostf1sh.pixelplayeross.data.ai.provider.AiProviderException
 import com.lostf1sh.pixelplayeross.data.playlist.SmartPlaylistBuilder
 import com.lostf1sh.pixelplayeross.data.preferences.PlaylistPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.OutputStreamWriter
 import android.content.Context
 import android.graphics.Bitmap
@@ -74,8 +83,11 @@ data class NlpPlaylistPreviewState(
     val songs: ImmutableList<Song> = persistentListOf(),
     /** True once a generation finished, so the UI can tell "no matches" from "not asked yet". */
     val hasResult: Boolean = false,
+    /** User-facing failure text; offline NLP generation never sets it. */
+    val errorMessage: String? = null,
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class PlaylistViewModel @Inject constructor(
     private val playlistPreferencesRepository: PlaylistPreferencesRepository,
@@ -83,6 +95,8 @@ class PlaylistViewModel @Inject constructor(
     private val dailyMixManager: DailyMixManager,
     private val m3uManager: M3uManager,
     private val nlpPlaylistGenerator: NlpPlaylistGenerator,
+    private val aiPlaylistGenerator: AiPlaylistGenerator,
+    private val aiPreferences: AiPreferencesRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -91,6 +105,21 @@ class PlaylistViewModel @Inject constructor(
 
     private val _nlpPlaylistPreviewState = MutableStateFlow(NlpPlaylistPreviewState())
     val nlpPlaylistPreviewState: StateFlow<NlpPlaylistPreviewState> = _nlpPlaylistPreviewState.asStateFlow()
+
+    private val _aiPlaylistPreviewState = MutableStateFlow(NlpPlaylistPreviewState())
+    val aiPlaylistPreviewState: StateFlow<NlpPlaylistPreviewState> = _aiPlaylistPreviewState.asStateFlow()
+
+    /** Whether the active provider has what it needs to run (key, or a url for custom ones). */
+    val isAiConfigured: StateFlow<Boolean> =
+            aiPreferences.providerFlow
+                    .flatMapLatest { provider ->
+                        if (provider.requiresApiKey) {
+                            aiPreferences.getApiKey(provider).map { it.isNotBlank() }
+                        } else {
+                            aiPreferences.getBaseUrl(provider).map { it.isNotBlank() }
+                        }
+                    }
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val _playlistCreationEvent = MutableSharedFlow<Boolean>(
         extraBufferCapacity = 1,
@@ -354,6 +383,58 @@ class PlaylistViewModel @Inject constructor(
     fun resetNlpPlaylistPreview() {
         _nlpPlaylistPreviewState.value = NlpPlaylistPreviewState()
     }
+
+    /**
+     * Asks the configured AI provider for a track list and matches it against the library.
+     *
+     * Failures stay inside the preview state as a localised message so the dialog can explain
+     * what to fix (bad key, exhausted quota, unknown model) instead of silently returning
+     * nothing.
+     */
+    fun generateAiPlaylistPreview(description: String) {
+        if (description.isBlank()) return
+        viewModelScope.launch {
+            _aiPlaylistPreviewState.update {
+                it.copy(isGenerating = true, errorMessage = null, hasResult = false)
+            }
+            val result = runCatching { aiPlaylistGenerator.generate(description) }
+            _aiPlaylistPreviewState.value =
+                    result.fold(
+                            onSuccess = { songs ->
+                                NlpPlaylistPreviewState(
+                                        isGenerating = false,
+                                        songs = songs.toImmutableList(),
+                                        hasResult = true
+                                )
+                            },
+                            onFailure = { error ->
+                                Timber.tag("PlaylistVM").e(error, "AI playlist generation failed")
+                                NlpPlaylistPreviewState(
+                                        isGenerating = false,
+                                        hasResult = true,
+                                        errorMessage = describeAiFailure(error)
+                                )
+                            }
+                    )
+        }
+    }
+
+    /** Clears the AI preview when its dialog closes. */
+    fun resetAiPlaylistPreview() {
+        _aiPlaylistPreviewState.value = NlpPlaylistPreviewState()
+    }
+
+    private fun describeAiFailure(error: Throwable): String =
+            when ((error as? AiProviderException)?.kind) {
+                AiErrorKind.UNAUTHORIZED -> R.string.ai_error_unauthorized
+                AiErrorKind.QUOTA_EXCEEDED -> R.string.ai_error_quota
+                AiErrorKind.MODEL_NOT_FOUND -> R.string.ai_error_model_not_found
+                AiErrorKind.RATE_LIMITED -> R.string.ai_error_rate_limited
+                AiErrorKind.SERVER -> R.string.ai_error_server
+                AiErrorKind.NETWORK -> R.string.ai_error_network
+                AiErrorKind.RESPONSE_PARSE -> R.string.ai_error_parse
+                else -> R.string.ai_error_unknown
+            }.let { context.getString(it) }
 
     private suspend fun buildSmartPlaylistSongIds(
         rule: SmartPlaylistRule,

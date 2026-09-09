@@ -210,7 +210,9 @@ fun DescribePlaylistDialog(
     state: NlpPlaylistPreviewState,
     onGenerate: (String) -> Unit,
     onSave: (name: String, songIds: List<String>) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    title: String = stringResource(R.string.presentation_batch_e_describe_playlist_title),
+    subtitle: String = stringResource(R.string.presentation_batch_e_describe_playlist_subtitle)
 ) {
     if (!visible) return
 
@@ -249,7 +251,7 @@ fun DescribePlaylistDialog(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = stringResource(R.string.presentation_batch_e_describe_playlist_title),
+                        text = title,
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.headlineSmall.copy(
                             fontFamily = RoundedSans,
@@ -257,7 +259,7 @@ fun DescribePlaylistDialog(
                         )
                     )
                     Text(
-                        text = stringResource(R.string.presentation_batch_e_describe_playlist_subtitle),
+                        text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                     )
@@ -295,7 +297,14 @@ fun DescribePlaylistDialog(
                 }
 
                 if (state.hasResult && !state.isGenerating) {
-                    if (state.songs.isEmpty()) {
+                    if (state.errorMessage != null) {
+                        Text(
+                            text = state.errorMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else if (state.songs.isEmpty()) {
                         Text(
                             text = stringResource(R.string.presentation_batch_e_describe_no_matches),
                             style = MaterialTheme.typography.bodyMedium,

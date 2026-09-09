@@ -83,12 +83,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.preferences.CollagePattern
+import com.lostf1sh.pixelplayeross.presentation.components.AiGenerateEntryCard
 import com.lostf1sh.pixelplayeross.presentation.components.AlbumArtCollage
 import com.lostf1sh.pixelplayeross.presentation.components.BetaInfoBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.ChangelogBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.jellyfin.dashboard.JellyfinDashboardViewModel
 import com.lostf1sh.pixelplayeross.presentation.navidrome.dashboard.NavidromeDashboardViewModel
 import com.lostf1sh.pixelplayeross.presentation.components.DailyMixSection
+import com.lostf1sh.pixelplayeross.presentation.components.DescribePlaylistDialog
 import com.lostf1sh.pixelplayeross.presentation.components.HomeGradientTopBar
 import com.lostf1sh.pixelplayeross.presentation.components.HomeOptionsBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
@@ -97,6 +99,7 @@ import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSection
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
 import com.lostf1sh.pixelplayeross.presentation.components.StatsOverviewCard
 import com.lostf1sh.pixelplayeross.presentation.components.resolveMainScreenBottomGradientHeight
+import com.lostf1sh.pixelplayeross.presentation.model.SettingsCategory
 import com.lostf1sh.pixelplayeross.presentation.model.collectRecentlyPlayedSongIds
 import com.lostf1sh.pixelplayeross.presentation.model.mapRecentlyPlayedSongs
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.PlayingEqIcon
@@ -104,6 +107,7 @@ import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.components.StreamingProviderSheet
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.SettingsViewModel
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.StatsViewModel
 import com.lostf1sh.pixelplayeross.ui.theme.ExpTitleTypography
 import kotlinx.collections.immutable.persistentListOf
@@ -129,6 +133,7 @@ fun HomeScreen(
     settingsViewModel: SettingsViewModel = hiltViewModel(),
     navidromeViewModel: NavidromeDashboardViewModel = hiltViewModel(),
     jellyfinViewModel: JellyfinDashboardViewModel = hiltViewModel(),
+    playlistViewModel: PlaylistViewModel = hiltViewModel(),
     onOpenSidebar: () -> Unit
 ) {
     val context = LocalContext.current
@@ -142,6 +147,8 @@ fun HomeScreen(
     val homeMixPreviewSongs by playerViewModel.homeMixPreviewSongs.collectAsStateWithLifecycle()
     val playbackHistory by playerViewModel.playbackHistory.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
+    var showAiPlaylistDialog by remember { mutableStateOf(false) }
 
     val usesFallbackHomeMix = remember(curatedYourMixSongs, dailyMixSongs) {
         curatedYourMixSongs.isEmpty() && dailyMixSongs.isEmpty()
@@ -324,6 +331,24 @@ fun HomeScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
+                item(
+                    key = "ai_playlist_entry",
+                    contentType = "ai_playlist_entry"
+                ) {
+                    AiGenerateEntryCard(
+                        configured = isAiConfigured,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        onClick = {
+                            if (isAiConfigured) {
+                                showAiPlaylistDialog = true
+                            } else {
+                                navController.navigateSafely(
+                                    Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
+                                )
+                            }
+                        }
+                    )
+                }
                 if (yourMixSongs.isEmpty()) {
                     item(
                         key = "your_mix_placeholder",
@@ -525,6 +550,23 @@ fun HomeScreen(
             BetaInfoBottomSheet()
         }
     }
+    val aiPlaylistPreviewState by playlistViewModel.aiPlaylistPreviewState.collectAsStateWithLifecycle()
+    DescribePlaylistDialog(
+        visible = showAiPlaylistDialog,
+        state = aiPlaylistPreviewState,
+        title = stringResource(R.string.ai_playlist_dialog_title),
+        subtitle = stringResource(R.string.ai_playlist_dialog_subtitle),
+        onGenerate = playlistViewModel::generateAiPlaylistPreview,
+        onSave = { name, songIds ->
+            playlistViewModel.createPlaylist(name = name, songIds = songIds)
+            playlistViewModel.resetAiPlaylistPreview()
+            showAiPlaylistDialog = false
+        },
+        onDismiss = {
+            playlistViewModel.resetAiPlaylistPreview()
+            showAiPlaylistDialog = false
+        }
+    )
     if (showStreamingProviderSheet) {
         val isNavidromeLoggedIn by navidromeViewModel.isLoggedIn.collectAsStateWithLifecycle()
         val isJellyfinLoggedIn by jellyfinViewModel.isLoggedIn.collectAsStateWithLifecycle()

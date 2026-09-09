@@ -251,10 +251,12 @@ di/ 相关模块（AppModule 等，注册 client/dao/handler/repo）
       验证：编译通过。
 - [x] **S4 业务层**：`AiHandler`（缓存/用量/超时/降级）+ `AiSystemPromptEngine`。
       验证：编译通过。`AiPlaylistGenerator`（本地模糊匹配）待 S5 主页入口时实现。
-- [~] **S5 UI**：设置 AI 分类 + `AiSettingsScreen`（含模型下拉）+ 用量 + 诊断按钮。✅ 已完成
-      **待办**：主页 `AiGenerateEntryCard` + `AiPlaylistSheet` + 路由接线。
+- [x] **S4b 歌单生成**：`AiPlaylistGenerator` — 解析 `Title - Artist` 行 → 归一化 + bigram 相似度
+      匹配本地曲库（阈值 0.5，艺人加权 0.25）→ 只返回设备上真实存在的歌。
+- [x] **S5 UI**：设置 AI 分类 + `AiSettingsScreen`（含模型下拉）+ 用量 + 诊断按钮；
+      主页 `AiGenerateEntryCard` + 复用 `DescribePlaylistDialog` 作为生成弹窗（加 title/subtitle
+      参数与 error 展示）。
       验证：`assembleDebug` 通过。
-- [ ] **S4b 歌单生成**：`AiPlaylistGenerator` — 模型返回的歌名列表 → 本地模糊匹配 → 写入歌单。
 - [ ] **S6 联调**：装真机，配置火山/自定义端点，跑通「主页入口 → 描述 → 生成歌单 → 播放」。
 - [ ] **S7 提交推送**：分「数据/偏好/网络/业务」一个 commit、「UI + strings」一个 commit，
       push `pisces/port`（不 pick 到 master，master 无 AI 需求）。
