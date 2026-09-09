@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings category -->
+    <string name="settings_category_ai_title">AI</string>
+    <string name="settings_category_ai_subtitle">Generate playlists with an OpenAI-compatible model</string>
+
+    <!-- AI settings screen -->
+    <string name="ai_section_provider">Provider</string>
+    <string name="ai_provider_label">Provider</string>
+    <string name="ai_provider_subtitle">Which OpenAI-compatible endpoint to call</string>
+    <string name="ai_section_credentials">Credentials &amp; model</string>
+    <string name="ai_api_key_label">API Key</string>
+    <string name="ai_api_key_placeholder">Not set</string>
+    <string name="ai_base_url_label">Base URL</string>
+    <string name="ai_base_url_placeholder">https://example.com/v1</string>
+    <string name="ai_model_label">Model</string>
+    <string name="ai_model_placeholder">Fetch models or type an id</string>
+    <string name="ai_model_fetch">Fetch</string>
+    <string name="ai_model_no_list">No model list yet — enter the model id manually</string>
+    <string name="ai_model_pick">Choose a model</string>
+
+    <string name="ai_thinking_title">Enable thinking</string>
+    <string name="ai_thinking_subtitle">Let the model reason before answering. Costs extra tokens and adds latency.</string>
+
+    <string name="ai_section_actions">Diagnostics</string>
+    <string name="ai_action_test">Test connection</string>
+    <string name="ai_action_clear_cache">Clear cache</string>
+
+    <string name="ai_section_usage">Usage</string>
+    <string name="ai_usage_summary">Prompt %1$d · Output %2$d · Thinking %3$d</string>
+    <string name="ai_usage_none">No requests recorded yet</string>
+
+    <!-- Status messages -->
+    <string name="ai_status_models_loaded">%1$d models available</string>
+    <string name="ai_status_test_ok">Connection OK</string>
+    <string name="ai_status_cache_cleared">AI cache cleared</string>
+    <string name="ai_error_unauthorized">Unauthorized — check the API key</string>
+    <string name="ai_error_quota">Quota exhausted</string>
+    <string name="ai_error_model_not_found">Model not found — check the model id</string>
+    <string name="ai_error_rate_limited">Rate limited — try again later</string>
+    <string name="ai_error_server">Provider server error</string>
+    <string name="ai_error_network">Network unreachable</string>
+    <string name="ai_error_parse">Unexpected response from provider</string>
+    <string name="ai_error_unknown">Request failed</string>
+</resources>

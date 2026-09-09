@@ -2,6 +2,7 @@ package com.lostf1sh.pixelplayeross.presentation.model
 
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeveloperBoard
 import androidx.compose.material.icons.rounded.DeveloperMode
 import androidx.compose.material.icons.rounded.GraphicEq
@@ -42,6 +43,12 @@ enum class SettingsCategory(
         titleRes = R.string.settings_category_behavior_title,
         subtitleRes = R.string.settings_category_behavior_subtitle,
         iconRes = R.drawable.rounded_touch_app_24
+    ),
+    AI(
+        id = "ai",
+        titleRes = R.string.settings_category_ai_title,
+        subtitleRes = R.string.settings_category_ai_subtitle,
+        icon = Icons.Rounded.AutoAwesome
     ),
     BACKUP_RESTORE(
         id = "backup_restore",

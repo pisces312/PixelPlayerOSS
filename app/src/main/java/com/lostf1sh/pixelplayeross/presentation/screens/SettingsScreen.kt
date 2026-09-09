@@ -646,6 +646,7 @@ fun getCategoryColors(category: SettingsCategory, isDark: Boolean): Pair<Color, 
             SettingsCategory.DEVELOPER -> Color(0xFF324F34) to Color(0xFFCBEFD0) 
             SettingsCategory.EQUALIZER -> Color(0xFF6E4E13) to Color(0xFFFFDEAC) 
             SettingsCategory.DEVICE_CAPABILITIES -> Color(0xFF004D61) to Color(0xFFACEFEE)
+            SettingsCategory.AI -> Color(0xFF4A3B7D) to Color(0xFFE3D9FF)
             SettingsCategory.ABOUT -> Color(0xFF3F474D) to Color(0xFFDEE3EB) 
         }
     } else {
@@ -658,6 +659,7 @@ fun getCategoryColors(category: SettingsCategory, isDark: Boolean): Pair<Color, 
             SettingsCategory.DEVELOPER -> Color(0xFFCBEFD0) to Color(0xFF042106)
             SettingsCategory.EQUALIZER -> Color(0xFFFFDEAC) to Color(0xFF281900)
             SettingsCategory.DEVICE_CAPABILITIES -> Color(0xFFACEFEE) to Color(0xFF002022)
+            SettingsCategory.AI -> Color(0xFFE8DDFF) to Color(0xFF2B1B5E)
             SettingsCategory.ABOUT -> Color(0xFFEFF1F7) to Color(0xFF44474F)
         }
     }

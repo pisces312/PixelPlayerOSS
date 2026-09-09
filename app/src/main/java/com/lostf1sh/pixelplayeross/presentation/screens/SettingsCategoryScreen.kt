@@ -1235,6 +1235,9 @@ fun SettingsCategoryScreen(
                                 )
                             }
                         }
+                        SettingsCategory.AI -> {
+                            AiSettingsSection()
+                        }
                         SettingsCategory.EQUALIZER -> {
                         }
                         SettingsCategory.DEVICE_CAPABILITIES -> {
