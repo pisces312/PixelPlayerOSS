@@ -100,7 +100,6 @@ import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSection
 import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSectionMinSongsToShow
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
-import com.lostf1sh.pixelplayeross.presentation.components.StatsOverviewCard
 import com.lostf1sh.pixelplayeross.presentation.components.resolveMainScreenBottomGradientHeight
 import com.lostf1sh.pixelplayeross.presentation.model.SettingsCategory
 import com.lostf1sh.pixelplayeross.presentation.model.collectRecentlyPlayedSongIds
@@ -111,7 +110,6 @@ import com.lostf1sh.pixelplayeross.presentation.components.StreamingProviderShee
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.SettingsViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
-import com.lostf1sh.pixelplayeross.presentation.viewmodel.StatsViewModel
 import com.lostf1sh.pixelplayeross.ui.theme.ExpTitleTypography
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -143,7 +141,6 @@ fun HomeScreen(
     val isBenchmarkMode = remember {
         (context as? android.app.Activity)?.intent?.getBooleanExtra("is_benchmark", false) ?: false
     }
-    val statsViewModel: StatsViewModel = hiltViewModel()
     val settingsUiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
     val dailyMixSongs by playerViewModel.dailyMixSongs.collectAsStateWithLifecycle()
     val curatedYourMixSongs by playerViewModel.yourMixSongs.collectAsStateWithLifecycle()
@@ -256,8 +253,6 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     LocalContext.current
 
-    val homeStatsOverview by statsViewModel.homeOverview.collectAsStateWithLifecycle()
-
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val density = LocalDensity.current
     val scrollThresholdPx = remember(density) { with(density) { 180.dp.toPx() } }
@@ -285,8 +280,7 @@ fun HomeScreen(
         needsScrollRestore,
         yourMixSongs.isNotEmpty(),
         dailyMixSongs.isNotEmpty(),
-        recentlyPlayedSongs.size,
-        homeStatsOverview
+        recentlyPlayedSongs.size
     ) {
         if (!needsScrollRestore) return@LaunchedEffect
         val totalItems = listState.layoutInfo.totalItemsCount
@@ -486,18 +480,6 @@ fun HomeScreen(
                             themeStateHolder = playerViewModel.themeStateHolder,
                             currentSongId = currentSong?.id,
                             contentPadding = PaddingValues(start = 8.dp, end = 24.dp)
-                        )
-                    }
-                }
-
-                if (homeStatsOverview != null) {
-                    item(
-                        key = "listening_stats_preview",
-                        contentType = "listening_stats_preview"
-                    ) {
-                        StatsOverviewCard(
-                            summary = homeStatsOverview,
-                            onClick = { navController.navigateSafely(Screen.Stats.route) }
                         )
                     }
                 }

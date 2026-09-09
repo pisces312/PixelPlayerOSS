@@ -342,15 +342,38 @@ fun AppNavigation(
             }
             composable(
                 Screen.Stats.route,
-                enterTransition = { enterTransition() },
-                exitTransition = { exitTransition() },
-                popEnterTransition = { popEnterTransition() },
-                popExitTransition = { popExitTransition() },
+                enterTransition = {
+                    mainRootEnterTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = enterTransition()
+                    )
+                },
+                exitTransition = {
+                    mainRootExitTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = exitTransition()
+                    )
+                },
+                popEnterTransition = {
+                    mainRootEnterTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = popEnterTransition()
+                    )
+                },
+                popExitTransition = {
+                    mainRootExitTransition(
+                        fromRoute = initialState.destination.route,
+                        toRoute = targetState.destination.route,
+                        fallback = popExitTransition()
+                    )
+                },
             ) {
                 val statsViewModel: StatsViewModel = hiltViewModel()
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                     StatsScreen(
-                        navController = navController,
                         onSongClick = { songId -> playerViewModel.playSongById(songId) },
                         onArtistClick = { name ->
                             statsViewModel.resolveArtistId(name)?.let { artistId ->
@@ -361,11 +384,6 @@ fun AppNavigation(
                             statsViewModel.resolveAlbumId(name)?.let { albumId ->
                                 navController.navigateSafely(Screen.AlbumDetail.createRoute(albumId))
                             }
-                        },
-                        onGenreClick = { genre ->
-                            navController.navigateSafely(
-                                Screen.GenreDetail.createRoute(java.net.URLEncoder.encode(genre, "UTF-8"))
-                            )
                         },
                         statsViewModel = statsViewModel
                     )
@@ -700,6 +718,7 @@ fun AppNavigation(
 private fun String.toRoute(): String = when (this) {
     LaunchTab.SEARCH -> Screen.Search.route
     LaunchTab.LIBRARY -> Screen.Library.route
+    LaunchTab.STATS -> Screen.Stats.route
     else -> Screen.Home.route
 }
 

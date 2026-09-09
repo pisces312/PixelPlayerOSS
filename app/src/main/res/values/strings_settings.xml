@@ -142,6 +142,7 @@
     <string name="setcat_default_tab_label">Default Tab</string>
     <string name="setcat_default_tab_desc">Choose the Default launch tab.</string>
     <string name="tab_home">Home</string>
+    <string name="tab_stats">Stats</string>
     <string name="setcat_library_navigation_label">Library Navigation</string>
     <string name="setcat_library_navigation_desc">Choose how to move between Library tabs.</string>
     <string name="setcat_library_nav_tab_row">Tab row (default)</string>

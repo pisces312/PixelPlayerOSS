@@ -117,6 +117,7 @@
     <string name="setcat_default_tab_label">默认启动页面</string>
     <string name="setcat_default_tab_desc">设置打开应用默认显示的标签页</string>
     <string name="tab_home">首页</string>
+    <string name="tab_stats">听歌统计</string>
     <string name="setcat_library_navigation_label">曲库导航方式</string>
     <string name="setcat_library_navigation_desc">切换曲库标签页的交互形式</string>
     <string name="setcat_library_nav_tab_row">标签栏（默认）</string>

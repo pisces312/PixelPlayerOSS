@@ -44,9 +44,6 @@ class StatsViewModel @Inject constructor(
     private val _weeklyOverview = MutableStateFlow<PlaybackStatsSummary?>(null)
     val weeklyOverview: StateFlow<PlaybackStatsSummary?> = _weeklyOverview.asStateFlow()
 
-    private val _homeOverview = MutableStateFlow<PlaybackStatsSummary?>(null)
-    val homeOverview: StateFlow<PlaybackStatsSummary?> = _homeOverview.asStateFlow()
-
     @Volatile
     private var cachedSongs: List<Song>? = null
 
@@ -57,7 +54,6 @@ class StatsViewModel @Inject constructor(
             showLoading = true,
             updateWeeklyOverview = true
         )
-        refreshHomeOverview()
     }
 
     fun onRangeSelected(range: StatsTimeRange) {
@@ -106,28 +102,6 @@ class StatsViewModel @Inject constructor(
             }.onFailure { throwable ->
                 Timber.e(throwable, "Failed to load weekly stats overview")
                 _weeklyOverview.value = null
-            }
-        }
-    }
-
-    fun refreshHomeOverview() {
-        viewModelScope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    val songs = loadSongs()
-                    for (range in HomeOverviewRanges) {
-                        val summary = playbackStatsRepository.loadSummary(range, songs)
-                        if (summary.hasListeningActivity()) {
-                            return@withContext summary
-                        }
-                    }
-                    null
-                }
-            }.onSuccess { summary ->
-                _homeOverview.value = summary
-            }.onFailure { throwable ->
-                Timber.e(throwable, "Failed to load home stats overview")
-                _homeOverview.value = null
             }
         }
     }
@@ -181,7 +155,6 @@ class StatsViewModel @Inject constructor(
                     if (selectedPeriod.range != StatsTimeRange.WEEK || selectedPeriod.anchorMillis != null) {
                         refreshWeeklyOverview()
                     }
-                    refreshHomeOverview()
                 }
         }
     }
@@ -210,22 +183,5 @@ class StatsViewModel @Inject constructor(
         val songs = musicRepository.getAllSongsOnce()
         cachedSongs = songs
         return songs
-    }
-
-    private fun PlaybackStatsSummary.hasListeningActivity(): Boolean {
-        return totalDurationMs > 0L ||
-            totalPlayCount > 0 ||
-            uniqueSongs > 0 ||
-            activeDays > 0 ||
-            totalSessions > 0
-    }
-
-    private companion object {
-        val HomeOverviewRanges = listOf(
-            StatsTimeRange.WEEK,
-            StatsTimeRange.MONTH,
-            StatsTimeRange.YEAR,
-            StatsTimeRange.ALL
-        )
     }
 }
