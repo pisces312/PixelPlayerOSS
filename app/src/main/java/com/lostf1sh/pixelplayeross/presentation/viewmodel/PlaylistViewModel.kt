@@ -447,13 +447,6 @@ class PlaylistViewModel @Inject constructor(
         viewModelScope.launch { aiPreferences.setLibrarySampleMode(mode) }
     }
 
-    /** Starts out true so the AI entry stays hidden until the library size is known. */
-    val isLibraryEmpty: StateFlow<Boolean> =
-            musicRepository
-                    .getSongCountFlow()
-                    .map { it == 0 }
-                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
-
     /** Clears the AI preview when its dialog closes. */
     fun resetAiPlaylistPreview() {
         _aiPlaylistPreviewState.value = NlpPlaylistPreviewState()

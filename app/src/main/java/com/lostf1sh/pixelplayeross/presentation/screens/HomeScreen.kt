@@ -151,7 +151,6 @@ fun HomeScreen(
     val playbackHistory by playerViewModel.playbackHistory.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
-    val isLibraryEmpty by playlistViewModel.isLibraryEmpty.collectAsStateWithLifecycle()
     val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
     var showAiPlaylistDialog by remember { mutableStateOf(false) }
 
@@ -336,25 +335,26 @@ fun HomeScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                if (!isLibraryEmpty) {
-                    item(
-                        key = "ai_playlist_entry",
-                        contentType = "ai_playlist_entry"
-                    ) {
-                        AiGenerateEntryCard(
-                            configured = isAiConfigured,
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            onClick = {
-                                if (isAiConfigured) {
-                                    showAiPlaylistDialog = true
-                                } else {
-                                    navController.navigateSafely(
-                                        Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
-                                    )
-                                }
+                // Always declared: the scroll position is restored by index, so an item that
+                // appears only after the library size is known would shift everything by one and
+                // push this card above the viewport.
+                item(
+                    key = "ai_playlist_entry",
+                    contentType = "ai_playlist_entry"
+                ) {
+                    AiGenerateEntryCard(
+                        configured = isAiConfigured,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        onClick = {
+                            if (isAiConfigured) {
+                                showAiPlaylistDialog = true
+                            } else {
+                                navController.navigateSafely(
+                                    Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
+                                )
                             }
-                        )
-                    }
+                        }
+                    )
                 }
                 if (yourMixSongs.isEmpty()) {
                     item(
