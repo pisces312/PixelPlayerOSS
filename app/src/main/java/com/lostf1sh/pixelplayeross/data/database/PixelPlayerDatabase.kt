@@ -25,9 +25,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         JellyfinPlaylistEntity::class,
         ListenBrainzPendingListenEntity::class,
         AudioBookmarkEntity::class,
-        OfflineTrackEntity::class
+        OfflineTrackEntity::class,
+        AiCacheEntity::class,
+        AiUsageEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class PixelPlayerDatabase : RoomDatabase() {
@@ -44,6 +46,8 @@ abstract class PixelPlayerDatabase : RoomDatabase() {
     abstract fun listenBrainzDao(): ListenBrainzDao
     abstract fun audioBookmarkDao(): AudioBookmarkDao
     abstract fun offlineTrackDao(): OfflineTrackDao
+    abstract fun aiCacheDao(): AiCacheDao
+    abstract fun aiUsageDao(): AiUsageDao
 
     companion object {
         fun installFavoriteSyncTriggers(db: SupportSQLiteDatabase) {

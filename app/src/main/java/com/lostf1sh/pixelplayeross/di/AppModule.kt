@@ -17,6 +17,8 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.lostf1sh.pixelplayeross.BuildConfig
 import com.lostf1sh.pixelplayeross.PixelPlayerApplication
+import com.lostf1sh.pixelplayeross.data.database.AiCacheDao
+import com.lostf1sh.pixelplayeross.data.database.AiUsageDao
 import com.lostf1sh.pixelplayeross.data.database.AlbumArtThemeDao
 import com.lostf1sh.pixelplayeross.data.database.EngagementDao
 import com.lostf1sh.pixelplayeross.data.database.FavoritesDao
@@ -30,6 +32,7 @@ import com.lostf1sh.pixelplayeross.data.database.MIGRATION_3_4
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_4_5
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_5_6
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_6_7
+import com.lostf1sh.pixelplayeross.data.database.MIGRATION_7_8
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.OfflineTrackDao
 import com.lostf1sh.pixelplayeross.data.database.PixelPlayerDatabase
@@ -141,6 +144,7 @@ object AppModule {
                 MIGRATION_4_5,
                 MIGRATION_5_6,
                 MIGRATION_6_7,
+                MIGRATION_7_8,
             )
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
 
@@ -227,6 +231,18 @@ object AppModule {
     @Provides
     fun provideOfflineTrackDao(database: PixelPlayerDatabase): OfflineTrackDao {
         return database.offlineTrackDao()
+    }
+
+    @Singleton
+    @Provides
+    fun provideAiCacheDao(database: PixelPlayerDatabase): AiCacheDao {
+        return database.aiCacheDao()
+    }
+
+    @Singleton
+    @Provides
+    fun provideAiUsageDao(database: PixelPlayerDatabase): AiUsageDao {
+        return database.aiUsageDao()
     }
 
     @Provides

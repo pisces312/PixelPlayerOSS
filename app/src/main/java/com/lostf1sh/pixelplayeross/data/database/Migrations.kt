@@ -212,3 +212,42 @@ val MIGRATION_6_7 = object : Migration(6, 7) {
         db.addColumnIfMissing("favorites", "rating", "`rating` INTEGER NOT NULL DEFAULT 0")
     }
 }
+
+/**
+ * v7 -> v8: AI playlist generation support tables.
+ *
+ * - `ai_cache`: prompt hash -> raw model response, so an identical request is served without
+ *   hitting the provider again.
+ * - `ai_usage`: one row per completed request, backing the token usage report in AI settings.
+ *
+ * Both tables are created only when missing so a database restored by Auto Backup with drifted
+ * tables still migrates cleanly.
+ */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+                CREATE TABLE IF NOT EXISTS `ai_cache` (
+                    `promptHash` TEXT NOT NULL,
+                    `responseJson` TEXT NOT NULL,
+                    `timestamp` INTEGER NOT NULL,
+                    PRIMARY KEY(`promptHash`)
+                )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+                CREATE TABLE IF NOT EXISTS `ai_usage` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `timestamp` INTEGER NOT NULL,
+                    `provider` TEXT NOT NULL,
+                    `model` TEXT NOT NULL,
+                    `promptType` TEXT NOT NULL,
+                    `promptTokens` INTEGER NOT NULL,
+                    `outputTokens` INTEGER NOT NULL,
+                    `thoughtTokens` INTEGER NOT NULL
+                )
+            """.trimIndent()
+        )
+    }
+}
