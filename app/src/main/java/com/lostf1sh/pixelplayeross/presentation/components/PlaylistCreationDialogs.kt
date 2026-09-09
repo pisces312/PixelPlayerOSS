@@ -593,4 +593,4 @@ private fun sampleModeHint(mode: AiLibrarySampleMode): Int =
 
 /** Default playlist name: when the list was generated. Editable before saving. */
 private fun timestampName(): String =
-        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))

@@ -101,10 +101,16 @@ constructor(private val dataStore: DataStore<Preferences>) {
                 preferences[Keys.getModel(provider)] ?: provider.defaultModel
             }
 
+    /**
+     * The stored url, or an empty string when the user never set one.
+     *
+     * Deliberately not [AiProvider.defaultBaseUrl]: callers would then be unable to tell "user
+     * chose this" from "nobody chose anything", which is exactly what lets
+     * [AiProvider.resolveBaseUrl] pick MiMo's endpoint from the key shape. Resolve the effective
+     * endpoint through that function instead of reading a default here.
+     */
     fun getBaseUrl(provider: AiProvider): Flow<String> =
-            dataStore.data.map { preferences ->
-                preferences[Keys.getBaseUrl(provider)] ?: provider.defaultBaseUrl
-            }
+            dataStore.data.map { preferences -> preferences[Keys.getBaseUrl(provider)] ?: "" }
 
     /**
      * Whether the model should emit a chain of thought before answering.

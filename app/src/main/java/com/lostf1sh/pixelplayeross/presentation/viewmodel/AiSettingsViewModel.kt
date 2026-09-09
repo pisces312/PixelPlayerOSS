@@ -191,7 +191,10 @@ constructor(
                     AiErrorKind.RESPONSE_PARSE -> R.string.ai_error_parse
                     else -> R.string.ai_error_unknown
                 }
-        return context.getString(resId)
+        val text = context.getString(resId)
+        // The provider's own wording is the only way to tell a wrong key from a wrong url.
+        val detail = (throwable as? AiProviderException)?.message
+        return if (detail.isNullOrBlank()) text else "$text\n$detail"
     }
 
     companion object {
