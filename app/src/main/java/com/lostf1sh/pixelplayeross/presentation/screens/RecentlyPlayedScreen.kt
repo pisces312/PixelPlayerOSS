@@ -71,19 +71,22 @@ import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.stats.PlaybackStatsRepository
 import com.lostf1sh.pixelplayeross.data.stats.StatsTimeRange
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.PlaylistBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedRangeSelector
 import com.lostf1sh.pixelplayeross.presentation.components.SongInfoBottomSheet
+import com.lostf1sh.pixelplayeross.presentation.components.MergedRecentlyPlayedSong
+import com.lostf1sh.pixelplayeross.presentation.components.MergedRecentlyPlayedSongItem
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
-import com.lostf1sh.pixelplayeross.presentation.components.subcomps.EnhancedSongListItem
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.model.RecentlyPlayedSongUiModel
 import com.lostf1sh.pixelplayeross.presentation.model.collectRecentlyPlayedSongIds
 import com.lostf1sh.pixelplayeross.presentation.model.mapRecentlyPlayedSongs
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
+import com.lostf1sh.pixelplayeross.utils.formatListeningDurationCompact
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -148,10 +151,12 @@ fun RecentlyPlayedScreen(
             maxItems = Int.MAX_VALUE
         ).toImmutableList()
     }
-    val groupedSongs = remember(recentlyPlayedSongs, selectedRange, context) {
+    val groupedSongs = remember(playbackHistory, recentlyPlayedSourceSongs, selectedRange, context) {
+        val sourceSongs = recentlyPlayedSourceSongs ?: return@remember emptyList()
         groupRecentlyPlayedSongs(
             context = context,
-            songs = recentlyPlayedSongs,
+            playbackHistory = playbackHistory,
+            songs = sourceSongs,
             range = selectedRange
         )
     }
@@ -242,14 +247,18 @@ fun RecentlyPlayedScreen(
                         item(key = "recently_played_time_${groupIndex}_${group.key}") {
                             RecentlyPlayedTimestampDivider(
                                 label = group.label,
-                                isHourBucket = group.isHourBucket,
+                                playCount = group.playCount,
+                                durationMs = group.durationMs,
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
                         }
-                        items(group.songs, key = { songUi -> songUi.song.id }, contentType = { "recently_played_song" }) { item ->
-                            EnhancedSongListItem(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                song = item.song,
+                        items(
+                            items = group.songs,
+                            key = { merged -> "${group.key}_${merged.song.id}" },
+                            contentType = { "recently_played_song" }
+                        ) { item ->
+                            MergedRecentlyPlayedSongItem(
+                                item = item,
                                 isCurrentSong = currentSongId == item.song.id,
                                 isPlaying = currentSongId == item.song.id && isPlaying,
                                 onClick = {
@@ -259,8 +268,8 @@ fun RecentlyPlayedScreen(
                                         queueName = queueRecentlyPlayed
                                     )
                                 },
-                                onMoreOptionsClick = { song ->
-                                    playerViewModel.selectSongForInfo(song)
+                                onMoreOptionsClick = {
+                                    playerViewModel.selectSongForInfo(item.song)
                                     showSongInfoBottomSheet = true
                                 }
                             )
@@ -522,17 +531,14 @@ private fun RecentlyPlayedActions(
 @Composable
 private fun RecentlyPlayedTimestampDivider(
     label: String,
-    isHourBucket: Boolean,
+    playCount: Int,
+    durationMs: Long,
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    val railColor = if (isHourBucket) colors.primary else colors.secondary
-    val chipContainer = if (isHourBucket) {
-        colors.primaryContainer.copy(alpha = 0.78f)
-    } else {
-        colors.secondaryContainer.copy(alpha = 0.78f)
-    }
-    val chipContent = if (isHourBucket) colors.onPrimaryContainer else colors.onSecondaryContainer
+    val railColor = colors.secondary
+    val chipContainer = colors.secondaryContainer.copy(alpha = 0.78f)
+    val chipContent = colors.onSecondaryContainer
 
     Row(
         modifier = modifier
@@ -580,7 +586,7 @@ private fun RecentlyPlayedTimestampDivider(
                         .background(railColor)
                 )
                 Text(
-                    text = label,
+                    text = "$label • ${stringResource(R.string.presentation_batch_g_stats_n_plays, playCount)} • ${formatListeningDurationCompact(durationMs)}",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = chipContent
@@ -649,121 +655,115 @@ private fun RecentlyPlayedEmptyState(
 private data class TimestampGroup(
     val key: String,
     val label: String,
-    val isHourBucket: Boolean,
-    val songs: List<RecentlyPlayedSongUiModel>
+    val playCount: Int,
+    val durationMs: Long,
+    val songs: List<MergedRecentlyPlayedSong>
 )
 
 private fun groupRecentlyPlayedSongs(
     context: android.content.Context,
-    songs: List<RecentlyPlayedSongUiModel>,
+    playbackHistory: List<PlaybackStatsRepository.PlaybackHistoryEntry>,
+    songs: List<Song>,
     range: StatsTimeRange
 ): List<TimestampGroup> {
-    if (songs.isEmpty()) return emptyList()
+    if (playbackHistory.isEmpty() || songs.isEmpty()) return emptyList()
     val zoneId = ZoneId.systemDefault()
-    val sorted = songs.sortedByDescending { it.lastPlayedTimestamp }
+    val songById = songs.associateBy { it.id }
+    val nowMillis = System.currentTimeMillis()
+    val (startBound, endBound) = range.resolveBounds(
+        nowMillis = nowMillis.coerceAtLeast(0L),
+        zoneId = zoneId
+    )
 
-    val groups = mutableListOf<TimestampGroup>()
-    var currentBucketKey: String? = null
-    var currentLabel: String? = null
-    var currentIsHourBucket = false
-    var bucket = mutableListOf<RecentlyPlayedSongUiModel>()
-
-    sorted.forEach { item ->
-        val timeBucket = resolveTimestampBucket(
-            context = context,
-            timestamp = item.lastPlayedTimestamp,
-            range = range,
-            zoneId = zoneId
-        )
-        if (currentBucketKey == null || currentBucketKey == timeBucket.key) {
-            currentBucketKey = timeBucket.key
-            currentLabel = timeBucket.label
-            currentIsHourBucket = timeBucket.isHourBucket
-            bucket += item
-        } else {
-            groups += TimestampGroup(
-                key = currentBucketKey,
-                label = currentLabel!!,
-                isHourBucket = currentIsHourBucket,
-                songs = bucket
-            )
-            currentBucketKey = timeBucket.key
-            currentLabel = timeBucket.label
-            currentIsHourBucket = timeBucket.isHourBucket
-            bucket = mutableListOf(item)
+    val entriesInRange = playbackHistory
+        .filter { entry ->
+            val safeTimestamp = entry.timestamp.coerceAtLeast(0L)
+            safeTimestamp <= endBound && (startBound == null || safeTimestamp >= startBound)
         }
+        .sortedByDescending { it.timestamp }
+
+    val groupedByDay = entriesInRange.groupBy { entry ->
+        Instant.ofEpochMilli(entry.timestamp.coerceAtLeast(0L))
+            .atZone(zoneId)
+            .toLocalDate()
+            .toString()
     }
 
-    if (bucket.isNotEmpty() && currentLabel != null && currentBucketKey != null) {
-        groups += TimestampGroup(
-            key = currentBucketKey,
-            label = currentLabel,
-            isHourBucket = currentIsHourBucket,
-            songs = bucket
+    return groupedByDay.map { (dateKey, dayEntries) ->
+        val merged = dayEntries
+            .groupBy { it.songId }
+            .mapNotNull { (_, songEntries) ->
+                val representative = songEntries.maxBy { it.timestamp }
+                val song = songById[representative.songId]
+                song?.let {
+                    MergedRecentlyPlayedSong(
+                        song = it,
+                        lastPlayedTimestamp = representative.timestamp,
+                        playCount = songEntries.size,
+                        totalDurationMs = songEntries.sumOf { entry -> entry.durationMs.coerceAtLeast(0L) }
+                    )
+                }
+            }
+            .sortedByDescending { it.lastPlayedTimestamp }
+        val label = resolveDayLabel(
+            context = context,
+            dateString = dateKey,
+            zoneId = zoneId,
+            nowMillis = nowMillis
+        )
+        TimestampGroup(
+            key = dateKey,
+            label = label,
+            playCount = dayEntries.size,
+            durationMs = dayEntries.sumOf { it.durationMs.coerceAtLeast(0L) },
+            songs = merged
         )
     }
-
-    return groups
 }
 
-private data class TimestampBucket(
-    val key: String,
-    val label: String,
-    val isHourBucket: Boolean
-)
-
-private fun resolveTimestampBucket(
+private fun resolveDayLabel(
     context: android.content.Context,
-    timestamp: Long,
-    range: StatsTimeRange,
-    zoneId: ZoneId
-): TimestampBucket {
-    val safeTimestamp = timestamp.coerceAtLeast(0L)
-    val safeNow = System.currentTimeMillis().coerceAtLeast(0L)
-    val zonedDateTime = Instant.ofEpochMilli(safeTimestamp).atZone(zoneId)
-    val date = zonedDateTime.toLocalDate()
-    val nowDate = Instant.ofEpochMilli(safeNow).atZone(zoneId).toLocalDate()
-
-    if (range == StatsTimeRange.DAY) {
-        val hourStart = zonedDateTime
-            .withMinute(0)
-            .withSecond(0)
-            .withNano(0)
-        return TimestampBucket(
-            key = hourStart.toInstant().toEpochMilli().toString(),
-            label = hourStart.format(DateTimeFormatter.ofPattern("h a", Locale.getDefault())),
-            isHourBucket = true
-        )
+    dateString: String,
+    zoneId: ZoneId,
+    nowMillis: Long
+): String {
+    val date = java.time.LocalDate.parse(dateString)
+    val nowDate = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+    return when (date) {
+        nowDate -> context.getString(R.string.presentation_batch_b_date_today)
+        nowDate.minusDays(1) -> context.getString(R.string.presentation_batch_b_date_yesterday)
+        else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
     }
+}
 
-    return when {
-        date == nowDate -> {
-            TimestampBucket(
-                key = date.toString(),
-                label = context.getString(R.string.presentation_batch_b_date_today),
-                isHourBucket = false
-            )
+private fun StatsTimeRange.resolveBounds(
+    nowMillis: Long,
+    zoneId: ZoneId
+): Pair<Long?, Long> {
+    val safeNow = nowMillis.coerceAtLeast(0L)
+    val zonedNow = Instant.ofEpochMilli(safeNow).atZone(zoneId)
+    return when (this) {
+        StatsTimeRange.DAY -> {
+            val start = zonedNow.toLocalDate().atStartOfDay(zoneId).toInstant().toEpochMilli()
+            start to safeNow
         }
-        date == nowDate.minusDays(1) -> {
-            TimestampBucket(
-                key = date.toString(),
-                label = context.getString(R.string.presentation_batch_b_date_yesterday),
-                isHourBucket = false
-            )
+        StatsTimeRange.WEEK -> {
+            val startOfWeek = zonedNow.toLocalDate().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+            val start = startOfWeek.atStartOfDay(zoneId).toInstant().toEpochMilli()
+            start to safeNow
         }
-        range == StatsTimeRange.YEAR || range == StatsTimeRange.ALL -> {
-            TimestampBucket(
-                key = date.toString(),
-                label = date.format(DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())),
-                isHourBucket = false
-            )
+        StatsTimeRange.MONTH -> {
+            val startOfMonth = zonedNow.toLocalDate().withDayOfMonth(1)
+            val start = startOfMonth.atStartOfDay(zoneId).toInstant().toEpochMilli()
+            start to safeNow
         }
-        else -> {
-            TimestampBucket(
-                key = date.toString(),
-                label = date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())),
-                isHourBucket = false
-            )
+        StatsTimeRange.YEAR -> {
+            val startOfYear = zonedNow.toLocalDate().withDayOfYear(1)
+            val start = startOfYear.atStartOfDay(zoneId).toInstant().toEpochMilli()
+            start to safeNow
+        }
+        StatsTimeRange.ALL -> {
+            null to safeNow
         }
     }
 }

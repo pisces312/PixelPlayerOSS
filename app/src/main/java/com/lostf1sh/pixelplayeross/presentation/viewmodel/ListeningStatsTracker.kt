@@ -257,7 +257,8 @@ class ListeningStatsTracker @Inject constructor(
             val songId = session.songId
             val historyEntry = PlaybackStatsRepository.PlaybackHistoryEntry(
                 songId = songId,
-                timestamp = timestamp
+                timestamp = timestamp,
+                durationMs = listened
             )
             _playbackHistory.update { current ->
                 (listOf(historyEntry) + current).take(MAX_INTERNAL_PLAYBACK_HISTORY_ITEMS)
@@ -333,7 +334,11 @@ class ListeningStatsTracker @Inject constructor(
 
     companion object {
         private val MIN_SESSION_LISTEN_MS = TimeUnit.SECONDS.toMillis(5)
-        private const val MAX_INTERNAL_PLAYBACK_HISTORY_ITEMS = 500
+        /**
+         * Kept in memory for the Recently Played screen. History itself is no longer pruned by
+         * age, so this is a UI cap rather than a data retention limit.
+         */
+        private const val MAX_INTERNAL_PLAYBACK_HISTORY_ITEMS = 2_000
     }
 }
 
