@@ -19,6 +19,6 @@ data class FavoritesEntity(
     val isFavorite: Boolean = true,
     @SerializedName(value = "timestamp", alternate = ["addedAt", "added_at"])
     val timestamp: Long = System.currentTimeMillis(),
-    @SerializedName(value = "rating", alternate = ["rating"])
+    @SerializedName("rating")
     val rating: Int = 0
 )
