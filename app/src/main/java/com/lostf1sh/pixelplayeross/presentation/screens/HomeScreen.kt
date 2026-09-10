@@ -33,8 +33,9 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeExtendedFloatingActionButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -63,17 +64,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
@@ -86,13 +81,13 @@ import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.CollagePattern
 import com.lostf1sh.pixelplayeross.presentation.components.AiGenerateEntryCard
+import com.lostf1sh.pixelplayeross.presentation.components.AiMixSheet
 import com.lostf1sh.pixelplayeross.presentation.components.AlbumArtCollage
 import com.lostf1sh.pixelplayeross.presentation.components.BetaInfoBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.ChangelogBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.jellyfin.dashboard.JellyfinDashboardViewModel
 import com.lostf1sh.pixelplayeross.presentation.navidrome.dashboard.NavidromeDashboardViewModel
 import com.lostf1sh.pixelplayeross.presentation.components.DailyMixSection
-import com.lostf1sh.pixelplayeross.presentation.components.DescribePlaylistDialog
 import com.lostf1sh.pixelplayeross.presentation.components.SampleConfig
 import com.lostf1sh.pixelplayeross.presentation.components.HomeGradientTopBar
 import com.lostf1sh.pixelplayeross.presentation.components.HomeOptionsBottomSheet
@@ -149,7 +144,7 @@ fun HomeScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
     val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
-    var showAiPlaylistDialog by remember { mutableStateOf(false) }
+    var showAiMixSheet by remember { mutableStateOf(false) }
 
     val usesFallbackHomeMix = remember(curatedYourMixSongs, dailyMixSongs) {
         curatedYourMixSongs.isEmpty() && dailyMixSongs.isEmpty()
@@ -228,8 +223,6 @@ fun HomeScreen(
         yourMixSongs.isNotEmpty() || hasHomeLoadingMinimumElapsed || isBenchmarkMode
     }
 
-    val yourMixSong: String = "Today's Mix for you"
-
     val currentSong by remember(playerViewModel.stablePlayerState) {
         playerViewModel.stablePlayerState.map { it.currentSong }
     }.collectAsStateWithLifecycle(initialValue = null)
@@ -250,6 +243,7 @@ fun HomeScreen(
     var showStreamingProviderSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalSheetState()
     val betaSheetState = rememberModalSheetState()
+    val aiMixSheetState = rememberModalSheetState()
     val scope = rememberCoroutineScope()
     LocalContext.current
 
@@ -341,7 +335,7 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         onClick = {
                             if (isAiConfigured) {
-                                showAiPlaylistDialog = true
+                                showAiMixSheet = true
                             } else {
                                 navController.navigateSafely(
                                     Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
@@ -373,7 +367,6 @@ fun HomeScreen(
                         contentType = "your_mix_header"
                     ) {
                         YourMixHeader(
-                            song = yourMixSong,
                             isShuffleEnabled = isShuffleEnabled,
                             onPlayShuffled = {
                                 if (usesFallbackHomeMix) {
@@ -541,30 +534,57 @@ fun HomeScreen(
     }
     val aiPlaylistPreviewState by playlistViewModel.aiPlaylistPreviewState.collectAsStateWithLifecycle()
     val aiLibrarySampleSize by playlistViewModel.aiLibrarySampleSize.collectAsStateWithLifecycle()
-    DescribePlaylistDialog(
-        visible = showAiPlaylistDialog,
-        state = aiPlaylistPreviewState,
-        title = stringResource(R.string.ai_playlist_dialog_title),
-        subtitle = stringResource(R.string.ai_playlist_dialog_subtitle),
-        sampleConfig = SampleConfig(
-            modes = AiLibrarySampleMode.entries,
-            mode = aiLibrarySampleMode,
-            sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
-            size = aiLibrarySampleSize,
-            onModeChange = playlistViewModel::setAiLibrarySampleMode,
-            onSizeChange = playlistViewModel::setAiLibrarySampleSize
-        ),
-        onGenerate = playlistViewModel::generateAiPlaylistPreview,
-        onSave = { name, songIds ->
-            playlistViewModel.createPlaylist(name = name, songIds = songIds)
-            playlistViewModel.resetAiPlaylistPreview()
-            showAiPlaylistDialog = false
-        },
-        onDismiss = {
-            playlistViewModel.resetAiPlaylistPreview()
-            showAiPlaylistDialog = false
+
+    LaunchedEffect(Unit) {
+        playlistViewModel.aiMixSaved.collect { mix ->
+            if (mix.startPlayback && mix.songs.isNotEmpty()) {
+                playerViewModel.playSongs(
+                    songsToPlay = mix.songs,
+                    startSong = mix.songs.first(),
+                    queueName = mix.name,
+                    playlistId = mix.playlistId
+                )
+            }
+            playerViewModel.sendToast(context.getString(R.string.ai_mix_saved, mix.name))
         }
-    )
+    }
+
+    if (showAiMixSheet) {
+        ModalBottomSheet(
+            onDismissRequest = {
+                playlistViewModel.resetAiPlaylistPreview()
+                showAiMixSheet = false
+            },
+            sheetState = aiMixSheetState
+        ) {
+            AiMixSheet(
+                state = aiPlaylistPreviewState,
+                sampleConfig = SampleConfig(
+                    modes = AiLibrarySampleMode.entries,
+                    mode = aiLibrarySampleMode,
+                    sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
+                    size = aiLibrarySampleSize,
+                    onModeChange = playlistViewModel::setAiLibrarySampleMode,
+                    onSizeChange = playlistViewModel::setAiLibrarySampleSize
+                ),
+                onGenerate = playlistViewModel::generateAiPlaylistPreview,
+                onSave = { name, songs, prompt, startPlayback ->
+                    playlistViewModel.saveAiMix(
+                        name = name,
+                        songs = songs,
+                        prompt = prompt,
+                        startPlayback = startPlayback
+                    )
+                    playlistViewModel.resetAiPlaylistPreview()
+                    showAiMixSheet = false
+                },
+                onDismiss = {
+                    playlistViewModel.resetAiPlaylistPreview()
+                    showAiMixSheet = false
+                }
+            )
+        }
+    }
     if (showStreamingProviderSheet) {
         val isNavidromeLoggedIn by navidromeViewModel.isLoggedIn.collectAsStateWithLifecycle()
         val isJellyfinLoggedIn by jellyfinViewModel.isLoggedIn.collectAsStateWithLifecycle()
@@ -676,65 +696,49 @@ private fun YourMixEmptyPlaceholder(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun YourMixHeader(
-    song: String,
     isShuffleEnabled: Boolean = false,
     onPlayShuffled: () -> Unit
 ) {
-    val buttonCorners = 68.dp
     val colors = MaterialTheme.colorScheme
 
-    val titleStyle = rememberYourMixTitleStyle()
-
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(256.dp)
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 48.dp, start = 12.dp)
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = stringResource(R.string.home_your_mix_title),
-                style = titleStyle,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
+                // Translations keep an explicit line break from the old hero layout
+                // ("Your\nMix"); this header is single-line, so collapse it to a space.
+                text = stringResource(R.string.home_your_mix_title).replace('\n', ' '),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-
             Text(
-                text = song,
+                text = stringResource(R.string.home_your_mix_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                modifier = Modifier.padding(start = 8.dp)
+                color = colors.onSurfaceVariant
             )
         }
-        LargeExtendedFloatingActionButton(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 12.dp),
+        Spacer(modifier = Modifier.width(12.dp))
+        FilledTonalIconButton(
             onClick = onPlayShuffled,
-            containerColor = if (isShuffleEnabled) colors.primary else colors.tertiaryContainer,
-            contentColor = if (isShuffleEnabled) colors.onPrimary else colors.onTertiaryContainer,
-            shape = AbsoluteSmoothCornerShape(
-                cornerRadiusTL = buttonCorners,
-                smoothnessAsPercentTR = 60,
-                cornerRadiusBR = buttonCorners,
-                smoothnessAsPercentTL = 60,
-                cornerRadiusBL = buttonCorners,
-                smoothnessAsPercentBR = 60,
-                cornerRadiusTR = buttonCorners,
-                smoothnessAsPercentBL = 60,
+            modifier = Modifier.size(56.dp),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = if (isShuffleEnabled) colors.primary else colors.tertiaryContainer,
+                contentColor = if (isShuffleEnabled) colors.onPrimary else colors.onTertiaryContainer
             )
         ) {
             Icon(
                 painter = painterResource(R.drawable.rounded_shuffle_24),
                 contentDescription = stringResource(R.string.cd_shuffle_play),
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
     }
@@ -840,28 +844,3 @@ fun SongListItemFavsWrapper(
     )
 }
 
-
-@OptIn(ExperimentalTextApi::class)
-@Composable
-private fun rememberYourMixTitleStyle(): TextStyle {
-    return remember {
-        TextStyle(
-            fontFamily = FontFamily(
-                Font(
-                    resId = R.font.gflex_variable,
-                    variationSettings = FontVariation.Settings(
-                        FontVariation.weight(636),
-                        FontVariation.width(152f),
-                        FontVariation.Setting("ROND", 50f),
-                        FontVariation.Setting("XTRA", 520f),
-                        FontVariation.Setting("YOPQ", 90f),
-                        FontVariation.Setting("YTLC", 505f)
-                    )
-                )
-            ),
-            fontWeight = FontWeight(760),
-            fontSize = 64.sp,
-            lineHeight = 62.sp
-        )
-    }
-}

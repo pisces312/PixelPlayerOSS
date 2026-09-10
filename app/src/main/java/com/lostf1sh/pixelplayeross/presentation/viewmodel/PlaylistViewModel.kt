@@ -78,6 +78,16 @@ sealed class PlaylistSongsOrderMode {
     data class Sorted(val option: SortOption) : PlaylistSongsOrderMode()
 }
 
+/** Emitted once a generated mix has been persisted, so the UI can start playback. */
+data class AiMixSaved(
+    val playlistId: String,
+    val name: String,
+    val songs: List<Song>,
+    val prompt: String,
+    /** True when the user picked "play" rather than "save only". */
+    val startPlayback: Boolean
+)
+
 /** Preview state for the offline "describe it" playlist creation flow. */
 data class NlpPlaylistPreviewState(
     val isGenerating: Boolean = false,
@@ -122,6 +132,9 @@ class PlaylistViewModel @Inject constructor(
                     }
                     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
+    private val _aiMixSaved = MutableSharedFlow<AiMixSaved>(extraBufferCapacity = 1)
+    val aiMixSaved: SharedFlow<AiMixSaved> = _aiMixSaved.asSharedFlow()
+
     private val _playlistCreationEvent = MutableSharedFlow<Boolean>(
         extraBufferCapacity = 1,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
@@ -132,6 +145,11 @@ class PlaylistViewModel @Inject constructor(
         const val FOLDER_PLAYLIST_PREFIX = "folder_playlist:"
         private const val MANUAL_ORDER_MODE = "manual"
         private const val SMART_PLAYLIST_MAX_ITEMS = 100
+
+        /** How many tracks a generated mix asks for when the user has not picked a length. */
+        const val DEFAULT_AI_MIX_LENGTH = 25
+        /** Marks a playlist produced by the AI mix flow (Serendipity will use its own value). */
+        const val AI_MIX_SOURCE = "AI"
 
         fun sanitizeFileName(name: String): String {
             val sanitized = name.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").trim('_')
@@ -392,13 +410,13 @@ class PlaylistViewModel @Inject constructor(
      * what to fix (bad key, exhausted quota, unknown model) instead of silently returning
      * nothing.
      */
-    fun generateAiPlaylistPreview(description: String) {
+    fun generateAiPlaylistPreview(description: String, maxLength: Int = DEFAULT_AI_MIX_LENGTH) {
         if (description.isBlank()) return
         viewModelScope.launch {
             _aiPlaylistPreviewState.update {
                 it.copy(isGenerating = true, errorMessage = null, hasResult = false)
             }
-            val result = runCatching { aiPlaylistGenerator.generate(description) }
+            val result = runCatching { aiPlaylistGenerator.generate(description, maxLength) }
             _aiPlaylistPreviewState.value =
                     result.fold(
                             onSuccess = { songs ->
@@ -450,6 +468,38 @@ class PlaylistViewModel @Inject constructor(
     /** Clears the AI preview when its dialog closes. */
     fun resetAiPlaylistPreview() {
         _aiPlaylistPreviewState.value = NlpPlaylistPreviewState()
+    }
+
+    /**
+     * Persists a generated mix and reports it back so the caller can start playback.
+     *
+     * Playback lives in `PlayerViewModel`, so this only saves and emits — the screen decides
+     * what to do with the result.
+     */
+    fun saveAiMix(
+        name: String,
+        songs: List<Song>,
+        prompt: String,
+        startPlayback: Boolean,
+        source: String = AI_MIX_SOURCE
+    ) {
+        if (songs.isEmpty()) return
+        viewModelScope.launch {
+            val playlist = playlistPreferencesRepository.createPlaylist(
+                name = name,
+                songIds = songs.map { it.id },
+                source = source
+            )
+            _aiMixSaved.emit(
+                AiMixSaved(
+                    playlistId = playlist.id,
+                    name = playlist.name,
+                    songs = songs,
+                    prompt = prompt,
+                    startPlayback = startPlayback
+                )
+            )
+        }
     }
 
     private fun describeAiFailure(error: Throwable): String =

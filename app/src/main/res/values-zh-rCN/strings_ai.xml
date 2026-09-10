@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- AI mix sheet (home) -->
+    <string name="ai_mix_sheet_title">AI 歌单</string>
+    <string name="ai_mix_prompt_hint">描述一种心情、一个此刻或你正在做的事……</string>
+    <string name="ai_mix_ideas_label">灵感</string>
+    <string name="ai_mix_idea_late_night">深夜码字</string>
+    <string name="ai_mix_idea_commute">通勤提神</string>
+    <string name="ai_mix_idea_workout">健身训练</string>
+    <string name="ai_mix_idea_focus">深度专注</string>
+    <string name="ai_mix_idea_cleaning">周末打扫</string>
+    <string name="ai_mix_idea_sunday">慵懒周日清晨</string>
+    <string name="ai_mix_advanced">高级</string>
+    <string name="ai_mix_generate">生成</string>
+    <string name="ai_mix_generating">正在挑选歌曲……</string>
+    <string name="ai_mix_result_count">%1$d 首</string>
+    <string name="ai_mix_play">播放</string>
+    <string name="ai_mix_save_only">仅保存</string>
+    <string name="ai_mix_remove_song">移除歌曲</string>
+    <string name="ai_mix_saved">已保存「%1$s」</string>
+
+</resources>

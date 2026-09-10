@@ -61,6 +61,25 @@
     <string name="ai_playlist_sample_size_hint">A random slice of your library. More songs means better matches and more tokens.</string>
     <string name="ai_playlist_name_label">Playlist name</string>
 
+    <!-- AI mix sheet (home) -->
+    <string name="ai_mix_sheet_title">AI Mix</string>
+    <string name="ai_mix_prompt_hint">Describe a mood, a moment or what you are doing…</string>
+    <string name="ai_mix_ideas_label">Ideas</string>
+    <string name="ai_mix_idea_late_night">Late night coding</string>
+    <string name="ai_mix_idea_commute">Commute energy</string>
+    <string name="ai_mix_idea_workout">Workout</string>
+    <string name="ai_mix_idea_focus">Deep focus</string>
+    <string name="ai_mix_idea_cleaning">Weekend cleaning</string>
+    <string name="ai_mix_idea_sunday">Slow Sunday morning</string>
+    <string name="ai_mix_advanced">Advanced</string>
+    <string name="ai_mix_generate">Generate</string>
+    <string name="ai_mix_generating">Picking songs…</string>
+    <string name="ai_mix_result_count">%1$d songs</string>
+    <string name="ai_mix_play">Play</string>
+    <string name="ai_mix_save_only">Save only</string>
+    <string name="ai_mix_remove_song">Remove song</string>
+    <string name="ai_mix_saved">Saved “%1$s”</string>
+
     <!-- Status messages -->
     <string name="ai_status_models_loaded">%1$d models available</string>
     <string name="ai_status_test_ok">Connection OK</string>

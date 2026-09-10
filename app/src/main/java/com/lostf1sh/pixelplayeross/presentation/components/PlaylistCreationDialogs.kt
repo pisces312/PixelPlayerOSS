@@ -500,7 +500,7 @@ private fun CreationModeCard(
  * such knob.
  */
 @Composable
-private fun SampleSizeDropdown(
+fun SampleSizeDropdown(
     options: List<Int>,
     selected: Int,
     enabled: Boolean,
@@ -542,7 +542,7 @@ private fun SampleSizeDropdown(
  * the response cache) or a fresh shuffle (every song stays reachable).
  */
 @Composable
-private fun SampleModeDropdown(
+fun SampleModeDropdown(
     modes: List<AiLibrarySampleMode>,
     selected: AiLibrarySampleMode,
     enabled: Boolean,
