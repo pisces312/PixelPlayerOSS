@@ -110,37 +110,30 @@ fun RecentlyPlayedSection(
             .fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                modifier = Modifier.padding(start = 6.dp),
-                text = stringResource(R.string.presentation_batch_g_recently_played_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            FilledIconButton(
-                modifier = Modifier
-                    .height(40.dp)
-                    .width(64.dp),
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    contentColor = MaterialTheme.colorScheme.secondary
-                ),
-                onClick = onOpenAllClick,
-                enabled = visibleSongs.size >= RecentlyPlayedSectionMinSongsToShow
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
+        HomeSectionHeader(
+            title = stringResource(R.string.presentation_batch_g_recently_played_title),
+            subtitle = stringResource(R.string.presentation_batch_g_recently_played_subtitle),
+            modifier = Modifier.padding(horizontal = 14.dp),
+            action = {
+                FilledIconButton(
+                    modifier = Modifier
+                        .height(40.dp)
+                        .width(64.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.secondary
+                    ),
+                    onClick = onOpenAllClick,
+                    enabled = visibleSongs.size >= RecentlyPlayedSectionMinSongsToShow
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
-        }
+        )
 
         Box(
             modifier = Modifier

@@ -264,6 +264,7 @@
     <string name="presentation_batch_g_stats_overview_top_track">最热曲目</string>
     <string name="presentation_batch_g_stats_overview_top_track_line">%1$s · %2$d 次播放</string>
     <string name="presentation_batch_g_recently_played_title">最近播放</string>
+    <string name="presentation_batch_g_recently_played_subtitle">你最近在听的歌</string>
     <string name="presentation_batch_g_lyrics_offset_minus_half">−0.5</string>
     <string name="presentation_batch_g_lyrics_offset_minus_point_one">−0.1</string>
     <string name="presentation_batch_g_lyrics_offset_plus_point_one">+0.1</string>

@@ -62,7 +62,10 @@ fun RecentlyPlayedRangeSelector(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 16.dp)
     ) {
-        items(StatsTimeRange.entries, key = { it.name }) { range ->
+        items(
+            listOf(StatsTimeRange.DAY, StatsTimeRange.WEEK, StatsTimeRange.MONTH),
+            key = { it.name }
+        ) { range ->
             RecentlyPlayedRangeChip(
                 label = stringResource(range.displayNameRes()),
                 selected = selected == range,

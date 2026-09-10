@@ -90,6 +90,7 @@ import com.lostf1sh.pixelplayeross.presentation.navidrome.dashboard.NavidromeDas
 import com.lostf1sh.pixelplayeross.presentation.components.DailyMixSection
 import com.lostf1sh.pixelplayeross.presentation.components.SampleConfig
 import com.lostf1sh.pixelplayeross.presentation.components.HomeGradientTopBar
+import com.lostf1sh.pixelplayeross.presentation.components.HomeSectionHeader
 import com.lostf1sh.pixelplayeross.presentation.components.HomeOptionsBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.RecentAiMixesSection
@@ -324,7 +325,7 @@ fun HomeScreen(
                     bottom = paddingValuesParent.calculateBottomPadding()
                             + 38.dp + bottomPadding
                 ),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+                verticalArrangement = Arrangement.spacedBy(32.dp)
             ) {
                 // Always declared: the scroll position is restored by index, so an item that
                 // appears only after the library size is known would shift everything by one and
@@ -733,45 +734,28 @@ fun YourMixHeader(
 ) {
     val colors = MaterialTheme.colorScheme
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                // Translations keep an explicit line break from the old hero layout
-                // ("Your\nMix"); this header is single-line, so collapse it to a space.
-                text = stringResource(R.string.home_your_mix_title).replace('\n', ' '),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = stringResource(R.string.home_your_mix_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.onSurfaceVariant
-            )
+    HomeSectionHeader(
+        // Translations keep an explicit line break from the old hero layout
+        // ("Your\nMix"); this header is single-line, so collapse it to a space.
+        title = stringResource(R.string.home_your_mix_title).replace('\n', ' '),
+        subtitle = stringResource(R.string.home_your_mix_subtitle),
+        action = {
+            FilledTonalIconButton(
+                onClick = onPlayShuffled,
+                modifier = Modifier.size(56.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (isShuffleEnabled) colors.primary else colors.tertiaryContainer,
+                    contentColor = if (isShuffleEnabled) colors.onPrimary else colors.onTertiaryContainer
+                )
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.rounded_shuffle_24),
+                    contentDescription = stringResource(R.string.cd_shuffle_play),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        FilledTonalIconButton(
-            onClick = onPlayShuffled,
-            modifier = Modifier.size(56.dp),
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = if (isShuffleEnabled) colors.primary else colors.tertiaryContainer,
-                contentColor = if (isShuffleEnabled) colors.onPrimary else colors.onTertiaryContainer
-            )
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.rounded_shuffle_24),
-                contentDescription = stringResource(R.string.cd_shuffle_play),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
+    )
 }
 
 
