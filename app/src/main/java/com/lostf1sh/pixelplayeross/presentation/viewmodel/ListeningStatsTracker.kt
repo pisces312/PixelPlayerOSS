@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,6 +41,7 @@ class ListeningStatsTracker @Inject constructor(
     private var pendingVoluntarySongId: String? = null
     private var scope: CoroutineScope? = null
     private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val flushMutex = Mutex()
     private val _playbackHistory = MutableStateFlow<List<PlaybackStatsRepository.PlaybackHistoryEntry>>(emptyList())
     val playbackHistory: StateFlow<List<PlaybackStatsRepository.PlaybackHistoryEntry>> = _playbackHistory.asStateFlow()
 
@@ -287,6 +290,55 @@ class ListeningStatsTracker @Inject constructor(
         scope = null
     }
 
+    /**
+     * Persists the currently active listening session to disk so it is visible in the stats
+     * page without waiting for the user to skip the track, the song to end, or the service
+     * to be destroyed. The session itself is kept alive and continues accumulating from this
+     * point onward, so the next flush (or [finalizeCurrentSession]) records a fresh fragment
+     * of the same song.
+     *
+     * Safe to call from any coroutine; serialised via [flushMutex].
+     */
+    suspend fun flushCurrentSession() {
+        val nowRealtime = SystemClock.elapsedRealtime()
+        val nowEpoch = System.currentTimeMillis()
+        var toPersist: Triple<String, Long, Long>? = null
+        flushMutex.withLock {
+            val session = currentSession ?: return@withLock
+            accumulateRealtimeListening(session, nowRealtime)
+            val listenedValue = session.accumulatedListeningMs.coerceAtLeast(0L)
+            if (listenedValue < MIN_SESSION_LISTEN_MS) return@withLock
+            val rawEndTimestamp = when {
+                session.isPlaying -> nowEpoch
+                session.lastUpdateEpochMs > 0L -> session.lastUpdateEpochMs
+                else -> session.startedAtEpochMs + listenedValue
+            }
+            val timestampValue = rawEndTimestamp
+                .coerceAtLeast(session.startedAtEpochMs.coerceAtLeast(0L))
+                .coerceAtMost(nowEpoch)
+            // Reset the accumulator so the session keeps timing a new fragment.
+            session.accumulatedListeningMs = 0L
+            session.lastRealtimeMs = nowRealtime
+            session.startedAtEpochMs = nowEpoch
+            toPersist = Triple(session.songId, listenedValue, timestampValue)
+        }
+        val (songId, listened, timestamp) = toPersist ?: return
+        runCatching {
+            dailyMixManager.recordPlay(
+                songId = songId,
+                songDurationMs = listened,
+                timestamp = timestamp
+            )
+            playbackStatsRepository.recordPlayback(
+                songId = songId,
+                durationMs = listened,
+                timestamp = timestamp
+            )
+        }.onFailure { throwable ->
+            Timber.e(throwable, "Failed to flush listening session for song=%s", songId)
+        }
+    }
+
     @Suppress("UNUSED_PARAMETER")
     private fun persistPlayback(
         songId: String,
@@ -348,7 +400,7 @@ class ListeningStatsTracker @Inject constructor(
 data class ActiveSession(
     val songId: String,
     var totalDurationMs: Long,
-    val startedAtEpochMs: Long,
+    var startedAtEpochMs: Long,
     var lastKnownPositionMs: Long,
     var accumulatedListeningMs: Long,
     var lastRealtimeMs: Long,

@@ -26,7 +26,8 @@ import kotlinx.collections.immutable.toImmutableList
 @HiltViewModel
 class StatsViewModel @Inject constructor(
     private val playbackStatsRepository: PlaybackStatsRepository,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    private val listeningStatsTracker: ListeningStatsTracker
 ) : ViewModel() {
 
     data class StatsUiState(
@@ -49,11 +50,16 @@ class StatsViewModel @Inject constructor(
 
     init {
         observeStatsRefreshFlow()
-        refreshRange(
-            period = StatsPeriod.current(StatsTimeRange.WEEK),
-            showLoading = true,
-            updateWeeklyOverview = true
-        )
+        viewModelScope.launch {
+            // Flush the in-memory session so data accumulated since the last track change /
+            // service destroy shows up on first render.
+            listeningStatsTracker.flushCurrentSession()
+            refreshRange(
+                period = StatsPeriod.current(StatsTimeRange.WEEK),
+                showLoading = true,
+                updateWeeklyOverview = true
+            )
+        }
     }
 
     fun onRangeSelected(range: StatsTimeRange) {
