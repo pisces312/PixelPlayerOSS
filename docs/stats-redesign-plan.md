@@ -1,9 +1,10 @@
 # 听歌统计与最近播放重设计计划（PixelPlayerOSS）
 
-> 状态：**已实施，待提交**
+> 状态：**已实施并推送**
 > 更新：2026-09-10
 > 分支：`pisces/port`（`pisces312/PixelPlayerOSS`，GPL-3.0 fork）
 > 线框稿：`E:\downloads\听歌统计与最近播放重设计线框.html`
+> **最终设计文档：`docs/stats-design.md`**（含 mermaid 线框图与数据流）
 
 ---
 
@@ -69,7 +70,7 @@
 
 - [x] **4.1 字符串**：已加中文短标签、指标卡、热门歌曲、排序切换等字符串。
 - [x] **4.2 单测**：`:app:testDebugUnitTest --tests "*Stats*" --tests "*PlaybackStats*"` 通过。
-- [ ] **4.3 提交**：Phase 1 / 2 / 3 各一个 commit，英文 message，待用户确认后提交。
+- [x] **4.3 提交**：已提交并推送（`29e39595` / `6a19ba02`），英文 message。
 
 ---
 
