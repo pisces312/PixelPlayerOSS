@@ -26,7 +26,8 @@ class PlaybackHistoryModuleHandler @Inject constructor(
                 timestamp = event.timestamp,
                 durationMs = event.durationMs,
                 startTimestamp = event.startTimestamp,
-                endTimestamp = event.endTimestamp
+                endTimestamp = event.endTimestamp,
+                playCount = event.playCount
             )
         }
         gson.toJson(entries)
@@ -49,7 +50,8 @@ class PlaybackHistoryModuleHandler @Inject constructor(
                         timestamp = entry.timestamp,
                         durationMs = entry.durationMs,
                         startTimestamp = entry.startTimestamp,
-                        endTimestamp = entry.endTimestamp
+                        endTimestamp = entry.endTimestamp,
+                        playCount = entry.playCount
                     )
                 },
                 clearExisting = true

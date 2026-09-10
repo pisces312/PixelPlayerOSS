@@ -100,7 +100,8 @@ data class PlaybackHistoryBackupEntry(
     val timestamp: Long,
     val durationMs: Long,
     val startTimestamp: Long? = null,
-    val endTimestamp: Long? = null
+    val endTimestamp: Long? = null,
+    val playCount: Int = 1
 )
 
 data class AppDataBackupPayload(
