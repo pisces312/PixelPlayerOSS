@@ -22,6 +22,7 @@ import com.lostf1sh.pixelplayeross.data.musicbrainz.MusicBrainzMatch
 import com.lostf1sh.pixelplayeross.data.musicbrainz.MusicBrainzRepository
 import com.lostf1sh.pixelplayeross.data.offline.CloudOfflineRepository
 import com.lostf1sh.pixelplayeross.data.offline.OfflineDownload
+import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import com.lostf1sh.pixelplayeross.utils.AudioMeta
 import com.lostf1sh.pixelplayeross.utils.AudioMetaUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -29,9 +30,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -47,6 +50,7 @@ class SongInfoBottomSheetViewModel @Inject constructor(
     private val cloudOfflineRepository: CloudOfflineRepository,
     private val musicBrainzRepository: MusicBrainzRepository,
     private val favoritesDao: FavoritesDao,
+    private val musicRepository: MusicRepository,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -79,6 +83,14 @@ class SongInfoBottomSheetViewModel @Inject constructor(
     /** 返回数据库中保存的 0–5 评分，无评分时返回 null。 */
     suspend fun getSongRating(songId: Long): Int? = withContext(Dispatchers.IO) {
         favoritesDao.getRating(songId)
+    }
+
+    /** 观察数据库中保存的 0–5 评分，未评分时为 null。 */
+    fun observeRatingForSong(songId: Long): Flow<Int?> =
+        favoritesDao.observeRating(songId).distinctUntilChanged()
+
+    fun setSongRating(songId: String, rating: Int) {
+        viewModelScope.launch { musicRepository.setSongRating(songId, rating) }
     }
 
     private val _audioMeta = MutableStateFlow<AudioMeta?>(null)

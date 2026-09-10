@@ -104,7 +104,6 @@ private fun formatReplayGainForInput(gainDb: Float?): String {
 fun EditSongSheet(
     visible: Boolean,
     song: Song,
-    dbRating: Int? = null,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -140,7 +139,6 @@ fun EditSongSheet(
             ) {
                 EditSongContent(
                     song = song,
-                    dbRating = dbRating,
                     onDismiss = onDismiss,
                     onSave = onSave
                 )
@@ -153,7 +151,6 @@ fun EditSongSheet(
 @Composable
 private fun EditSongContent(
     song: Song,
-    dbRating: Int? = null,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -182,9 +179,6 @@ private fun EditSongContent(
     var discNumber by remember { mutableStateOf(song.discNumber?.toString() ?: "") }
     var replayGainTrackGainDb by remember { mutableStateOf("") }
     var replayGainAlbumGainDb by remember { mutableStateOf("") }
-    var metadataWasRead by remember { mutableStateOf(false) }
-    var originalRating by remember { mutableStateOf<Int?>(null) }
-    var rating by remember { mutableStateOf<Int?>(null) }
     var originalCustomFields by remember { mutableStateOf<List<CustomMetadataField>>(emptyList()) }
     var customFields by remember { mutableStateOf<List<CustomMetadataField>>(emptyList()) }
     var customMetadataError by remember { mutableStateOf<String?>(null) }
@@ -215,9 +209,6 @@ private fun EditSongContent(
         discNumber = song.discNumber?.toString() ?: ""
         replayGainTrackGainDb = ""
         replayGainAlbumGainDb = ""
-        metadataWasRead = false
-        originalRating = null
-        rating = null
         originalCustomFields = emptyList()
         customFields = emptyList()
         customMetadataError = null
@@ -253,9 +244,6 @@ private fun EditSongContent(
             embeddedMetadata?.composer?.takeIf { it.isNotBlank() }?.let { composer = it }
             replayGainTrackGainDb = formatReplayGainForInput(embeddedMetadata?.replayGainTrackGainDb)
             replayGainAlbumGainDb = formatReplayGainForInput(embeddedMetadata?.replayGainAlbumGainDb)
-            metadataWasRead = embeddedMetadata != null
-            originalRating = dbRating ?: embeddedMetadata?.rating
-            rating = dbRating ?: embeddedMetadata?.rating
             originalCustomFields = embeddedMetadata?.customFields.orEmpty()
             customFields = embeddedMetadata?.customFields.orEmpty()
         }
@@ -426,37 +414,6 @@ private fun EditSongContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        Text(
-                            text = stringResource(R.string.edit_song_rating),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilterChip(
-                                selected = rating == null,
-                                onClick = {
-                                    rating = null
-                                    customMetadataError = null
-                                },
-                                label = { Text(stringResource(R.string.edit_song_rating_not_set)) }
-                            )
-                            (0..5).forEach { value ->
-                                FilterChip(
-                                    selected = rating == value,
-                                    onClick = {
-                                        rating = value
-                                        customMetadataError = null
-                                    },
-                                    label = { Text(value.toString()) }
-                                )
-                            }
-                        }
 
                         HorizontalDivider()
 
@@ -834,9 +791,6 @@ private fun EditSongContent(
                                 val resolvedTrackNumber = trackNumber.toIntOrNull() ?: song.trackNumber
                                 val resolvedDiscNumber = discNumber.toIntOrNull()
                                 buildCustomMetadataChanges(
-                                    metadataWasRead = metadataWasRead,
-                                    originalRating = originalRating,
-                                    editedRating = rating,
                                     originalFields = originalCustomFields,
                                     editedFields = customFields
                                 ).onSuccess { customMetadataChanges ->

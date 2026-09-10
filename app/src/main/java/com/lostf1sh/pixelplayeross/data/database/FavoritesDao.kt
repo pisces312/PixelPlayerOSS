@@ -47,6 +47,10 @@ interface FavoritesDao {
     @Query("SELECT rating FROM favorites WHERE songId = :songId")
     suspend fun getRating(songId: Long): Int?
 
+    /** Emits null while the song has no rating row. */
+    @Query("SELECT rating FROM favorites WHERE songId = :songId")
+    fun observeRating(songId: Long): Flow<Int?>
+
     /**
      * 写入评分而不改变收藏状态：行不存在时插入一行（isFavorite=0），存在时只更新 rating，
      * 保留 isFavorite 与 timestamp。评分与收藏相互独立。

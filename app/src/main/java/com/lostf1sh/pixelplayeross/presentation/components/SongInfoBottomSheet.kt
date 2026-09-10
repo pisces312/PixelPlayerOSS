@@ -77,6 +77,7 @@ import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.offline.CloudOfflineRepository
 import com.lostf1sh.pixelplayeross.data.offline.OfflineDownloadStatus
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.AutoSizingTextToFill
+import com.lostf1sh.pixelplayeross.presentation.components.subcomps.RatingStars
 import com.lostf1sh.pixelplayeross.utils.formatDuration
 import com.lostf1sh.pixelplayeross.utils.shapes.RoundedStarShape
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
@@ -86,6 +87,7 @@ import com.lostf1sh.pixelplayeross.data.media.CoverArtUpdate
 import com.lostf1sh.pixelplayeross.data.media.CustomMetadataChanges
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.SongInfoBottomSheetViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.SongInfoBottomSheetViewModel.ToneTarget
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 import androidx.compose.ui.graphics.TransformOrigin
@@ -131,7 +133,6 @@ fun SongInfoBottomSheet(
 ) {
     val context = LocalContext.current
     var showEditSheet by remember { mutableStateOf(false) }
-    var dbRating by remember { mutableStateOf<Int?>(null) }
     var showArtistPicker by remember { mutableStateOf(false) }
     var showTonePickerDialog by remember { mutableStateOf(false) }
     var toneConfirmationTarget by remember { mutableStateOf<ToneTarget?>(null) }
@@ -141,6 +142,10 @@ fun SongInfoBottomSheet(
     val resolvedArtists by songInfoViewModel.resolvedArtists.collectAsStateWithLifecycle()
     val offlineDownload by songInfoViewModel.offlineDownload.collectAsStateWithLifecycle()
     val musicBrainzState by songInfoViewModel.musicBrainzState.collectAsStateWithLifecycle()
+    val ratingSongId = remember(song.id) { song.id.toLongOrNull() }
+    val dbRating by remember(ratingSongId) {
+        ratingSongId?.let { songInfoViewModel.observeRatingForSong(it) } ?: flowOf<Int?>(null)
+    }.collectAsStateWithLifecycle(initialValue = null)
     val isCloudSong = remember(song.contentUriString) { CloudOfflineRepository.isCloudSong(song) }
     val ringtonePermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -295,7 +300,6 @@ fun SongInfoBottomSheet(
         songInfoViewModel.bindSong(song)
         songInfoViewModel.loadAudioMeta(song)
         songInfoViewModel.loadArtistsForSong(song)
-        dbRating = song.id.toLongOrNull()?.let { songInfoViewModel.getSongRating(it) }
     }
 
     LaunchedEffect(musicBrainzState) {
@@ -514,6 +518,14 @@ fun SongInfoBottomSheet(
                                                     )
                                                 }
                                             }
+                                        }
+                                        item {
+                                            RatingRow(
+                                                rating = dbRating ?: 0,
+                                                onRatingChange = { stars ->
+                                                    songInfoViewModel.setSongRating(song.id, stars)
+                                                }
+                                            )
                                         }
                                         item {
                                             Row(
@@ -856,7 +868,6 @@ fun SongInfoBottomSheet(
     EditSongSheet(
         visible = showEditSheet,
         song = song,
-        dbRating = dbRating,
         onDismiss = { showEditSheet = false },
         onSave = { title, artist, album, albumArtist, composer, genre, lyrics, trackNumber, discNumber, replayGainTrackGainDb, replayGainAlbumGainDb, coverArt, customMetadataChanges ->
             onEditSong(
@@ -1323,5 +1334,42 @@ private fun SongInfoSegmentedListItem(
                 )
             }
         )
+    }
+}
+
+@Composable
+private fun RatingRow(
+    rating: Int,
+    onRatingChange: (Int) -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 66.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.song_info_rating_label),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.width(8.dp))
+            RatingStars(rating = rating, onRatingChange = onRatingChange)
+            Spacer(Modifier.weight(1f))
+            if (rating > 0) {
+                Text(
+                    text = stringResource(R.string.song_info_rating_stars_value, rating),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }

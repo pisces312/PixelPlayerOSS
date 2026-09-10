@@ -209,19 +209,9 @@ private fun isReservedCustomMetadataKey(key: String): Boolean {
 }
 
 internal fun buildCustomMetadataChanges(
-    metadataWasRead: Boolean,
-    originalRating: Int?,
-    editedRating: Int?,
     originalFields: List<CustomMetadataField>,
     editedFields: List<CustomMetadataField>
 ): Result<CustomMetadataChanges> = runCatching {
-    val ratingUpdate = when {
-        !metadataWasRead && editedRating == null -> MetadataValueUpdate.Keep
-        editedRating == originalRating -> MetadataValueUpdate.Keep
-        editedRating == null -> MetadataValueUpdate.Clear
-        else -> MetadataValueUpdate.Set(editedRating)
-    }
-
     val normalizedOriginal = originalFields.associate { field ->
         normalizeCustomMetadataKey(field.key) to field.value.trim()
     }
@@ -245,8 +235,10 @@ internal fun buildCustomMetadataChanges(
             .forEach { removedKey -> add(CustomMetadataFieldUpdate(removedKey, null)) }
     }
 
+    // 评分不再由编辑页写入（编辑页已移除评分入口，评分改走即时交互、只落 DB），
+    // 故此处始终 Keep，标签写入流程不再触碰 RATING / POPULARIMETER。
     validateCustomMetadataChanges(
-        CustomMetadataChanges(rating = ratingUpdate, fields = updates)
+        CustomMetadataChanges(rating = MetadataValueUpdate.Keep, fields = updates)
     ).getOrThrow()
 }
 

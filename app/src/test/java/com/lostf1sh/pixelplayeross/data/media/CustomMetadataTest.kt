@@ -94,29 +94,8 @@ class CustomMetadataTest {
     }
 
     @Test
-    fun `editor diff keeps unread rating and emits removals for deleted custom fields`() {
-        val unread = buildCustomMetadataChanges(
-            metadataWasRead = false,
-            originalRating = null,
-            editedRating = null,
-            originalFields = emptyList(),
-            editedFields = emptyList()
-        ).getOrThrow()
-        assertInstanceOf(MetadataValueUpdate.Keep::class.java, unread.rating)
-
-        val zeroRating = buildCustomMetadataChanges(
-            metadataWasRead = true,
-            originalRating = null,
-            editedRating = 0,
-            originalFields = emptyList(),
-            editedFields = emptyList()
-        ).getOrThrow()
-        assertEquals(MetadataValueUpdate.Set(0), zeroRating.rating)
-
-        val edited = buildCustomMetadataChanges(
-            metadataWasRead = true,
-            originalRating = 3,
-            editedRating = null,
+    fun `editor diff emits updates and removals for custom fields`() {
+        val result = buildCustomMetadataChanges(
             originalFields = listOf(
                 CustomMetadataField("MOOD", "Reflective"),
                 CustomMetadataField("COMMENT", "Old")
@@ -124,15 +103,16 @@ class CustomMetadataTest {
             editedFields = listOf(CustomMetadataField("MOOD", "Energetic"))
         ).getOrThrow()
 
-        assertInstanceOf(MetadataValueUpdate.Clear::class.java, edited.rating)
+        // 评分不再经编辑页落标签，始终 Keep。
+        assertEquals(MetadataValueUpdate.Keep, result.rating)
         assertEquals(
             listOf(
                 CustomMetadataFieldUpdate("MOOD", "Energetic"),
                 CustomMetadataFieldUpdate("COMMENT", null)
             ),
-            edited.fields
+            result.fields
         )
-        assertTrue(edited.hasChanges)
+        assertTrue(result.hasChanges)
     }
 
     @Test
