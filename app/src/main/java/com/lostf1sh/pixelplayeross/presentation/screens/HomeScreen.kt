@@ -92,6 +92,7 @@ import com.lostf1sh.pixelplayeross.presentation.components.SampleConfig
 import com.lostf1sh.pixelplayeross.presentation.components.HomeGradientTopBar
 import com.lostf1sh.pixelplayeross.presentation.components.HomeOptionsBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
+import com.lostf1sh.pixelplayeross.presentation.components.RecentAiMixesSection
 import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSection
 import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSectionMinSongsToShow
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
@@ -144,6 +145,7 @@ fun HomeScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
     val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
+    val recentAiMixes by playlistViewModel.recentAiMixes.collectAsStateWithLifecycle()
     var showAiMixSheet by remember { mutableStateOf(false) }
 
     val usesFallbackHomeMix = remember(curatedYourMixSongs, dailyMixSongs) {
@@ -274,6 +276,7 @@ fun HomeScreen(
         needsScrollRestore,
         yourMixSongs.isNotEmpty(),
         dailyMixSongs.isNotEmpty(),
+        recentAiMixes.isNotEmpty(),
         recentlyPlayedSongs.size
     ) {
         if (!needsScrollRestore) return@LaunchedEffect
@@ -343,6 +346,33 @@ fun HomeScreen(
                             }
                         }
                     )
+                }
+                if (recentAiMixes.isNotEmpty()) {
+                    item(
+                        key = "recent_ai_mixes_section",
+                        contentType = "recent_ai_mixes_section"
+                    ) {
+                        RecentAiMixesSection(
+                            mixes = recentAiMixes,
+                            onMixClick = { mix ->
+                                scope.launch {
+                                    val songs = playlistViewModel
+                                        .getPlaylistsWithSongs(listOf(mix.id))
+                                        .firstOrNull()
+                                        ?.second
+                                        .orEmpty()
+                                    if (songs.isNotEmpty()) {
+                                        playerViewModel.playSongs(
+                                            songsToPlay = songs,
+                                            startSong = songs.first(),
+                                            queueName = mix.name,
+                                            playlistId = mix.id
+                                        )
+                                    }
+                                }
+                            }
+                        )
+                    }
                 }
                 if (yourMixSongs.isEmpty()) {
                     item(

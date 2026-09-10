@@ -231,13 +231,19 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
 |---|---|---|
 | **0** | 首页标题降级：`YourMixHeader` 64sp → section 标题 + 本地化副标题 + 56dp shuffle 图标按钮 | **已完成**（待真机确认） |
 | **1** | 结果管线改造：新 `AiMixSheet`（描述 + chips + 生成中 + 结果卡）、`PlaylistViewModel` 加 `SharedFlow<AiMixSaved>`、落库（`AI Mix · MM-dd HH:mm`，`source="AI"`）、结果卡双按钮 + 编辑能力、HomeScreen 接线 | **已完成**（待真机确认） |
-| **2** | 「最近生成」横滑：DataStore 历史结构 + `RecentAiMixesSection` + 首页插入 AI 横幅下方 | 待开始（依赖 1） |
+| **2** | 「最近生成」横滑：**不新增存储**，从现有 playlists 流派生（`source="AI"` + `createdAt` 排序）+ `RecentAiMixesSection` + 首页插入 AI 横幅下方、Your Mix 之上 | **已完成**（待真机确认） |
 | **3** | Serendipity：情境采集器（时间/天气(城市)/步数）、情境→description 合成、特殊按钮、强制 RANDOM+100、情境式命名 | 待开始（依赖 1） |
 | **4** | 权限与隐私：manifest 加 `ACCESS_COARSE_LOCATION` / `ACTIVITY_RECOGNITION`、首次使用时申请、AI 设置页加「天气城市」输入框（不设四个开关）、字符串（英文 + zh-rCN）、PRIVACY.md 更新 | 待开始（依赖 3） |
 
 每 Phase 结束后跑 `:app:assembleDebug`，UI 改动装真机验证。
 
 ### Phase 0 步骤
+
+- [x] 0.1 文档细化（本节）
+- [x] 0.2 新增 `home_your_mix_subtitle` 字符串（英文 + zh-rCN）
+- [x] 0.3 重写 `YourMixHeader`：单行 `titleLarge` + 副标题 + 56dp `FilledTonalIconButton`
+- [x] 0.4 删除 `rememberYourMixTitleStyle()`、`yourMixSong` 及失效 import
+- [x] 0.5 `assembleDebug` 通过（BUILD SUCCESSFUL）；真机效果待确认
 
 ### Phase 1 步骤
 
@@ -248,7 +254,7 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
 - [x] 1.3 字符串 `ai_mix_*`（英文 + 新建 `values-zh-rCN/strings_ai.xml`）
 - [x] 1.4 `HomeScreen` 接线：sheet 替换 `DescribePlaylistDialog`，收集 `aiMixSaved` →
       `playerViewModel.playSongs(songs, first, name, playlistId)`
-- [ ] 1.5 `assembleDebug` 通过 + 真机验证
+- [x] 1.5 `assembleDebug` 通过；真机验证待做
 
 **实现备注**
 - `SampleModeDropdown` / `SampleSizeDropdown` 由 `private` 改为 `internal`（同一 module 内复用，
@@ -256,10 +262,22 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
 - 结果列表用 `mutableStateListOf` 做本地可编辑副本，删单曲不与 VM state 打架。
 - 「仅保存」也走 `saveAiMix(startPlayback = false)`，统一由 `aiMixSaved` 回吐 toast。
 
-### Phase 0 步骤
+### Phase 2 步骤
 
-- [x] 0.1 文档细化（本节）
-- [x] 0.2 新增 `home_your_mix_subtitle` 字符串（英文 + zh-rCN）
-- [x] 0.3 重写 `YourMixHeader`：单行 `titleLarge` + 副标题 + 56dp `FilledTonalIconButton`
-- [x] 0.4 删除 `rememberYourMixTitleStyle()`、`yourMixSong` 及失效 import
-- [x] 0.5 `assembleDebug` 通过（BUILD SUCCESSFUL）；真机效果待确认
+- [x] 2.1 **不新增存储**：生成的 mix 就是 `source = "AI"` 的普通播放列表，
+      `Playlist` 自带 `source` / `createdAt` / `songIds` → 在 `PlaylistViewModel`
+      加派生流 `recentAiMixes: StateFlow<List<Playlist>>`（filter → sortByDescending(createdAt) → take(3)）
+- [x] 2.2 新增 `RecentAiMixesSection.kt`：`LazyRow` + 152dp 卡片（`AutoAwesome` 图标 / 名称 2 行 / 曲目数）
+- [x] 2.3 `HomeScreen` 插入（AI 横幅下方、Your Mix 之上），空列表时不渲染该 item
+- [x] 2.4 点卡片 → `getPlaylistsWithSongs(listOf(mix.id))` 解析歌曲 →
+      `playSongs(songs, first, mix.name, mix.id)`（复用 Phase 1 起播口径：起播不抢全屏）
+- [x] 2.5 字符串 `home_recent_ai_mixes_title`（英文 + zh-rCN）
+- [x] 2.6 `assembleDebug` 通过；真机验证待做
+
+**设计修正（相对原计划）**
+- 原计划「DataStore 存最近 3 次生成的 playlistId + prompt」**取消**。
+  `playlistPreferencesRepository.userPlaylistsFlow` 已经带着 `source` 和 `createdAt`，
+  再存一份历史等于两份真相，还要处理「播放列表被删了但历史还在」的脏数据。
+  直接从现有 playlists 流派生，零存储、零同步、零脏数据。
+- 代价：`prompt` 不入库，所以「最近生成」卡片不显示原始提示词（只有 mix 名称）。
+  名称本身已经承载了意图（`AI Mix · 09-10 20:24`），够用；真需要 prompt 再单独加字段。

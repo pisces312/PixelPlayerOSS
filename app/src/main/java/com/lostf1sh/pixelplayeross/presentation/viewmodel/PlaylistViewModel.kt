@@ -135,6 +135,22 @@ class PlaylistViewModel @Inject constructor(
     private val _aiMixSaved = MutableSharedFlow<AiMixSaved>(extraBufferCapacity = 1)
     val aiMixSaved: SharedFlow<AiMixSaved> = _aiMixSaved.asSharedFlow()
 
+    /**
+     * The newest generated mixes, for the home screen row.
+     *
+     * No extra storage: a generated mix is a normal playlist tagged with [AI_MIX_SOURCE], so the
+     * existing playlists flow already carries everything the row needs.
+     */
+    val recentAiMixes: StateFlow<List<Playlist>> =
+            _uiState
+                    .map { state ->
+                        state.playlists
+                                .filter { it.source == AI_MIX_SOURCE }
+                                .sortedByDescending { it.createdAt }
+                                .take(RECENT_AI_MIX_LIMIT)
+                    }
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val _playlistCreationEvent = MutableSharedFlow<Boolean>(
         extraBufferCapacity = 1,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
@@ -150,6 +166,7 @@ class PlaylistViewModel @Inject constructor(
         const val DEFAULT_AI_MIX_LENGTH = 25
         /** Marks a playlist produced by the AI mix flow (Serendipity will use its own value). */
         const val AI_MIX_SOURCE = "AI"
+        private const val RECENT_AI_MIX_LIMIT = 3
 
         fun sanitizeFileName(name: String): String {
             val sanitized = name.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").trim('_')
