@@ -284,6 +284,165 @@ class PlaybackStatsRepositoryTest {
         assertThat(summary.totalPlayCount).isEqualTo(1)
     }
 
+    @Test
+    fun `all time range covers events spread across several days`() = runTest {
+        val repository = createRepository()
+        val zoneId = ZoneId.systemDefault()
+        val nowMillis = LocalDate.of(2026, 4, 10)
+            .atTime(22, 0)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val dayMs = TimeUnit.DAYS.toMillis(1)
+        val durationMs = TimeUnit.MINUTES.toMillis(4)
+        val events = listOf(0L, 2L, 5L, 10L).mapIndexed { index, daysAgo ->
+            val end = nowMillis - daysAgo * dayMs
+            PlaybackStatsRepository.PlaybackEvent(
+                songId = "song-$index",
+                timestamp = end,
+                durationMs = durationMs,
+                startTimestamp = end - durationMs,
+                endTimestamp = end
+            )
+        }
+
+        val summary = repository.buildSummaryFromEvents(
+            period = StatsPeriod(StatsTimeRange.ALL),
+            songs = events.indices.map { song("song-$it") },
+            nowMillis = nowMillis,
+            allEvents = events,
+            zoneId = zoneId
+        )
+
+        assertThat(summary.uniqueSongs).isEqualTo(4)
+        assertThat(summary.totalPlayCount).isEqualTo(4)
+        assertThat(summary.totalDurationMs).isEqualTo(durationMs * 4)
+    }
+
+    @Test
+    fun `imported event with zero duration and playCount expands by song duration times weight`() = runTest {
+        // Poweramp 导入事件：durationMs = 0, playCount = N → 按 N × 曲长回溯
+        val repository = createRepository()
+        val zoneId = ZoneId.systemDefault()
+        val songDuration = 4 * 60 * 1000L // 4 分钟
+        val playedAt = LocalDate.of(2026, 4, 10)
+            .atTime(20, 0)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val event = PlaybackStatsRepository.PlaybackEvent(
+            songId = "song-1",
+            timestamp = playedAt,
+            durationMs = 0L,
+            startTimestamp = playedAt,
+            endTimestamp = playedAt,
+            playCount = 3
+        )
+
+        val summary = repository.buildSummaryFromEvents(
+            range = StatsTimeRange.ALL,
+            songs = listOf(song("song-1", durationMs = songDuration)),
+            allEvents = listOf(event),
+            nowMillis = playedAt + 1_000L,
+            zoneId = zoneId
+        )
+
+        assertThat(summary.totalPlayCount).isEqualTo(3)
+        assertThat(summary.totalDurationMs).isEqualTo(songDuration * 3)
+        assertThat(summary.uniqueSongs).isEqualTo(1)
+    }
+
+    @Test
+    fun `expansion happens before resolveBounds so ALL range includes back-projected duration`() = runTest {
+        // 验证展开先于边界计算：played_at 距今很近，但 N×曲长 会回溯到非常早的时间，
+        // ALL 范围应该把回溯出的区间整个包住，而不是只取 played_at 为起点。
+        val repository = createRepository()
+        val zoneId = ZoneId.systemDefault()
+        val songDuration = 5 * 60 * 1000L // 5 分钟
+        val playCount = 100
+        val playedAt = LocalDate.of(2026, 4, 10)
+            .atTime(20, 0)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val event = PlaybackStatsRepository.PlaybackEvent(
+            songId = "song-1",
+            timestamp = playedAt,
+            durationMs = 0L,
+            startTimestamp = playedAt,
+            endTimestamp = playedAt,
+            playCount = playCount
+        )
+
+        val summary = repository.buildSummaryFromEvents(
+            range = StatsTimeRange.ALL,
+            songs = listOf(song("song-1", durationMs = songDuration)),
+            allEvents = listOf(event),
+            nowMillis = playedAt + 1_000L,
+            zoneId = zoneId
+        )
+
+        // 100 × 5 分钟 = 500 分钟 ≈ 8.3 小时的回溯区间；ALL 范围必须完整计入
+        assertThat(summary.totalPlayCount).isEqualTo(playCount)
+        assertThat(summary.totalDurationMs).isEqualTo(songDuration * playCount)
+        assertThat(summary.startTimestamp).isLessThan(playedAt - songDuration * playCount / 2)
+    }
+
+    @Test
+    fun `mergeImportedEvents keeps the entry with higher playCount on same dedupe key`() = runTest {
+        // 重新导入 Poweramp 备份时，旧的低权重事件应该被带更高次数的事件顶掉
+        // （两条事件的 songId + start + end + duration 完全相同）。
+        val repository = createRepository()
+        val zoneId = ZoneId.systemDefault()
+        val playedAt = LocalDate.of(2026, 4, 10)
+            .atTime(20, 0)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+        fun event(count: Int) = PlaybackStatsRepository.PlaybackEvent(
+            songId = "song-1",
+            timestamp = playedAt,
+            durationMs = 0L,
+            startTimestamp = playedAt,
+            endTimestamp = playedAt,
+            playCount = count
+        )
+
+        // 旧事件已存在（base），新导入同键但次数更高（incoming）
+        val merged = repository.mergeImportedEvents(
+            base = listOf(event(1)),
+            incoming = listOf(event(15))
+        )
+
+        assertThat(merged).hasSize(1)
+        assertThat(merged.single().playCount).isEqualTo(15)
+    }
+
+    @Test
+    fun `mergeImportedEvents preserves distinct songs and stays unbounded`() = runTest {
+        // 不同歌（不同去重键）都保留；且不做条数裁剪（无上限）。
+        val repository = createRepository()
+        val now = LocalDate.of(2026, 4, 10)
+            .atTime(20, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        val incoming = (1..50).map { i ->
+            PlaybackStatsRepository.PlaybackEvent(
+                songId = "song-$i",
+                timestamp = now + i,
+                durationMs = 0L,
+                startTimestamp = now + i,
+                endTimestamp = now + i,
+                playCount = i
+            )
+        }
+
+        val merged = repository.mergeImportedEvents(base = emptyList(), incoming = incoming)
+
+        assertThat(merged).hasSize(50)
+    }
+
     private fun createRepository(): PlaybackStatsRepository {
         val uniqueDir = createTempDirectory(
             "playback-stats-test-${Instant.now().toEpochMilli()}-"

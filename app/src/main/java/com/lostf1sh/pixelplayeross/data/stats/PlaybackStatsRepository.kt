@@ -175,7 +175,8 @@ class PlaybackStatsRepository @Inject constructor(
     suspend fun recordPlayback(
         songId: String,
         durationMs: Long,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        playCount: Int = 1
     ) = withContext(Dispatchers.IO) {
         if (songId.isBlank()) return@withContext
         val coercedTimestamp = timestamp.coerceAtLeast(0L)
@@ -186,7 +187,8 @@ class PlaybackStatsRepository @Inject constructor(
             timestamp = coercedTimestamp,
             durationMs = coercedDuration,
             startTimestamp = start,
-            endTimestamp = coercedTimestamp
+            endTimestamp = coercedTimestamp,
+            playCount = playCount.coerceAtLeast(1)
         )
         val writeSucceeded = updateEventsAtomically { events ->
             events += sanitizedEvent
@@ -219,6 +221,31 @@ class PlaybackStatsRepository @Inject constructor(
         )
     }
 
+    /**
+     * 把「只有最后播放时间戳」的导入事件展开成真实播放区间。
+     *
+     * 第三方导入（Poweramp）只提供 played_at，事件退化成 start == end 的零长度点。
+     * 真实播放区间应为 `[t − 时长, t]`（向过去回溯，而不是向未来延伸）；
+     * 带权重 `[playCount] = N` 的事件按 `N × 歌曲时长` 回溯，与本地「播 N 次累加 N 次时长」口径一致。
+     *
+     * 本地播放事件（start < end）原样返回。
+     */
+    private fun expandImportedSpan(
+        event: PlaybackEvent,
+        songMap: Map<String, Song>
+    ): PlaybackEvent {
+        val start = event.startMillis()
+        val rawEnd = event.endMillis()
+        if (rawEnd > start) return event
+        val songDuration = songMap[event.songId]?.duration?.takeIf { it > 0L } ?: return event
+        val expandedDuration = songDuration * event.weight
+        return event.copy(
+            durationMs = expandedDuration,
+            startTimestamp = (rawEnd - expandedDuration).coerceAtLeast(0L),
+            endTimestamp = rawEnd
+        )
+    }
+
     internal fun buildSummaryFromEvents(
         range: StatsTimeRange,
         songs: List<Song>,
@@ -240,8 +267,13 @@ class PlaybackStatsRepository @Inject constructor(
         allEvents: List<PlaybackEvent>,
         zoneId: ZoneId = ZoneId.systemDefault()
     ): PlaybackStatsSummary {
-        val (startBound, endBound) = period.resolveBounds(allEvents, nowMillis, zoneId)
-        val filteredEvents = allEvents.mapNotNull { event ->
+        val songMap = songs.associateBy { it.id }
+        // 必须先把导入事件展开成真实区间，再算时间边界：
+        // StatsTimeRange.ALL 的起点取「最早事件的 start」，而导入事件的原始 start 就是
+        // last_played 时间戳；若先算边界，回溯出的 [t − N×时长, t] 会整条落在边界之前被裁掉。
+        val expandedEvents = allEvents.map { event -> expandImportedSpan(event, songMap) }
+        val (startBound, endBound) = period.resolveBounds(expandedEvents, nowMillis, zoneId)
+        val filteredEvents = expandedEvents.mapNotNull { event ->
             val start = event.startMillis()
             val end = event.endMillis()
             val lowerBound = startBound ?: Long.MIN_VALUE
@@ -264,7 +296,6 @@ class PlaybackStatsRepository @Inject constructor(
             )
         }
 
-        val songMap = songs.associateBy { it.id }
         val normalizedEvents = filteredEvents
 
         val segmentsBySong = normalizedEvents
@@ -518,19 +549,34 @@ class PlaybackStatsRepository @Inject constructor(
             } else {
                 existingEvents
             }
-            val merged = (base + events)
-                .map { event -> sanitizeEvent(event) }
-                .distinctBy { event ->
-                    "${event.songId}:${event.startMillis()}:${event.endMillis()}:${event.durationMs}"
-                }
-                .sortedBy { event -> event.timestamp }
-                .toMutableList()
-            merged
+            mergeImportedEvents(base, events)
         }
         if (writeSucceeded) {
             notifyStatsChanged()
         }
         writeSucceeded
+    }
+
+    /**
+     * 合并已有事件与新导入事件，按 (songId, start, end, duration) 去重。
+     * 去重键相同（同一首歌、同一区间）时保留权重更大的一条：
+     * 重新导入 Poweramp 备份时，旧的无权重事件会被带次数的事件顶掉，
+     * 否则 distinctBy 保留先出现的旧事件，重导入将永远不生效。
+     * 无条数上限，与「永久保留历史」一致。
+     */
+    internal fun mergeImportedEvents(
+        base: List<PlaybackEvent>,
+        incoming: List<PlaybackEvent>
+    ): MutableList<PlaybackEvent> {
+        return (base + incoming)
+            .map { event -> sanitizeEvent(event) }
+            .groupBy { event ->
+                "${event.songId}:${event.startMillis()}:${event.endMillis()}:${event.durationMs}"
+            }
+            .values
+            .map { group -> group.maxBy { event -> event.playCount } }
+            .sortedBy { event -> event.timestamp }
+            .toMutableList()
     }
 
     fun requestRefresh() {
