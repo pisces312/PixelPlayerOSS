@@ -56,7 +56,7 @@ import com.lostf1sh.pixelplayeross.presentation.screens.RecentlyPlayedScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.AboutScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SearchScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.AiRequestLogScreen
-import com.lostf1sh.pixelplayeross.presentation.screens.StatsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.ListeningStatsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.YearDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.DuplicateSongsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsScreen
@@ -373,18 +373,10 @@ fun AppNavigation(
             ) {
                 val statsViewModel: StatsViewModel = hiltViewModel()
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
-                    StatsScreen(
-                        onSongClick = { songId -> playerViewModel.playSongById(songId) },
-                        onArtistClick = { name ->
-                            statsViewModel.resolveArtistId(name)?.let { artistId ->
-                                navController.navigateSafely(Screen.ArtistDetail.createRoute(artistId))
-                            }
-                        },
-                        onAlbumClick = { name ->
-                            statsViewModel.resolveAlbumId(name)?.let { albumId ->
-                                navController.navigateSafely(Screen.AlbumDetail.createRoute(albumId))
-                            }
-                        },
+                    ListeningStatsScreen(
+                        navController = navController,
+                        paddingValuesParent = paddingValues,
+                        playerViewModel = playerViewModel,
                         statsViewModel = statsViewModel
                     )
                 }

@@ -53,7 +53,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -94,13 +93,9 @@ import com.lostf1sh.pixelplayeross.presentation.components.HomeSectionHeader
 import com.lostf1sh.pixelplayeross.presentation.components.HomeOptionsBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.RecentAiMixesSection
-import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSection
-import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSectionMinSongsToShow
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
 import com.lostf1sh.pixelplayeross.presentation.components.resolveMainScreenBottomGradientHeight
 import com.lostf1sh.pixelplayeross.presentation.model.SettingsCategory
-import com.lostf1sh.pixelplayeross.presentation.model.collectRecentlyPlayedSongIds
-import com.lostf1sh.pixelplayeross.presentation.model.mapRecentlyPlayedSongs
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.PlayingEqIcon
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.components.StreamingProviderSheet
@@ -108,8 +103,6 @@ import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.SettingsViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
 import com.lostf1sh.pixelplayeross.ui.theme.ExpTitleTypography
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -142,7 +135,6 @@ fun HomeScreen(
     val dailyMixSongs by playerViewModel.dailyMixSongs.collectAsStateWithLifecycle()
     val curatedYourMixSongs by playerViewModel.yourMixSongs.collectAsStateWithLifecycle()
     val homeMixPreviewSongs by playerViewModel.homeMixPreviewSongs.collectAsStateWithLifecycle()
-    val playbackHistory by playerViewModel.playbackHistory.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
     val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
@@ -175,52 +167,6 @@ fun HomeScreen(
     }
 
     val shouldShowYourMixLoadingPlaceholder = yourMixSongs.isEmpty() && !hasHomeLoadingMinimumElapsed
-    val recentSongIds = remember(playbackHistory) {
-        collectRecentlyPlayedSongIds(
-            playbackHistory = playbackHistory,
-            maxItems = 64
-        )
-    }
-    val recentlyPlayedSourceSongsInitialValue = remember(recentSongIds) {
-        if (recentSongIds.isEmpty()) persistentListOf<Song>() else null
-    }
-    val recentlyPlayedSourceSongs by remember(recentSongIds, playerViewModel) {
-        playerViewModel.observeSongs(recentSongIds)
-            .map<List<Song>, List<Song>?> { it }
-    }.collectAsStateWithLifecycle(initialValue = recentlyPlayedSourceSongsInitialValue)
-    val latestRecentlyPlayedSongs = remember(playbackHistory, recentlyPlayedSourceSongs) {
-        val sourceSongs = recentlyPlayedSourceSongs ?: return@remember emptyList()
-        mapRecentlyPlayedSongs(
-            playbackHistory = playbackHistory,
-            songs = sourceSongs,
-            maxItems = 64
-        )
-    }
-    var recentlyPlayedSongs by rememberSaveable { mutableStateOf(latestRecentlyPlayedSongs) }
-    val latestRecentlyPlayedSongsState = rememberUpdatedState(latestRecentlyPlayedSongs)
-
-    LaunchedEffect(latestRecentlyPlayedSongs, lifecycleOwner) {
-        val isHomeVisible = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-        if (recentlyPlayedSongs.isEmpty() || !isHomeVisible) {
-            recentlyPlayedSongs = latestRecentlyPlayedSongs
-        }
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                recentlyPlayedSongs = latestRecentlyPlayedSongsState.value
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    val recentlyPlayedQueue = remember(recentlyPlayedSongs) {
-        recentlyPlayedSongs.map { it.song }.toImmutableList()
-    }
 
     ReportDrawnWhen {
         yourMixSongs.isNotEmpty() || hasHomeLoadingMinimumElapsed || isBenchmarkMode
@@ -277,8 +223,7 @@ fun HomeScreen(
         needsScrollRestore,
         yourMixSongs.isNotEmpty(),
         dailyMixSongs.isNotEmpty(),
-        recentAiMixes.isNotEmpty(),
-        recentlyPlayedSongs.size
+        recentAiMixes.isNotEmpty()
     ) {
         if (!needsScrollRestore) return@LaunchedEffect
         val totalItems = listState.layoutInfo.totalItemsCount
@@ -482,31 +427,6 @@ fun HomeScreen(
                     }
                 }
 
-                if (recentlyPlayedSongs.size >= RecentlyPlayedSectionMinSongsToShow) {
-                    item(
-                        key = "recently_played_section",
-                        contentType = "recently_played_section"
-                    ) {
-                        RecentlyPlayedSection(
-                            songs = remember(recentlyPlayedSongs) { recentlyPlayedSongs.toImmutableList() },
-                            onSongClick = { song ->
-                                if (recentlyPlayedQueue.isNotEmpty()) {
-                                    playerViewModel.playSongs(
-                                        songsToPlay = recentlyPlayedQueue,
-                                        startSong = song,
-                                        queueName = "Recently Played"
-                                    )
-                                }
-                            },
-                            onOpenAllClick = {
-                                navController.navigateSafely(Screen.RecentlyPlayed.route)
-                            },
-                            themeStateHolder = playerViewModel.themeStateHolder,
-                            currentSongId = currentSong?.id,
-                            contentPadding = PaddingValues(start = 8.dp, end = 24.dp)
-                        )
-                    }
-                }
             }
         }
         Box(
