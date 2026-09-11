@@ -380,11 +380,16 @@ class SetupViewModel @Inject constructor(
 
             when (result) {
                 is RestoreResult.Success -> {
+                    // The wizard runs before the normal first sync; start scanning right away so
+                    // deferred playlist song refs resolve as soon as the library lands, instead of
+                    // waiting for the user to finish setup.
+                    syncManager.fullSync(deepScan = false)
                     _events.send(SetupEvent.RestoreCompleted(context.getString(R.string.restore_completed_success)))
                 }
                 is RestoreResult.PartialFailure -> {
                     val canFinishSetup = result.succeeded.isNotEmpty() || !result.rolledBack
                     if (canFinishSetup) {
+                        syncManager.fullSync(deepScan = false)
                         _events.send(
                             SetupEvent.RestoreCompleted(
                                 context.getString(R.string.restore_completed_partial_issues),

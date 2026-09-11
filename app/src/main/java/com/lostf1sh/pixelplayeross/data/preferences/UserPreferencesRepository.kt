@@ -104,6 +104,8 @@ constructor(
         val FAVORITE_SONG_IDS = stringSetPreferencesKey("favorite_song_ids")
         val USER_PLAYLISTS = stringPreferencesKey("user_playlists_json_v1")
         val PLAYLIST_SONG_ORDER_MODES = stringPreferencesKey("playlist_song_order_modes")
+        // Gson-serialized Map<backupSongId, PendingSongRef> awaiting post-restore resolution.
+        val PLAYLIST_RESTORE_PENDING = stringPreferencesKey("playlist_restore_pending_json_v1")
 
         val SONGS_SORT_OPTION = stringPreferencesKey("songs_sort_option")
         val SONGS_SORT_OPTION_MIGRATED = booleanPreferencesKey("songs_sort_option_migrated_v2")
@@ -929,6 +931,20 @@ constructor(
     suspend fun clearLegacyUserPlaylists() {
         dataStore.edit { preferences ->
             preferences.remove(PreferencesKeys.USER_PLAYLISTS)
+        }
+    }
+
+    /** Raw Gson JSON of playlist song refs that still need post-restore resolution, or null. */
+    suspend fun getPlaylistRestorePendingOnce(): String? =
+        dataStore.data.first()[PreferencesKeys.PLAYLIST_RESTORE_PENDING]
+
+    suspend fun setPlaylistRestorePending(rawJson: String?) {
+        dataStore.edit { preferences ->
+            if (rawJson.isNullOrEmpty()) {
+                preferences.remove(PreferencesKeys.PLAYLIST_RESTORE_PENDING)
+            } else {
+                preferences[PreferencesKeys.PLAYLIST_RESTORE_PENDING] = rawJson
+            }
         }
     }
 

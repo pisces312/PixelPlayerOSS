@@ -9,8 +9,9 @@ import com.lostf1sh.pixelplayeross.data.model.Playlist
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylistSource
 import com.lostf1sh.pixelplayeross.data.backup.model.BackupSection
+import com.lostf1sh.pixelplayeross.data.backup.restore.PlaylistSongMatcher
+import com.lostf1sh.pixelplayeross.data.backup.restore.PendingSongRef
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
-import com.lostf1sh.pixelplayeross.data.database.SongSummary
 import com.lostf1sh.pixelplayeross.data.preferences.PlaylistPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.PreferenceBackupEntry
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
@@ -45,13 +46,13 @@ class PlaylistsModuleHandler @Inject constructor(
         val allLocalSummaries = musicDao.getAllLocalSongSummaries()
         val summaryById = allLocalSummaries.associateBy { it.id.toString() }
 
-        val songMetadata = mutableMapOf<String, SongMetadataEntry>()
+        val songMetadata = mutableMapOf<String, PendingSongRef>()
         val filteredPlaylists = playlists.map { playlist ->
             val localSongIds = playlist.songIds.filter { id -> id !in cloudSongIds }
             localSongIds.forEach { id ->
                 if (id !in songMetadata) {
                     summaryById[id]?.let { summary ->
-                        songMetadata[id] = SongMetadataEntry(
+                        songMetadata[id] = PendingSongRef(
                             title = summary.title,
                             artist = summary.artistName,
                             album = summary.albumName,
@@ -113,11 +114,12 @@ class PlaylistsModuleHandler @Inject constructor(
         val songMetadata = parsed.songMetadata
         val coverImages = parsed.coverImages
 
-        val resolvedPlaylists = if (songMetadata != null && songMetadata.isNotEmpty()) {
-            resolvePlaylists(backupPlaylists, songMetadata)
-        } else {
-            backupPlaylists
-        }
+        // Resolve against whatever the local library currently holds. It is often empty here —
+        // e.g. a backup imported in the first-run wizard before the initial MediaStore sync — and
+        // in that case references must be kept verbatim and retried later, never dropped.
+        val matcher = PlaylistSongMatcher(musicDao.getAllLocalSongSummaries())
+        val pending = LinkedHashMap<String, PendingSongRef>()
+        val resolvedPlaylists = resolvePlaylists(backupPlaylists, songMetadata, matcher, pending)
 
         val finalPlaylists = if (coverImages != null && coverImages.isNotEmpty()) {
             restoreCoverImages(resolvedPlaylists, coverImages)
@@ -126,6 +128,9 @@ class PlaylistsModuleHandler @Inject constructor(
         }
 
         playlistPreferencesRepository.replaceAllPlaylists(finalPlaylists)
+        userPreferencesRepository.setPlaylistRestorePending(
+            pending.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) }
+        )
         playlistPreferencesRepository.setPlaylistSongOrderModes(parsed.playlistSongOrderModes.orEmpty())
         playlistPreferencesRepository.setPlaylistsSortOption(
             parsed.playlistsSortOption ?: SortOption.PlaylistNameAZ.storageKey
@@ -167,113 +172,64 @@ class PlaylistsModuleHandler @Inject constructor(
     }
 
     /**
-     * Resolves backup song IDs to current device song IDs using metadata matching.
+     * Maps backup song IDs to current device song IDs. The policy for an unmatched ID depends on
+     * whether the library is even ready:
      *
-     * Strategy:
-     * 1. Direct ID match + metadata verification → confirmed
-     * 2. If direct ID exists but metadata doesn't match → try metadata match (avoids false positives)
-     * 3. If direct ID doesn't exist → try metadata match
-     * 4. Metadata match: title + artist (case-insensitive), disambiguate with album + duration
-     * 5. No confident match → song is dropped from the playlist (kept as unresolved would risk false matches)
+     * - matched (direct ID verified, or metadata match) → use the resolved ID;
+     * - library empty (sync hasn't run yet) → keep the backup ID verbatim; park metadata for the
+     *   deferred resolver, when available;
+     * - library present, metadata available but still unmatched → keep + park for a later sync
+     *   (the file may be imported afterwards);
+     * - library present, no metadata to retry with → drop, the ID can never be verified.
      */
-    private suspend fun resolvePlaylists(
+    private fun resolvePlaylists(
         playlists: List<Playlist>,
-        songMetadata: Map<String, SongMetadataEntry>
+        songMetadata: Map<String, PendingSongRef>?,
+        matcher: PlaylistSongMatcher,
+        pending: MutableMap<String, PendingSongRef>
     ): List<Playlist> {
-        val localSummaries = musicDao.getAllLocalSongSummaries()
-        val currentSongsById = localSummaries.associateBy { it.id.toString() }
-
-        val metadataIndex = mutableMapOf<String, MutableList<SongSummary>>()
-        localSummaries.forEach { song ->
-            val key = normalizeMatchKey(song.title, song.artistName)
-            metadataIndex.getOrPut(key) { mutableListOf() }.add(song)
-        }
-
-        val resolutionCache = mutableMapOf<String, String?>()
+        val resolutionCache = HashMap<String, String?>()
         var totalSongs = 0
         var resolvedCount = 0
-        var unresolvedCount = 0
+        var deferredCount = 0
+        var droppedCount = 0
 
-        playlists.forEach { playlist ->
-            playlist.songIds.forEach { songId ->
-                if (songId !in resolutionCache) {
-                    totalSongs++
-                    val resolved = resolveSongId(songId, songMetadata, currentSongsById, metadataIndex)
-                    resolutionCache[songId] = resolved
-                    if (resolved != null) resolvedCount++ else unresolvedCount++
+        fun resolveId(backupSongId: String): String? {
+            if (resolutionCache.containsKey(backupSongId)) return resolutionCache[backupSongId]
+            totalSongs++
+            val meta = songMetadata?.get(backupSongId)
+            val matched = matcher.resolve(backupSongId, meta)
+            val outcome: String? = when {
+                matched != null -> {
+                    resolvedCount++
+                    matched
+                }
+                matcher.isLibraryEmpty || meta != null -> {
+                    // Library not ready, or retryable once more files are scanned: keep the ref.
+                    if (meta != null) pending[backupSongId] = meta
+                    deferredCount++
+                    backupSongId
+                }
+                else -> {
+                    droppedCount++
+                    null
                 }
             }
-        }
-
-        if (unresolvedCount > 0) {
-            Timber.tag(TAG).w("Playlist restore: $resolvedCount/$totalSongs songs resolved, $unresolvedCount unresolved")
+            resolutionCache[backupSongId] = outcome
+            return outcome
         }
 
         return playlists.map { playlist ->
-            val resolvedSongIds = playlist.songIds.mapNotNull { songId ->
-                resolutionCache[songId]
-            }
+            val resolvedSongIds = playlist.songIds.mapNotNull(::resolveId)
             playlist.copy(songIds = resolvedSongIds)
-        }
-    }
-
-    private fun resolveSongId(
-        backupSongId: String,
-        songMetadata: Map<String, SongMetadataEntry>,
-        currentSongsById: Map<String, SongSummary>,
-        metadataIndex: Map<String, List<SongSummary>>
-    ): String? {
-        val meta = songMetadata[backupSongId]
-
-        val directMatch = currentSongsById[backupSongId]
-        if (directMatch != null) {
-            if (meta == null) {
-                return backupSongId
-            }
-            if (metadataMatches(meta, directMatch)) {
-                return backupSongId
+        }.also {
+            if (deferredCount > 0 || droppedCount > 0) {
+                Timber.tag(TAG).w(
+                    "Playlist restore: $resolvedCount/$totalSongs resolved, " +
+                        "$deferredCount deferred for later sync, $droppedCount dropped"
+                )
             }
         }
-
-        if (meta == null) {
-            return if (directMatch != null) backupSongId else null
-        }
-
-        val matchKey = normalizeMatchKey(meta.title, meta.artist)
-        val candidates = metadataIndex[matchKey] ?: return null
-
-        if (candidates.size == 1) {
-            return candidates[0].id.toString()
-        }
-
-        val albumMatch = candidates.filter { candidate ->
-            normalizeText(candidate.albumName) == normalizeText(meta.album)
-        }
-        if (albumMatch.size == 1) {
-            return albumMatch[0].id.toString()
-        }
-
-        val durationCandidates = (albumMatch.ifEmpty { candidates }).filter { candidate ->
-            kotlin.math.abs(candidate.duration - meta.duration) <= DURATION_TOLERANCE_MS
-        }
-        if (durationCandidates.size == 1) {
-            return durationCandidates[0].id.toString()
-        }
-
-        return null
-    }
-
-    private fun metadataMatches(meta: SongMetadataEntry, song: SongSummary): Boolean {
-        return normalizeText(meta.title) == normalizeText(song.title) &&
-            normalizeText(meta.artist) == normalizeText(song.artistName)
-    }
-
-    private fun normalizeMatchKey(title: String, artist: String): String {
-        return "${normalizeText(title)}|${normalizeText(artist)}"
-    }
-
-    private fun normalizeText(text: String): String {
-        return text.trim().lowercase()
     }
 
     private suspend fun buildCloudSongIdSet(): Set<String> {
@@ -316,32 +272,24 @@ class PlaylistsModuleHandler @Inject constructor(
             ?: SortOption.PlaylistNameAZ.storageKey
 
         playlistPreferencesRepository.replaceAllPlaylists(playlists)
+        userPreferencesRepository.setPlaylistRestorePending(null)
         playlistPreferencesRepository.setPlaylistSongOrderModes(playlistSongOrderModes)
         playlistPreferencesRepository.setPlaylistsSortOption(playlistsSortOption)
         userPreferencesRepository.clearLegacyUserPlaylists()
     }
-
-    /** Song metadata stored alongside playlists for cross-device matching. */
-    data class SongMetadataEntry(
-        val title: String,
-        val artist: String,
-        val album: String,
-        val duration: Long
-    )
 
     private data class PlaylistsBackupPayload(
         val playlists: List<Playlist>? = null,
         val playlistSongOrderModes: Map<String, String>? = null,
         val playlistsSortOption: String? = null,
         /** Song metadata for cross-device matching. Key = songId from backup. Null in legacy/snapshot payloads. */
-        val songMetadata: Map<String, SongMetadataEntry>? = null,
+        val songMetadata: Map<String, PendingSongRef>? = null,
         /** Base64-encoded cover images. Key = playlist ID. Null if no custom covers. */
         val coverImages: Map<String, String>? = null
     )
 
     companion object {
         private const val TAG = "PlaylistsModuleHandler"
-        private const val DURATION_TOLERANCE_MS = 2000L
 
         /** Playlist sources that are backed up. Cloud-sourced playlists are excluded. */
         private fun isBackedUpPlaylistSource(source: String): Boolean =

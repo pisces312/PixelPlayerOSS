@@ -1195,6 +1195,11 @@ constructor(
         const val INPUT_FORCE_METADATA = "input_force_metadata"
         const val INPUT_RUN_MAINTENANCE = "input_run_maintenance"
         const val INPUT_SYNC_MODE = "input_sync_mode"
+        // WorkInfo does not expose inputData, so the sync mode is mirrored as tags that
+        // post-sync consumers (e.g. PlaylistRestoreResolver) can read from WorkInfo.tags.
+        const val TAG_SYNC_MODE_FULL = "sync_mode_full"
+        const val TAG_SYNC_MODE_INCREMENTAL = "sync_mode_incremental"
+        const val TAG_SYNC_MODE_REBUILD = "sync_mode_rebuild"
         private const val MAX_PLAYBACK_DEFERRALS = 5
 
         const val PROGRESS_CURRENT = "progress_current"
@@ -1221,6 +1226,7 @@ constructor(
                                         INPUT_SYNC_MODE to SyncMode.INCREMENTAL.name
                                 )
                         )
+                        .addTag(TAG_SYNC_MODE_INCREMENTAL)
                         .build()
 
         fun incrementalSyncWork(
@@ -1233,6 +1239,7 @@ constructor(
                                         INPUT_RUN_MAINTENANCE to runMaintenance
                                 )
                         )
+                        .addTag(TAG_SYNC_MODE_INCREMENTAL)
                         .build()
 
         private val heavySyncConstraints: Constraints =
@@ -1251,6 +1258,7 @@ constructor(
                                         INPUT_RUN_MAINTENANCE to true
                                 )
                         )
+                        .addTag(TAG_SYNC_MODE_FULL)
                         .setConstraints(heavySyncConstraints)
                         .build()
 
@@ -1262,6 +1270,7 @@ constructor(
                                         INPUT_RUN_MAINTENANCE to true
                                 )
                         )
+                        .addTag(TAG_SYNC_MODE_REBUILD)
                         .setConstraints(heavySyncConstraints)
                         .build()
 
@@ -1278,6 +1287,7 @@ constructor(
                         INPUT_RUN_MAINTENANCE to true
                     )
                 )
+                .addTag(TAG_SYNC_MODE_FULL)
                 .setConstraints(constraints)
                 .build()
         }

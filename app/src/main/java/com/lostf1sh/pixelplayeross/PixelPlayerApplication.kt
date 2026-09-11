@@ -68,6 +68,9 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
     lateinit var syncManager: dagger.Lazy<com.lostf1sh.pixelplayeross.data.worker.SyncManager>
 
     @Inject
+    lateinit var playlistRestoreResolver: dagger.Lazy<com.lostf1sh.pixelplayeross.data.backup.restore.PlaylistRestoreResolver>
+
+    @Inject
     lateinit var advancedPerformanceDiagnosticsController: dagger.Lazy<AdvancedPerformanceDiagnosticsController>
 
     @Inject
@@ -123,6 +126,7 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
         ProcessLifecycleOwner.get().lifecycle.addObserver(appLifecycleObserver)
 
         syncManager.get().start()
+        playlistRestoreResolver.get().start()
 
         m3uSyncCoordinator.get().start()
 
