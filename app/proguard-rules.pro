@@ -32,6 +32,10 @@
 -keep class com.lostf1sh.pixelplayeross.data.preferences.PreferenceBackupEntry { *; }
 -keep class com.lostf1sh.pixelplayeross.data.backup.model.** { *; }
 -keep class com.lostf1sh.pixelplayeross.data.backup.module.** { *; }
+# The restore package carries Gson payloads as well: PendingSongRef travels inside the backup file
+# and inside the pending-resolution preference. Renamed fields make Gson read a payload written by
+# any other build as all-null, which crashed the playlist restore.
+-keep class com.lostf1sh.pixelplayeross.data.backup.restore.** { *; }
 -keep class com.lostf1sh.pixelplayeross.data.database.FavoritesEntity { *; }
 -keep class com.lostf1sh.pixelplayeross.data.database.SongEngagementEntity { *; }
 -keep class com.lostf1sh.pixelplayeross.data.database.LyricsEntity { *; }

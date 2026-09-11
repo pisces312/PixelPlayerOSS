@@ -44,6 +44,27 @@ class PlaylistSongMatcherTest {
     }
 
     @Test
+    fun `entry without identity is treated as no metadata and keeps a direct id hit`() {
+        val matcher = PlaylistSongMatcher(listOf(summary(7, "Song", "Artist")))
+        // A payload written with field names this build does not recognise deserializes blank.
+        assertEquals("7", matcher.resolve("7", PendingSongRef()))
+    }
+
+    @Test
+    fun `entry without identity never matches by metadata`() {
+        val matcher = PlaylistSongMatcher(listOf(summary(11, "Target", "Target Artist")))
+        assertNull(matcher.resolve("999", PendingSongRef()))
+    }
+
+    @Test
+    fun `entry with only a title is treated as no metadata and keeps a direct id hit`() {
+        val matcher = PlaylistSongMatcher(listOf(summary(7, "Song", "Artist")))
+        // A half-filled entry can never satisfy the title+artist comparison, so it must not be
+        // allowed to veto an otherwise reliable direct-ID hit.
+        assertEquals("7", matcher.resolve("7", PendingSongRef(title = "Song")))
+    }
+
+    @Test
     fun `direct id hit with matching metadata is kept`() {
         val matcher = PlaylistSongMatcher(listOf(summary(7, "Song", "Artist")))
         assertEquals("7", matcher.resolve("7", ref("  song ", "ARTIST")))
