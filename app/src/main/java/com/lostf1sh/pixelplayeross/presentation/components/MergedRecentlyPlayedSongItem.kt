@@ -18,9 +18,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,7 +32,6 @@ import com.lostf1sh.pixelplayeross.data.model.Song
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -53,6 +54,9 @@ fun MergedRecentlyPlayedSongItem(
         else -> MaterialTheme.colorScheme.onSurface
     }
     val supportingColor = contentColor.copy(alpha = 0.76f)
+    // Read the locale from an observable source so a locale change recomposes the timestamp.
+    val locale = LocalLocale.current.platformLocale
+    val timeFormatter = remember(locale) { DateTimeFormatter.ofPattern("HH:mm", locale) }
 
     Surface(
         onClick = onClick,
@@ -87,7 +91,7 @@ fun MergedRecentlyPlayedSongItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "${item.song.displayArtist} · ${DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).format(Instant.ofEpochMilli(item.lastPlayedTimestamp).atZone(ZoneId.systemDefault()))}",
+                    text = "${item.song.displayArtist} · ${timeFormatter.format(Instant.ofEpochMilli(item.lastPlayedTimestamp).atZone(ZoneId.systemDefault()))}",
                     style = MaterialTheme.typography.bodySmall,
                     color = supportingColor,
                     maxLines = 1,

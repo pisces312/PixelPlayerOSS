@@ -1,7 +1,9 @@
 package com.lostf1sh.pixelplayeross.data.service.player
 
+import androidx.annotation.OptIn
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,6 +21,7 @@ import kotlinx.coroutines.launch
  * defeat the normalization. [getVolume] reports the logical volume during a fade rather
  * than the transient mid-ramp value.
  */
+@OptIn(UnstableApi::class)
 class FadingPlayer(
     val innerPlayer: Player,
     private val scope: CoroutineScope,
