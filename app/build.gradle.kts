@@ -11,6 +11,10 @@ plugins {
     id("kotlin-parcelize")
 }
 
+// Release signing credentials are read from keystore.properties when it exists, and fall
+// back to the KEY_* environment variables otherwise (see AGENTS.md > 签名与发布). The env
+// path keeps plaintext passwords off disk entirely. providers.environmentVariable() is used
+// instead of System.getenv() so the values are declared configuration-cache inputs.
 val keystoreProperties = Properties().apply {
     val propFile = rootProject.file("keystore.properties")
     if (propFile.exists()) {
@@ -18,17 +22,25 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+val signingValue: (String, String) -> String? = { propertyKey, envName ->
+    keystoreProperties.getProperty(propertyKey)?.takeIf { it.isNotBlank() }
+        ?: providers.environmentVariable(envName).orNull?.takeIf { it.isNotBlank() }
+}
+
 val releaseSigningStoreFile = rootProject.file(
-    keystoreProperties.getProperty("storeFile") ?: "vz-pixelplay.jks"
+    signingValue("storeFile", "KEY_STORE_LOCATION") ?: "vz-pixelplay.jks"
 )
+val releaseSigningStorePassword = signingValue("storePassword", "KEY_STORE_PASSWORD")
+val releaseSigningKeyAlias = signingValue("keyAlias", "KEY_ALIAS")
+val releaseSigningKeyPassword = signingValue("keyPassword", "KEY_PASSWORD")
 val disableReleaseSigning = providers.gradleProperty("pixelplayer.disableReleaseSigning")
     .getOrElse("false")
     .toBoolean()
 val hasReleaseSigningConfig = !disableReleaseSigning &&
     releaseSigningStoreFile.isFile &&
-    keystoreProperties.getProperty("storePassword") != null &&
-    keystoreProperties.getProperty("keyAlias") != null &&
-    keystoreProperties.getProperty("keyPassword") != null
+    releaseSigningStorePassword != null &&
+    releaseSigningKeyAlias != null &&
+    releaseSigningKeyPassword != null
 
 val enableAbiSplits = providers.gradleProperty("pixelplayer.enableAbiSplits")
     .getOrElse("true")
@@ -92,9 +104,9 @@ android {
         if (hasReleaseSigningConfig) {
             create("release") {
                 storeFile = releaseSigningStoreFile
-                storePassword = checkNotNull(keystoreProperties.getProperty("storePassword"))
-                keyAlias = checkNotNull(keystoreProperties.getProperty("keyAlias"))
-                keyPassword = checkNotNull(keystoreProperties.getProperty("keyPassword"))
+                storePassword = checkNotNull(releaseSigningStorePassword)
+                keyAlias = checkNotNull(releaseSigningKeyAlias)
+                keyPassword = checkNotNull(releaseSigningKeyPassword)
             }
         }
     }
