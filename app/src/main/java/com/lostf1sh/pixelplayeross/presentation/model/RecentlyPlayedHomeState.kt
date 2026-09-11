@@ -7,7 +7,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -54,7 +53,11 @@ fun rememberRecentlyPlayedHomeState(
             maxItems = maxItems
         ).toImmutableList()
     }
-    var songs by rememberSaveable { mutableStateOf(latestSongs) }
+    // Deliberately not rememberSaveable: the list is derived state that can be rebuilt from
+    // playbackHistory, and ImmutableList of Song is not Bundle-storable. Saving it crashed with
+    // "MutableState containing [] cannot be saved" whenever the history was empty, and a
+    // 64-item Song list would risk TransactionTooLargeException on the Bundle path anyway.
+    var songs by remember { mutableStateOf(latestSongs) }
     val latestSongsState = rememberUpdatedState(latestSongs)
 
     LaunchedEffect(latestSongs, lifecycleOwner) {

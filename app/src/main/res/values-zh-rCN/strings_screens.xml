@@ -154,6 +154,8 @@
     <string name="crash_report_stack_preview_label">堆栈信息（预览）：</string>
     <string name="crash_report_clipboard_label">崩溃日志</string>
     <string name="toast_crash_log_copied">崩溃日志已复制到剪贴板</string>
+    <string name="toast_crash_log_copied_truncated">崩溃日志已复制，已截断至 %1$d 字符</string>
+    <string name="toast_crash_log_share_failed">无法分享崩溃日志</string>
     <string name="crash_report_share_subject">PixelPlayerOSS 崩溃报告</string>
     <string name="crash_report_share_chooser">分享崩溃报告</string>
     <string name="action_copy">复制</string>

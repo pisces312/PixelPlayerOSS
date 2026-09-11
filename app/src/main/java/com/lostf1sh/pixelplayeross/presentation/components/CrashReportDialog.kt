@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,9 +38,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.lostf1sh.pixelplayeross.utils.CrashLogData
 import androidx.compose.ui.res.stringResource
 import com.lostf1sh.pixelplayeross.R
+import java.io.File
+
+/**
+ * Binder transactions are capped near 1MB, so a crash log carrying megabytes of diagnostic
+ * output cannot be handed to the clipboard or to another app through Intent extras.
+ * The clipboard payload is truncated; sharing goes through a FileProvider URI instead.
+ */
+private const val CLIPBOARD_PAYLOAD_LIMIT = 100_000
+private const val CRASH_LOG_FILE_NAME = "crash-report.txt"
 
 /**
  * Material3 Expressive styled dialog that displays crash information
@@ -51,6 +62,7 @@ fun CrashReportDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val fullLog = remember(crashLog) { crashLog.getFullLog() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -147,12 +159,23 @@ fun CrashReportDialog(
                     FilledTonalButton(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val truncated = fullLog.length > CLIPBOARD_PAYLOAD_LIMIT
+                            val payload = if (truncated) {
+                                fullLog.take(CLIPBOARD_PAYLOAD_LIMIT)
+                            } else {
+                                fullLog
+                            }
                             val clip = ClipData.newPlainText(
                                 context.getString(R.string.crash_report_clipboard_label),
-                                crashLog.getFullLog(),
+                                payload,
                             )
                             clipboard.setPrimaryClip(clip)
-                            Toast.makeText(context, context.getString(R.string.toast_crash_log_copied), Toast.LENGTH_SHORT).show()
+                            val message = if (truncated) {
+                                context.getString(R.string.toast_crash_log_copied_truncated, payload.length)
+                            } else {
+                                context.getString(R.string.toast_crash_log_copied)
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f)
                     ) {
@@ -167,14 +190,32 @@ fun CrashReportDialog(
 
                     FilledTonalButton(
                         onClick = {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.crash_report_share_subject))
-                                putExtra(Intent.EXTRA_TEXT, crashLog.getFullLog())
+                            // Share the log as a file: passing it through EXTRA_TEXT would blow the
+                            // Binder transaction limit for the same reason the clipboard did.
+                            runCatching {
+                                val logFile = File(context.cacheDir, CRASH_LOG_FILE_NAME)
+                                logFile.writeText(fullLog)
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.provider",
+                                    logFile
+                                )
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.crash_report_share_subject))
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(
+                                    Intent.createChooser(shareIntent, context.getString(R.string.crash_report_share_chooser)),
+                                )
+                            }.onFailure {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_crash_log_share_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
-                            context.startActivity(
-                                Intent.createChooser(shareIntent, context.getString(R.string.crash_report_share_chooser)),
-                            )
                         },
                         modifier = Modifier.weight(1f)
                     ) {

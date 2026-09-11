@@ -155,6 +155,8 @@
     <string name="crash_report_stack_preview_label">Stack trace (preview):</string>
     <string name="crash_report_clipboard_label">Crash log</string>
     <string name="toast_crash_log_copied">Crash log copied to clipboard</string>
+    <string name="toast_crash_log_copied_truncated">Crash log copied, truncated to %1$d characters</string>
+    <string name="toast_crash_log_share_failed">Could not share the crash log</string>
     <string name="crash_report_share_subject">PixelPlayerOSS crash report</string>
     <string name="crash_report_share_chooser">Share crash report</string>
     <string name="action_copy">Copy</string>
