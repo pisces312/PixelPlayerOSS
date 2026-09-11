@@ -513,7 +513,12 @@ class MusicService : MediaSessionService() {
                     controller.controllerVersion,
                     hintKeys
                 )
-                val defaultResult = super.onConnect(session, controller)
+                // Media3 1.11.0: the default onConnect now returns empty command sets plus a
+                // "not implemented" marker, so super.onConnect() yields no play/pause commands and
+                // controllers silently go dead. AcceptedResultBuilder(session, controller) restores
+                // the 1.10.1 semantics by picking the default command set based on isTrusted().
+                val defaultResult =
+                    MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller).build()
                 val sessionCommandsBuilder = SessionCommands.Builder()
                     .addSessionCommands(defaultResult.availableSessionCommands.commands)
                 if (isPrivilegedController(controller)) {
