@@ -99,8 +99,31 @@ val defaultResult =
 - [ ] 多声道/DSD：`SurroundDownmixProcessor` 输出声道数与解码器事件归属正常
 - [ ] 外部控制器：Android Auto / 蓝牙 AVRCP 连接与命令不回归（看 `onConnect` 日志的 `trusted` 与命令位掩码）
 
-## 6. 技术债
+## 6. 技术债：后续可迁移到 `onConnectAsync`
 
-`MediaSession.Callback.onConnect` 在 1.11.0 已标记 deprecated，是未来移除候选。
-迁移到 `onConnectAsync`（返回 `Futures.immediateFuture(result)`）需把现有的
-`grantArtworkUriPermissions`、权限判定等同步逻辑搬入异步回调。上游将其列为后续技术债，OSS 同步沿用。
+### 6.1 两个回调的关系
+
+`onConnectAsync` 是 1.11.0 **新增**的回调（1.10.1 不存在，`javap` 已核实），语义与 `onConnect`
+完全相同，只有两点差别：
+
+| 维度 | `onConnect` | `onConnectAsync` |
+|---|---|---|
+| 返回类型 | `ConnectionResult`（同步） | `ListenableFuture<ConnectionResult>`（可异步） |
+| 默认实现 | 返回空命令集 + `BUNDLE_KEY_NOT_IMPLEMENTED` 标记 | `immediateFuture(AcceptedResultBuilder(session, controller).build())`，即按 `isTrusted()` 给默认命令集 |
+| 框架处理 | 需自行保证返回非空命令集 | 若 `onConnect` 走的是默认实现，框架自动回退到它 |
+| 状态 | `@UnstableApi`，官方声明「移除 `@UnstableApi` 后即废弃」 | 官方**推荐**的实现方式 |
+
+注意 `onConnectAsync` 的默认实现已经内置了 `AcceptedResultBuilder(session, controller)`——
+也就是说，**什么都不覆盖**时 1.11.0 的行为是正确的；问题只出在应用覆盖了 `onConnect`
+却没有自己补齐默认命令集。
+
+### 6.2 迁移时的两个坑
+
+1. **不能同时覆盖**。官方明确：若两者都覆盖，deprecated 的 `onConnect` **优先**，
+   `onConnectAsync` 会被静默跳过。迁移必须**删除** `onConnect` 而不是并存。
+2. **`onConnectAsync` 里控制器尚未连接**，`sendCustomCommand` / `setMediaButtonPreferences`
+   之类调用会被忽略，需要这类初始化动作要用 `onPostConnect`。
+
+OSS 的 `onConnect` 目前承担三件事：拒绝非授权控制器、给 privileged 控制器追加自定义 session 命令、
+`grantArtworkUriPermissions`。迁到 `onConnectAsync` 时这三项都要搬进返回的 future 里
+（可以直接 `immediateFuture` 包装保持同步语义）。在 1.10.1 上无法兼容编译，**必须等版本线整体前进后再做**。
