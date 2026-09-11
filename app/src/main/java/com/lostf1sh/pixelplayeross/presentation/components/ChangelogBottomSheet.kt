@@ -3,7 +3,6 @@ package com.lostf1sh.pixelplayeross.presentation.components
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import androidx.annotation.ArrayRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -28,13 +27,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.LinkAnnotation
@@ -48,40 +48,19 @@ import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.SineWaveLine
 import com.lostf1sh.pixelplayeross.ui.theme.ExpTitleTypography
 import com.lostf1sh.pixelplayeross.ui.theme.RoundedSans
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 
 data class ChangelogSection(
     @StringRes val titleRes: Int,
-    @ArrayRes val itemsRes: Int
+    val items: List<String>
 )
 
 data class ChangelogVersion(
     val version: String,
     val date: String,
     val sections: List<ChangelogSection>
-)
-
-@Composable
-private fun changelogVersions(): List<ChangelogVersion> = listOf(
-    ChangelogVersion(
-        version = "0.2.0",
-        date = "2026-07-12",
-        sections = listOf(
-            ChangelogSection(R.string.presentation_batch_g_changelog_sec_whats_new, R.array.presentation_batch_g_changelog_v020_whats_new),
-            ChangelogSection(R.string.presentation_batch_g_changelog_sec_improvements, R.array.presentation_batch_g_changelog_v020_improvements),
-            ChangelogSection(R.string.presentation_batch_g_changelog_sec_under_the_hood, R.array.presentation_batch_g_changelog_v020_under_the_hood)
-        )
-    ),
-    ChangelogVersion(
-        version = "0.1.0",
-        date = "2026-06-09",
-        sections = listOf(
-            ChangelogSection(R.string.presentation_batch_g_changelog_sec_initial_release, R.array.presentation_batch_g_changelog_070_whats_new),
-            ChangelogSection(R.string.presentation_batch_g_changelog_sec_removed_for_foss, R.array.presentation_batch_g_changelog_070_improvements),
-            ChangelogSection(R.string.presentation_batch_g_changelog_sec_release_readiness, R.array.presentation_batch_g_changelog_070_fixes),
-            ChangelogSection(R.string.presentation_batch_g_changelog_sec_security_privacy, R.array.presentation_batch_g_changelog_070_added)
-        )
-    )
 )
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -91,7 +70,13 @@ fun ChangelogBottomSheet(
 ) {
     val context = LocalContext.current
     val changelogUrl = "https://github.com/lostf1sh/PixelPlayerOSS"
-    val changelog = changelogVersions()
+    val changelog by produceState(initialValue = emptyList<ChangelogVersion>()) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() }
+            }.getOrNull()?.let(ChangelogParser::parse) ?: emptyList()
+        }
+    }
 
     val fabCornerRadius = 16.dp
 
@@ -211,7 +196,7 @@ fun ChangelogVersionItem(version: ChangelogVersion) {
 
 @Composable
 fun ChangelogCategory(section: ChangelogSection) {
-    val items = stringArrayResource(section.itemsRes).toList()
+    val items = section.items
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,

@@ -520,6 +520,9 @@ Backslash (\) can be used to escape character delimiters.</string>
     <string name="presentation_batch_g_changelog_sec_whats_new">What\'s new</string>
     <string name="presentation_batch_g_changelog_sec_improvements">Improvements</string>
     <string name="presentation_batch_g_changelog_sec_under_the_hood">Under the hood</string>
+    <string name="presentation_batch_g_changelog_sec_fixed">Fixed</string>
+    <string name="presentation_batch_g_changelog_sec_removed">Removed</string>
+    <string name="presentation_batch_g_changelog_sec_app_polish">App polish</string>
     <string-array name="presentation_batch_g_changelog_v020_whats_new">
         <item>Material 3 Expressive design pass: a new motion scheme, wavy progress indicators, and shape-morphing animations throughout the app.</item>
         <item>Jellyfin servers over plain HTTP are now allowed for VPN and local-network hosts.</item>

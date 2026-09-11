@@ -518,6 +518,9 @@
     <string name="presentation_batch_g_changelog_sec_whats_new">新增功能</string>
     <string name="presentation_batch_g_changelog_sec_improvements">优化改进</string>
     <string name="presentation_batch_g_changelog_sec_under_the_hood">底层改动</string>
+    <string name="presentation_batch_g_changelog_sec_fixed">问题修复</string>
+    <string name="presentation_batch_g_changelog_sec_removed">移除内容</string>
+    <string name="presentation_batch_g_changelog_sec_app_polish">体验打磨</string>
     <string-array name="presentation_batch_g_changelog_v020_whats_new">
         <item>Material3表现力设计升级：全新动效体系、波浪进度条，全局形状形变动画。</item>
         <item>允许VPN、局域网环境下使用HTTP协议连接Jellyfin服务器。</item>

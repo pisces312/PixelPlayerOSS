@@ -1,5 +1,13 @@
 import java.util.Properties
+import javax.inject.Inject
 import com.android.build.api.variant.FilterConfiguration
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.FileSystemOperations
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 
 plugins {
     alias(libs.plugins.android.application)
@@ -9,6 +17,32 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.baselineprofile)
     id("kotlin-parcelize")
+}
+
+/**
+ * Copies a single file from the project directory into a generated assets directory.
+ *
+ * A plain [Copy] task cannot be wired with
+ * `variant.sources.assets.addGeneratedSourceDirectory`, which requires the task to expose
+ * its output as a [DirectoryProperty].
+ */
+abstract class CopyAssetFile : DefaultTask() {
+    @get:InputFile
+    abstract val sourceFile: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:Inject
+    abstract val fileSystemOperations: FileSystemOperations
+
+    @TaskAction
+    fun copyFile() {
+        fileSystemOperations.copy {
+            from(sourceFile)
+            into(outputDirectory)
+        }
+    }
 }
 
 // Release signing credentials are read from keystore.properties when it exists, and fall
@@ -49,6 +83,14 @@ val enableAbiSplits = providers.gradleProperty("pixelplayer.enableAbiSplits")
 val enableComposeCompilerReports = providers.gradleProperty("pixelplayer.enableComposeCompilerReports")
     .getOrElse("false")
     .toBoolean()
+
+// The in-app changelog reads CHANGELOG.md at runtime, so the repository file is the single
+// source of truth instead of a hardcoded list of localized entries.
+val generatedChangelogAssets = layout.buildDirectory.dir("generated/assets/changelog")
+val copyChangelog = tasks.register<CopyAssetFile>("copyChangelog") {
+    sourceFile.set(rootProject.layout.projectDirectory.file("CHANGELOG.md"))
+    outputDirectory.set(generatedChangelogAssets)
+}
 
 @Suppress("DEPRECATION")
 android {
@@ -193,6 +235,11 @@ androidComponents {
                 ?.identifier ?: "universal"
             output.outputFileName.set("pixelplayeross-${abi}-${appVersionName}-${variant.buildType}.apk")
         }
+
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            copyChangelog,
+            CopyAssetFile::outputDirectory,
+        )
     }
 }
 
