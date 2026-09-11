@@ -40,6 +40,8 @@ sealed class Screen(val route: String) {
     object RecentlyPlayed : Screen("recently_played")
     object Stats : Screen("stats")
     object StatsHotSongs : Screen("stats_hot_songs")
+    object StatsTopArtists : Screen("stats_top_artists")
+    object StatsTopAlbums : Screen("stats_top_albums")
     object Duplicates : Screen("duplicates?highlightKey={highlightKey}") {
         fun createRoute(highlightKey: String? = null) =
             if (highlightKey != null) "duplicates?highlightKey=$highlightKey" else "duplicates"

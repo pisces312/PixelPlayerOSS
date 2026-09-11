@@ -9,10 +9,10 @@
     <string name="presentation_batch_g_stats_cd_refresh">刷新收听统计</string>
     <string name="presentation_batch_g_stats_hero_listening">收听时长</string>
     <string name="presentation_batch_g_stats_hero_plays">播放次数</string>
-    <string name="presentation_batch_g_stats_range_day_short">日</string>
-    <string name="presentation_batch_g_stats_range_week_short">周</string>
-    <string name="presentation_batch_g_stats_range_month_short">月</string>
-    <string name="presentation_batch_g_stats_range_year_short">年</string>
+    <string name="presentation_batch_g_stats_range_day_short">今日</string>
+    <string name="presentation_batch_g_stats_range_week_short">本周</string>
+    <string name="presentation_batch_g_stats_range_month_short">本月</string>
+    <string name="presentation_batch_g_stats_range_year_short">本年</string>
     <string name="presentation_batch_g_stats_range_all_short">全部</string>
     <string name="presentation_batch_g_stats_period_previous">上一周期</string>
     <string name="presentation_batch_g_stats_period_next">下一周期</string>
@@ -23,6 +23,8 @@
     <string name="presentation_batch_g_stats_metric_artists">不同艺人</string>
     <string name="presentation_batch_g_stats_hot_songs">热门歌曲</string>
     <string name="presentation_batch_g_stats_hot_songs_show_more">显示全部 %1$d 首</string>
+    <string name="presentation_batch_g_stats_hot_artists_show_more">显示全部 %1$d 位艺术家</string>
+    <string name="presentation_batch_g_stats_hot_albums_show_more">显示全部 %1$d 张专辑</string>
     <string name="presentation_batch_g_stats_sort_plays">次数</string>
     <string name="presentation_batch_g_stats_sort_duration">时长</string>
     <string name="presentation_batch_g_stats_em_dash">—</string>

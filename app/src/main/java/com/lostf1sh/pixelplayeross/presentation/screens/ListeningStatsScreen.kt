@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.presentation.screens
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +51,7 @@ import com.lostf1sh.pixelplayeross.presentation.components.ListeningStatsOvervie
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.RecentlyPlayedSection
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
+import com.lostf1sh.pixelplayeross.presentation.components.StatsRangeSelector
 import com.lostf1sh.pixelplayeross.presentation.model.rememberRecentlyPlayedHomeState
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafely
@@ -68,11 +71,12 @@ fun ListeningStatsScreen(
     playerViewModel: PlayerViewModel,
     statsViewModel: StatsViewModel = hiltViewModel()
 ) {
+    val uiState by statsViewModel.uiState.collectAsStateWithLifecycle()
+    val summary = uiState.summary
     val recentState = rememberRecentlyPlayedHomeState(playerViewModel)
     val currentSongId by remember(playerViewModel.stablePlayerState) {
         playerViewModel.stablePlayerState.map { it.currentSong?.id }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = null)
-    val homeOverview by statsViewModel.homeOverview.collectAsStateWithLifecycle()
 
     Box(
         modifier = Modifier
@@ -111,11 +115,18 @@ fun ListeningStatsScreen(
                 )
             }
             item(key = "stats_overview", contentType = "listening_stats_overview") {
-                ListeningStatsOverviewCard(summary = homeOverview)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatsRangeSelector(
+                        selected = uiState.selectedRange,
+                        onRangeSelected = statsViewModel::onRangeSelected,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    ListeningStatsOverviewCard(summary = summary)
+                }
             }
             item(key = "stats_rankings", contentType = "listening_stats_rankings") {
                 StatsRankings(
-                    summary = homeOverview,
+                    summary = summary,
                     onSongClick = { songId -> playerViewModel.playSongById(songId) },
                     onArtistClick = { artist ->
                         statsViewModel.resolveArtistId(artist)?.let { artistId ->
@@ -126,12 +137,21 @@ fun ListeningStatsScreen(
                         statsViewModel.resolveAlbumId(album)?.let { albumId ->
                             navController.navigateSafely(Screen.AlbumDetail.createRoute(albumId))
                         }
+                    },
+                    onShowAllSongs = {
+                        navController.navigateSafely(Screen.StatsHotSongs.route)
+                    },
+                    onShowAllArtists = {
+                        navController.navigateSafely(Screen.StatsTopArtists.route)
+                    },
+                    onShowAllAlbums = {
+                        navController.navigateSafely(Screen.StatsTopAlbums.route)
                     }
                 )
             }
         }
         StatsTopBar(
-            isRefreshing = homeOverview == null,
+            isRefreshing = uiState.isLoading || uiState.isRefreshing,
             onRefresh = statsViewModel::requestStatsRefresh,
             modifier = Modifier.statusBarsPadding()
         )
@@ -177,7 +197,10 @@ private fun StatsRankings(
     summary: PlaybackStatsSummary?,
     onSongClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
-    onAlbumClick: (String) -> Unit
+    onAlbumClick: (String) -> Unit,
+    onShowAllSongs: () -> Unit,
+    onShowAllArtists: () -> Unit,
+    onShowAllAlbums: () -> Unit
 ) {
     if (summary == null) return
     Column(
@@ -186,7 +209,7 @@ private fun StatsRankings(
     ) {
         RankingSection(
             title = stringResource(R.string.presentation_batch_g_stats_hot_songs),
-            items = summary.topSongs.take(StatsRankingItemCount),
+            items = summary.songs.take(StatsRankingItemCount),
             headline = { it.title },
             supporting = {
                 it.artist
@@ -194,7 +217,12 @@ private fun StatsRankings(
             trailing = { stringResource(R.string.presentation_batch_g_stats_n_plays, it.playCount) },
             leadingIcon = Icons.Rounded.MusicNote,
             coverArtUri = { it.albumArtUri },
-            onClick = { onSongClick(it.songId) }
+            onClick = { onSongClick(it.songId) },
+            showMoreLabel = showAllLabel(
+                totalCount = summary.songs.size,
+                labelRes = R.string.presentation_batch_g_stats_hot_songs_show_more
+            ),
+            onShowMore = onShowAllSongs
         )
         RankingSection(
             title = stringResource(R.string.presentation_batch_g_stats_section_top_artists),
@@ -210,7 +238,12 @@ private fun StatsRankings(
             trailing = { formatListeningDurationCompact(it.totalDurationMs) },
             leadingIcon = Icons.Rounded.Person,
             coverArtUri = null,
-            onClick = { onArtistClick(it.artist) }
+            onClick = { onArtistClick(it.artist) },
+            showMoreLabel = showAllLabel(
+                totalCount = summary.topArtists.size,
+                labelRes = R.string.presentation_batch_g_stats_hot_artists_show_more
+            ),
+            onShowMore = onShowAllArtists
         )
         RankingSection(
             title = stringResource(R.string.presentation_batch_g_stats_section_top_albums),
@@ -226,10 +259,20 @@ private fun StatsRankings(
             trailing = { formatListeningDurationCompact(it.totalDurationMs) },
             leadingIcon = Icons.Rounded.Album,
             coverArtUri = { it.albumArtUri },
-            onClick = { onAlbumClick(it.album) }
+            onClick = { onAlbumClick(it.album) },
+            showMoreLabel = showAllLabel(
+                totalCount = summary.topAlbums.size,
+                labelRes = R.string.presentation_batch_g_stats_hot_albums_show_more
+            ),
+            onShowMore = onShowAllAlbums
         )
     }
 }
+
+/** Label for a "show all" button, or null when the ranking already fits on the main screen. */
+@Composable
+private fun showAllLabel(@StringRes labelRes: Int, totalCount: Int): String? =
+    if (totalCount > StatsRankingItemCount) stringResource(labelRes, totalCount) else null
 
 @Composable
 private fun <T> RankingSection(
@@ -240,7 +283,9 @@ private fun <T> RankingSection(
     trailing: @Composable (T) -> String,
     leadingIcon: ImageVector,
     coverArtUri: ((T) -> String?)?,
-    onClick: (T) -> Unit
+    onClick: (T) -> Unit,
+    showMoreLabel: String? = null,
+    onShowMore: (() -> Unit)? = null
 ) {
     if (items.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -260,6 +305,14 @@ private fun <T> RankingSection(
                     onClick = { onClick(item) },
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+        }
+        if (showMoreLabel != null && onShowMore != null) {
+            FilledTonalButton(
+                onClick = onShowMore,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = showMoreLabel)
             }
         }
     }

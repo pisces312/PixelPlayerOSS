@@ -14,7 +14,7 @@
     <string name="presentation_batch_g_stats_period_previous">Previous period</string>
     <string name="presentation_batch_g_stats_period_next">Next period</string>
     <string name="presentation_batch_g_stats_period_reset">Reset to current period</string>
-    <string name="presentation_batch_g_stats_range_day_short">Day</string>
+    <string name="presentation_batch_g_stats_range_day_short">Today</string>
     <string name="presentation_batch_g_stats_range_week_short">Week</string>
     <string name="presentation_batch_g_stats_range_month_short">Month</string>
     <string name="presentation_batch_g_stats_range_year_short">Year</string>
@@ -25,6 +25,8 @@
     <string name="presentation_batch_g_stats_metric_artists">Artists</string>
     <string name="presentation_batch_g_stats_hot_songs">Top songs</string>
     <string name="presentation_batch_g_stats_hot_songs_show_more">Show all %1$d songs</string>
+    <string name="presentation_batch_g_stats_hot_artists_show_more">Show all %1$d artists</string>
+    <string name="presentation_batch_g_stats_hot_albums_show_more">Show all %1$d albums</string>
     <string name="presentation_batch_g_stats_sort_plays">Plays</string>
     <string name="presentation_batch_g_stats_sort_duration">Duration</string>
     <string name="presentation_batch_g_stats_em_dash">—</string>

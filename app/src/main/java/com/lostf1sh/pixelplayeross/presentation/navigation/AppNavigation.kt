@@ -57,6 +57,9 @@ import com.lostf1sh.pixelplayeross.presentation.screens.AboutScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SearchScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.AiRequestLogScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.ListeningStatsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.StatsHotSongsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.StatsTopAlbumsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.StatsTopArtistsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.YearDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.DuplicateSongsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.SettingsScreen
@@ -377,6 +380,76 @@ fun AppNavigation(
                         navController = navController,
                         paddingValuesParent = paddingValues,
                         playerViewModel = playerViewModel,
+                        statsViewModel = statsViewModel
+                    )
+                }
+            }
+            // The "show all" stats screens reuse the stats destination's ViewModel so the
+            // selected time range carries over instead of falling back to the default.
+            composable(
+                route = Screen.StatsHotSongs.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) { backStackEntry ->
+                val statsViewModel: StatsViewModel = hiltViewModel(
+                    remember(backStackEntry) {
+                        navController.getBackStackEntry(Screen.Stats.route)
+                    }
+                )
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    StatsHotSongsScreen(
+                        onBack = { navController.popBackStack() },
+                        onSongClick = { songId -> playerViewModel.playSongById(songId) },
+                        statsViewModel = statsViewModel
+                    )
+                }
+            }
+            composable(
+                route = Screen.StatsTopArtists.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) { backStackEntry ->
+                val statsViewModel: StatsViewModel = hiltViewModel(
+                    remember(backStackEntry) {
+                        navController.getBackStackEntry(Screen.Stats.route)
+                    }
+                )
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    StatsTopArtistsScreen(
+                        onBack = { navController.popBackStack() },
+                        onArtistClick = { artist ->
+                            statsViewModel.resolveArtistId(artist)?.let { artistId ->
+                                navController.navigateSafely(Screen.ArtistDetail.createRoute(artistId))
+                            }
+                        },
+                        statsViewModel = statsViewModel
+                    )
+                }
+            }
+            composable(
+                route = Screen.StatsTopAlbums.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) { backStackEntry ->
+                val statsViewModel: StatsViewModel = hiltViewModel(
+                    remember(backStackEntry) {
+                        navController.getBackStackEntry(Screen.Stats.route)
+                    }
+                )
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    StatsTopAlbumsScreen(
+                        onBack = { navController.popBackStack() },
+                        onAlbumClick = { album ->
+                            statsViewModel.resolveAlbumId(album)?.let { albumId ->
+                                navController.navigateSafely(Screen.AlbumDetail.createRoute(albumId))
+                            }
+                        },
                         statsViewModel = statsViewModel
                     )
                 }

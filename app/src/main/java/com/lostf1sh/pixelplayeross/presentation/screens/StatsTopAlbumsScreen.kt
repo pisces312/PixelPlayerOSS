@@ -13,7 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,33 +33,35 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lostf1sh.pixelplayeross.R
-import com.lostf1sh.pixelplayeross.presentation.stats.SongRow
+import com.lostf1sh.pixelplayeross.presentation.stats.RankingCoverArt
 import com.lostf1sh.pixelplayeross.presentation.stats.SongSortMetric
+import com.lostf1sh.pixelplayeross.presentation.stats.StatRankRow
 import com.lostf1sh.pixelplayeross.presentation.stats.StatsEmptyState
 import com.lostf1sh.pixelplayeross.presentation.stats.StatsSortActions
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.StatsViewModel
+import com.lostf1sh.pixelplayeross.utils.formatListeningDurationCompact
 import kotlinx.collections.immutable.toImmutableList
 
 /**
- * The full "top songs" ranking for the current stats period.
+ * The full album ranking for the current stats period.
  *
  * The main stats screen shows only the leading few so the cards below stay reachable;
- * this screen lists everything the current period produced (capped by the repository).
+ * this screen lists every album the current period produced (capped by the repository).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatsHotSongsScreen(
+fun StatsTopAlbumsScreen(
     onBack: () -> Unit,
-    onSongClick: (String) -> Unit,
+    onAlbumClick: (String) -> Unit,
     statsViewModel: StatsViewModel = hiltViewModel()
 ) {
     val uiState by statsViewModel.uiState.collectAsStateWithLifecycle()
     val summary = uiState.summary
-    var songSortMetric by rememberSaveable { mutableStateOf(SongSortMetric.DURATION) }
+    var sortMetric by rememberSaveable { mutableStateOf(SongSortMetric.DURATION) }
 
-    val songs = remember(summary, songSortMetric) {
-        val all = summary?.songs.orEmpty()
-        when (songSortMetric) {
+    val albums = remember(summary, sortMetric) {
+        val all = summary?.topAlbums.orEmpty()
+        when (sortMetric) {
             SongSortMetric.PLAYS -> all.sortedByDescending { it.playCount }
             SongSortMetric.DURATION -> all.sortedByDescending { it.totalDurationMs }
         }.toImmutableList()
@@ -71,7 +73,7 @@ fun StatsHotSongsScreen(
             .background(MaterialTheme.colorScheme.surface)
     ) {
         TopAppBar(
-            title = { Text(stringResource(R.string.presentation_batch_g_stats_hot_songs)) },
+            title = { Text(stringResource(R.string.presentation_batch_g_stats_section_top_albums)) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
                     Icon(
@@ -82,18 +84,18 @@ fun StatsHotSongsScreen(
             },
             actions = {
                 StatsSortActions(
-                    sortMetric = songSortMetric,
-                    onSortMetricChange = { songSortMetric = it }
+                    sortMetric = sortMetric,
+                    onSortMetricChange = { sortMetric = it }
                 )
             }
         )
 
-        if (songs.isEmpty()) {
+        if (albums.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 StatsEmptyState(
-                    icon = Icons.Outlined.MusicNote,
-                    title = stringResource(R.string.presentation_batch_g_stats_empty_no_tracks_title),
-                    subtitle = stringResource(R.string.presentation_batch_g_stats_empty_no_tracks_subtitle)
+                    icon = Icons.Outlined.Album,
+                    title = stringResource(R.string.presentation_batch_g_stats_empty_no_albums_title),
+                    subtitle = stringResource(R.string.presentation_batch_g_stats_empty_no_albums_subtitle)
                 )
             }
         } else {
@@ -106,14 +108,23 @@ fun StatsHotSongsScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                items(songs, key = { it.songId }) { entry ->
-                    SongRow(
-                        title = entry.title,
-                        artist = entry.artist,
-                        albumArtUri = entry.albumArtUri,
-                        playCount = entry.playCount,
-                        totalDurationMs = entry.totalDurationMs,
-                        onClick = { onSongClick(entry.songId) }
+                items(albums, key = { it.album }) { entry ->
+                    StatRankRow(
+                        title = entry.album,
+                        subtitle = stringResource(
+                            R.string.presentation_batch_g_stats_plays_tracks,
+                            entry.playCount,
+                            entry.uniqueSongs
+                        ),
+                        trailing = formatListeningDurationCompact(entry.totalDurationMs),
+                        onClick = { onAlbumClick(entry.album) },
+                        leading = {
+                            RankingCoverArt(
+                                albumArtUri = entry.albumArtUri,
+                                fallbackIcon = Icons.Outlined.Album,
+                                contentDescription = entry.album
+                            )
+                        }
                     )
                 }
             }

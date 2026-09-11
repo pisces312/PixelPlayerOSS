@@ -158,6 +158,10 @@ class PlaybackStatsRepository @Inject constructor(
         val topSongs: List<SongPlaybackSummary> = emptyList(),
         val topGenres: List<GenrePlaybackSummary> = emptyList(),
         val timeline: List<TimelineEntry>,
+        /**
+         * Full ranked artist/album lists for the period, capped by [MAX_RANKING_STATS_COUNT].
+         * The stats screen trims these for display and hands the whole list to the "show all" screens.
+         */
         val topArtists: List<ArtistPlaybackSummary>,
         val topAlbums: List<AlbumPlaybackSummary>,
         val activeDays: Int,
@@ -333,7 +337,7 @@ class PlaybackStatsRepository @Inject constructor(
                 compareByDescending<SongPlaybackSummary> { it.totalDurationMs }
                     .thenByDescending { it.playCount }
             )
-            .take(MAX_SONG_STATS_COUNT)
+            .take(MAX_RANKING_STATS_COUNT)
         val topSongs = allSongs.take(5)
 
         val topGenres = segmentsBySong.entries
@@ -437,7 +441,7 @@ class PlaybackStatsRepository @Inject constructor(
                 compareByDescending<ArtistPlaybackSummary> { it.totalDurationMs }
                     .thenByDescending { it.playCount }
             )
-            .take(5)
+            .take(MAX_RANKING_STATS_COUNT)
 
         val topAlbums = segmentsBySong.entries
             .groupBy { (songId, _) ->
@@ -463,7 +467,7 @@ class PlaybackStatsRepository @Inject constructor(
                 compareByDescending<AlbumPlaybackSummary> { it.totalDurationMs }
                     .thenByDescending { it.playCount }
             )
-            .take(5)
+            .take(MAX_RANKING_STATS_COUNT)
 
         val peakTimeline = timelineEntries
             .filter { it.totalDurationMs > 0L }
@@ -1154,7 +1158,7 @@ class PlaybackStatsRepository @Inject constructor(
         private const val MAX_FILE_UPDATE_RETRIES = 3
         private const val UNKNOWN_ARTIST = "Unknown Artist"
         private const val SEGMENT_JOIN_TOLERANCE_MS = 0L
-        private const val MAX_SONG_STATS_COUNT = 100
+        private const val MAX_RANKING_STATS_COUNT = 100
     }
 }
 

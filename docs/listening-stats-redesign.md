@@ -4,7 +4,7 @@
 
 Move the home screen's recently played section to the top-level Stats tab and replace the current stats implementation with a new screen based on the former home listening-stats card.
 
-The existing `StatsScreen.kt` remains in the tree for reference, but the `stats` route will render a new `ListeningStatsScreen.kt`.
+The existing `StatsScreen.kt` remains in the tree for reference, but the `stats` route will render a new `ListeningStatsScreen.kt`. _(Superseded — see Updates below.)_
 
 ## Screen structure
 
@@ -35,3 +35,22 @@ The existing `StatsScreen.kt` remains in the tree for reference, but the `stats`
 - Extract the recently played home-state collection into a reusable Compose state helper.
 - Remove the recently played section from `HomeScreen` after moving it to the new screen.
 - Add only English source strings; translations remain with the localization workflow.
+
+## Updates
+
+### 2026-09-11 — range selector, "show all" screens, dead code removal
+
+- `StatsScreen.kt` is deleted. Its shared ranking pieces (`SongSortMetric`, `SortToggleButton`,
+  `StatRankRow`, `SongRow`, `StatsEmptyState`, `RankingCoverArt`, `StatsSortActions`) now live in
+  `presentation/stats/StatsDetailComponents.kt`.
+- The overview card has an explicit range selector
+  (`presentation/components/StatsRangeSelector.kt`) covering Today, Week to Date, Month to Date,
+  Year to Date, and All Time. The automatic range picking described above (`homeOverview`) was
+  removed; the default range is Today.
+- `PlaybackStatsRepository` now returns full ranked artist and album lists (`topArtists` /
+  `topAlbums`, capped at `MAX_RANKING_STATS_COUNT`) rather than the leading five, so the rankings
+  are no longer silently trimmed to five rows.
+- Each ranking section shows a "show all" button once it exceeds the eight rows rendered on the
+  main screen, opening `StatsHotSongsScreen`, `StatsTopArtistsScreen`, or `StatsTopAlbumsScreen`.
+  These screens share the stats destination's `StatsViewModel` (via
+  `navController.getBackStackEntry(Screen.Stats.route)`) so the selected range carries over.
