@@ -44,8 +44,53 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 - **ABI 只构建 `arm64-v8a`**（`pixelplayer.enableAbiSplits` 默认 true）；关掉该 property 时文件名中的 abi 段为 `universal`。
 - **APK 命名**：`pixelplayeross-<abi>-<APP_VERSION_NAME>-<buildtype>.apk`（`androidComponents.onVariants` 设置 `outputFileName`），
   例 `pixelplayeross-arm64-v8a-0.3.0-debug.apk`。改命名规则改 `app/build.gradle.kts`。
-- 签名走 `keystore.properties`（或 `pixelplayer.disableReleaseSigning=true` 跳过），勿提交密钥。
+- 签名走 `keystore.properties`（或 `pixelplayer.disableReleaseSigning=true` 跳过），勿提交密钥。详见下方「签名与发布」。
 - `GRADLE_USER_HOME=D:\dev\.gradle`；wrapper 的 Gradle 发行版走腾讯云镜像。
+
+## 签名与发布（自用 fork）
+
+**凭据只存在于环境变量**，严禁写入仓库内任何文件（含 `docs/`、release notes、memory）：
+
+| 环境变量 | 用途 |
+|---|---|
+| `KEY_STORE` | keystore 文件名（备查） |
+| `KEY_STORE_LOCATION` | keystore 绝对路径（Windows 风格） |
+| `KEY_STORE_PASSWORD` | keystore 口令 |
+| `KEY_ALIAS` | 密钥别名（`pisces312`） |
+| `KEY_PASSWORD` | 密钥口令 |
+
+`app/build.gradle.kts` 的签名块优先读仓库根的 `keystore.properties`（已 gitignore、不入库），
+**文件不存在时回退到上表的环境变量**（走 `providers.environmentVariable(...)`，配置缓存可跟踪）。
+因此本机发版**不需要在任何文件里落盘口令**，环境变量在就能直接构建：
+
+```bash
+./gradlew :app:assembleRelease --no-configuration-cache
+```
+
+只有在环境变量拿不到、又必须用文件时才生成 `keystore.properties`（注意 `storeFile` 必须正斜杠）：
+
+```bash
+STORE_FWD=$(printf '%s' "$KEY_STORE_LOCATION" | tr '\\' '/')
+printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+  "$STORE_FWD" "$KEY_STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
+```
+
+四个坑（都踩过）：
+
+- **`storeFile` 必须正斜杠**（写进 `keystore.properties` 时）：`Properties.load()` 把 `\` 当转义符，
+  `D:\a\b` 解析成 `D:ab`，路径失效 → `hasReleaseSigningConfig` 为 false → **BUILD SUCCESSFUL
+  但 APK 完全没签名**。只有 `tr '\\' '/'` 在本机可靠（bash 的 `${VAR//\\//}` 与 `sed` 都会漏转）。
+  走环境变量回退时无此问题。
+- **用 `keystore.properties` 时改了它必须 `--no-configuration-cache` 重跑**：`Properties().load(File)`
+  是未声明输入，配置缓存不会跟踪其变化，会沿用旧的签名判定。环境变量路径已用 `providers` 声明，无此坑。
+- **构建成功 ≠ 已签名**，唯一可信判据是
+  `apksigner verify --print-certs -v <apk>` → `Verifies` + `v2 scheme: true` + `CN=pisces312`
+  （只有 v2、没有 v1 是正常的）；`aapt2 dump badging` 核对 `versionName` / `versionCode` / `native-code`。
+- 本机 build-tools：`D:/dev/android_sdk/build-tools/37.0.0/`。
+
+发版链路：`pisces/port` →（ff）`main` → 版本号提交（**message 里带 `[skip ci]`**，抑制
+`.github/workflows/alpha-release.yml` 自动造 alpha 预发布）→ `tag v<版本名>` → `assembleRelease`
+→ `gh release create`。版本号带 `-pisces.N` 后缀，版本码沿用 `主版本 * 100000 + 序号`。
 
 ## 新增一个设置开关（必读，缺一不可）
 
