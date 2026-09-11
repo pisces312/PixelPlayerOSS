@@ -22,6 +22,7 @@
     <string name="presentation_batch_g_stats_metric_songs">不同歌曲</string>
     <string name="presentation_batch_g_stats_metric_artists">不同艺人</string>
     <string name="presentation_batch_g_stats_hot_songs">热门歌曲</string>
+    <string name="presentation_batch_g_stats_hot_songs_show_more">显示全部 %1$d 首</string>
     <string name="presentation_batch_g_stats_sort_plays">次数</string>
     <string name="presentation_batch_g_stats_sort_duration">时长</string>
     <string name="presentation_batch_g_stats_em_dash">—</string>

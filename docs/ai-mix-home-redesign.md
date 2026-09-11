@@ -281,3 +281,59 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
   直接从现有 playlists 流派生，零存储、零同步、零脏数据。
 - 代价：`prompt` 不入库，所以「最近生成」卡片不显示原始提示词（只有 mix 名称）。
   名称本身已经承载了意图（`AI Mix · 09-10 20:24`），够用；真需要 prompt 再单独加字段。
+
+---
+
+## 8. 首页三区块分区 + 统计界面统一（2026-09-10 晚追加）
+
+### 背景
+
+首页有 AI 横幅 / 本地推荐（拼贴 + 每日精选）/ 最近播放三块，但各用一套互不相干的容器、
+图标和标题规则，靠 24dp 行间距硬分，看起来「融在一起」。
+
+### 方案：统一分区语法，不靠分隔线
+
+**原则：区分靠「身份色」，不靠分隔线。** 三区块各领一个色相，只用在 section 头的图标块
+和少量描边上；标题结构完全一致。
+
+| 区块 | 身份色 | 图标 | 含义 |
+|---|---|---|---|
+| AI | 紫（`primary → tertiary` 渐变，横幅原色保留） | `AutoAwesome` | 生成出来的 |
+| 本地推荐 | 青绿（`tertiaryContainer` 系） | `queue_music` | 设备算出来的 |
+| 最近播放 | 暖橙（`secondaryContainer` 系） | `History` | 已经发生的 |
+
+### 改动清单
+
+1. **新组件 `HomeSectionHeader.kt`**：统一头（34dp 图标块 + 标题 + 副标题 + 可选动作胶囊）。
+   图标块用 `AbsoluteSmoothCornerShape`（12dp），与 AI 横幅圆角同族。
+2. **`YourMixHeader`** → 换成 `HomeSectionHeader`（`tertiaryContainer` + 随机播胶囊，
+   图标 `rounded_queue_music_24`）。
+3. **`RecentlyPlayedSection`** → 标题行换成 `HomeSectionHeader`（`secondaryContainer` + `History`），
+   右侧 40×64 箭头按钮换成「收听统计 →」胶囊，**跳 `Screen.Stats` 而非 `RecentlyPlayedScreen`**。
+   `RecentlyPlayedScreen` 保留（时间轴完整列表），只是入口换了。
+   - 新增字符串 `home_recently_played_subtitle`：What you have been listening to / 你最近在听的歌。
+4. **`DailyMixHeader`**：**去掉 `primary → tertiary` 渐变**（与 AI 横幅撞色，等于自称 AI），
+   改成 `tertiaryContainer` 纯色，文字 `onTertiaryContainer`。
+5. **区块间距** `24dp → 32dp`。
+
+### 统计界面统一
+
+- **行样式**：新增 `StatRankRow`（`surfaceContainerLow` / 10dp 圆角 / 13·12 内边距，
+  与 `EnhancedSongListItem` 同款规则），热门歌曲、热门歌手、热门专辑三处共用；
+  `SongRow` 改为基于它的薄封装（带 42dp 封面），全部从 private 升 internal 供详情页复用。
+- **按钮**：排序切换（Plays / Duration）由 `ToggleButton` 换成 10dp 圆角 `Surface` 胶囊；
+  Range tabs 圆角 14dp → 10dp 对齐。
+- **热门歌曲限量 15 条**：`HOT_SONGS_VISIBLE_COUNT = 15`，超过 15 条出现
+  「显示全部 %d 首」`FilledTonalButton`。
+- **「显示更多」→ 独立页面而非对话框**：新增 `Screen.StatsHotSongs`（`stats_hot_songs`）+
+  `StatsHotSongsScreen.kt`（TopAppBar + 返回 + 排序按钮 + 全量 LazyColumn）。
+  不选对话框的原因：统计歌曲上限 100 条（`MAX_SONG_STATS_COUNT`），对话框里还是得滚，
+  只是把长滚动搬了个家；独立页有返回手势、不占弹窗、与「最近播放 → 完整列表」同一模式。
+- 新增字符串 `stats_hot_songs_show_more`：Show all %1$d songs / 显示全部 %1$d 首。
+
+### 实现备注
+
+- `SongSortMetric`、`SortToggleButton`、`StatsEmptyState`、`SongRow`、`StatRankRow`
+  统一升 `internal`（StatsScreen 与 StatsHotSongsScreen 共享，不复制代码）。
+- 热门歌手/专辑卡片的 `secondaryContainer` / `tertiaryContainer` 卡片底色**去掉**，
+  行直接浮在页面上 —— 原来三种底色卡片叠在同一页也是一种「融」。

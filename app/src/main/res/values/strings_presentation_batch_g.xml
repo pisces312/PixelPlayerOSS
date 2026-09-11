@@ -24,6 +24,7 @@
     <string name="presentation_batch_g_stats_metric_songs">Songs</string>
     <string name="presentation_batch_g_stats_metric_artists">Artists</string>
     <string name="presentation_batch_g_stats_hot_songs">Top songs</string>
+    <string name="presentation_batch_g_stats_hot_songs_show_more">Show all %1$d songs</string>
     <string name="presentation_batch_g_stats_sort_plays">Plays</string>
     <string name="presentation_batch_g_stats_sort_duration">Duration</string>
     <string name="presentation_batch_g_stats_em_dash">—</string>

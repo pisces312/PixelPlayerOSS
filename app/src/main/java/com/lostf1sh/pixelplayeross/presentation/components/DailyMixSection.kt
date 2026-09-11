@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
@@ -248,14 +247,7 @@ fun DailyMixHeader(thumbnails: ImmutableList<Song>) {
         modifier = Modifier
             .fillMaxWidth()
             .height(80.dp)
-            .background(
-                brush = Brush.horizontalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.tertiary
-                    )
-                )
-            ),
+            .background(MaterialTheme.colorScheme.tertiaryContainer),
         contentAlignment = Alignment.CenterStart
     ) {
         Row(
@@ -269,14 +261,14 @@ fun DailyMixHeader(thumbnails: ImmutableList<Song>) {
                 Text(
                     text = stringResource(R.string.presentation_batch_g_daily_mix_heading),
                     style = titleStyle,
-                    color = MaterialTheme.colorScheme.onPrimary
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
                 Text(
                     modifier = Modifier.padding(start = 1.dp),
                     text = stringResource(R.string.presentation_batch_g_daily_mix_based_on_history),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
                 )
             }
             Row(

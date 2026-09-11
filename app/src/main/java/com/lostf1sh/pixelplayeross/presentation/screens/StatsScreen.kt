@@ -37,6 +37,7 @@ import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -46,8 +47,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -86,6 +85,7 @@ fun StatsScreen(
     onSongClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
     onAlbumClick: (String) -> Unit,
+    onShowMoreHotSongs: () -> Unit,
     statsViewModel: StatsViewModel = hiltViewModel()
 ) {
     val uiState by statsViewModel.uiState.collectAsStateWithLifecycle()
@@ -157,7 +157,8 @@ fun StatsScreen(
                             summary = summary,
                             sortMetric = songSortMetric,
                             onSortMetricChange = { songSortMetric = it },
-                            onSongClick = onSongClick
+                            onSongClick = onSongClick,
+                            onShowMore = onShowMoreHotSongs
                         )
                     }
                     item(key = "top_artists") {
@@ -193,7 +194,7 @@ private fun RangeTabsHeader(
             val isSelected = range == selected
             Surface(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = if (isSelected) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -462,10 +463,13 @@ private fun SimpleBarChart(
 // Hot songs
 // ---------------------------------------------------------------------------
 
-private enum class SongSortMetric {
+internal enum class SongSortMetric {
     PLAYS,
     DURATION
 }
+
+/** How many hot songs the stats screen shows before the "show more" button appears. */
+private const val HOT_SONGS_VISIBLE_COUNT = 15
 
 @Composable
 private fun HotSongsCard(
@@ -473,6 +477,7 @@ private fun HotSongsCard(
     sortMetric: SongSortMetric,
     onSortMetricChange: (SongSortMetric) -> Unit,
     onSongClick: (String) -> Unit,
+    onShowMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val songs = remember(summary, sortMetric) {
@@ -482,6 +487,7 @@ private fun HotSongsCard(
             SongSortMetric.DURATION -> all.sortedByDescending { it.totalDurationMs }
         }.toImmutableList()
     }
+    val visibleSongs = remember(songs) { songs.take(HOT_SONGS_VISIBLE_COUNT) }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -521,21 +527,29 @@ private fun HotSongsCard(
                 subtitle = stringResource(R.string.presentation_batch_g_stats_empty_no_tracks_subtitle)
             )
         } else {
-            Card(
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-            ) {
-                Column {
-                    songs.forEach { song ->
-                        SongRow(
-                            title = song.title,
-                            artist = song.artist,
-                            albumArtUri = song.albumArtUri,
-                            playCount = song.playCount,
-                            totalDurationMs = song.totalDurationMs,
-                            onClick = { onSongClick(song.songId) }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                visibleSongs.forEach { song ->
+                    SongRow(
+                        title = song.title,
+                        artist = song.artist,
+                        albumArtUri = song.albumArtUri,
+                        playCount = song.playCount,
+                        totalDurationMs = song.totalDurationMs,
+                        onClick = { onSongClick(song.songId) }
+                    )
+                }
+            }
+            if (songs.size > HOT_SONGS_VISIBLE_COUNT) {
+                FilledTonalButton(
+                    onClick = onShowMore,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.presentation_batch_g_stats_hot_songs_show_more,
+                            songs.size
                         )
-                    }
+                    )
                 }
             }
         }
@@ -543,33 +557,38 @@ private fun HotSongsCard(
 }
 
 @Composable
-private fun SortToggleButton(
+internal fun SortToggleButton(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    ToggleButton(
-        checked = selected,
-        onCheckedChange = { onClick() },
+    Surface(
         modifier = modifier,
-        colors = ToggleButtonDefaults.toggleButtonColors(
-            checkedContainerColor = MaterialTheme.colorScheme.primary,
-            checkedContentColor = MaterialTheme.colorScheme.onPrimary,
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
+        onClick = onClick
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
         )
     }
 }
 
 @Composable
-private fun SongRow(
+internal fun SongRow(
     title: String,
     artist: String,
     albumArtUri: String?,
@@ -578,24 +597,56 @@ private fun SongRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = Color.Transparent,
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+    StatRankRow(
+        title = title,
+        subtitle = if (artist.isNotBlank()) {
+            "$artist · ×$playCount"
+        } else {
+            "×$playCount"
+        },
+        trailing = formatListeningDurationCompact(totalDurationMs),
+        onClick = onClick,
+        leading = {
             SmartImage(
                 model = albumArtUri,
                 contentDescription = title,
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(6.dp)),
-                shape = RoundedCornerShape(6.dp)
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                shape = RoundedCornerShape(8.dp)
             )
+        },
+        modifier = modifier
+    )
+}
+
+/**
+ * One ranking row, shaped like a library row: flat surface, library spacing, 10dp corners.
+ * The artist/album lists on the stats screen and the hot songs detail screen all share it.
+ */
+@Composable
+internal fun StatRankRow(
+    title: String,
+    subtitle: String,
+    trailing: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    leading: (@Composable () -> Unit)? = null
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(10.dp),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (leading != null) {
+                leading()
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
@@ -606,11 +657,7 @@ private fun SongRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (artist.isNotBlank()) {
-                        "$artist · ×$playCount"
-                    } else {
-                        "×$playCount"
-                    },
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -618,7 +665,7 @@ private fun SongRow(
                 )
             }
             Text(
-                text = formatListeningDurationCompact(totalDurationMs),
+                text = trailing,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -655,52 +702,18 @@ private fun TopArtistsCard(
                 subtitle = stringResource(R.string.presentation_batch_g_stats_empty_no_artists_subtitle)
             )
         } else {
-            Card(
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-            ) {
-                Column {
-                    artists.forEach { artist ->
-                        Surface(
-                            onClick = { onArtistClick(artist.artist) },
-                            color = Color.Transparent
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = artist.artist,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = stringResource(
-                                            R.string.presentation_batch_g_stats_plays_tracks,
-                                            artist.playCount,
-                                            artist.uniqueSongs
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.76f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Text(
-                                    text = formatListeningDurationCompact(artist.totalDurationMs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.76f)
-                                )
-                            }
-                        }
-                    }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                artists.forEach { artist ->
+                    StatRankRow(
+                        title = artist.artist,
+                        subtitle = stringResource(
+                            R.string.presentation_batch_g_stats_plays_tracks,
+                            artist.playCount,
+                            artist.uniqueSongs
+                        ),
+                        trailing = formatListeningDurationCompact(artist.totalDurationMs),
+                        onClick = { onArtistClick(artist.artist) }
+                    )
                 }
             }
         }
@@ -736,52 +749,18 @@ private fun TopAlbumsCard(
                 subtitle = stringResource(R.string.presentation_batch_g_stats_empty_no_albums_subtitle)
             )
         } else {
-            Card(
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-            ) {
-                Column {
-                    albums.forEach { album ->
-                        Surface(
-                            onClick = { onAlbumClick(album.album) },
-                            color = Color.Transparent
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = album.album,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = stringResource(
-                                            R.string.presentation_batch_g_stats_plays_tracks,
-                                            album.playCount,
-                                            album.uniqueSongs
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.76f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                Text(
-                                    text = formatListeningDurationCompact(album.totalDurationMs),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.76f)
-                                )
-                            }
-                        }
-                    }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                albums.forEach { album ->
+                    StatRankRow(
+                        title = album.album,
+                        subtitle = stringResource(
+                            R.string.presentation_batch_g_stats_plays_tracks,
+                            album.playCount,
+                            album.uniqueSongs
+                        ),
+                        trailing = formatListeningDurationCompact(album.totalDurationMs),
+                        onClick = { onAlbumClick(album.album) }
+                    )
                 }
             }
         }
@@ -793,7 +772,7 @@ private fun TopAlbumsCard(
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun StatsEmptyState(
+internal fun StatsEmptyState(
     icon: ImageVector,
     title: String,
     subtitle: String,
