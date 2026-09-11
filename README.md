@@ -29,7 +29,9 @@
 
 ## What It Is
 
-PixelPlayerOSS is an Android music player maintained by [@lostf1sh](https://github.com/lostf1sh). It focuses on local playback, self-hosted music libraries, expressive Material 3 UI, and user-controlled online lookups.
+PixelPlayerOSS is an Android music player maintained upstream by [@lostf1sh](https://github.com/lostf1sh). It focuses on local playback, self-hosted music libraries, expressive Material 3 UI, and user-controlled online lookups.
+
+This repository is a personal fork by [@pisces312](https://github.com/pisces312), carrying extra features on top of the upstream FOSS release. Fork builds keep the upstream package name but are signed with a different key, so they cannot be installed over an upstream or F-Droid build — see [Release builds](#release-builds).
 
 The app works offline by default. Optional online services are disabled until you enable them in setup or settings.
 
@@ -83,7 +85,7 @@ LRCLIB and Deezer can be enabled during first-run setup or later from `Settings 
 Clone the repository:
 
 ```sh
-git clone https://github.com/PixelPlayerHQ/PixelPlayerOSS.git
+git clone https://github.com/pisces312/PixelPlayerOSS.git
 cd PixelPlayerOSS
 ```
 
@@ -128,7 +130,7 @@ PixelPlayerOSS is available on F-Droid:
 GitHub releases are available at:
 
 ```text
-https://github.com/PixelPlayerHQ/PixelPlayerOSS/releases
+https://github.com/pisces312/PixelPlayerOSS/releases
 ```
 
 Obtainium app id:
@@ -137,19 +139,19 @@ Obtainium app id:
 com.lostf1sh.pixelplayeross
 ```
 
-Public releases are planned on a regular weekly cadence when `main` passes the release checklist.
+Releases are cut from `main` once a batch of changes is ready, rather than on a fixed cadence.
 
 F-Droid listing metadata lives in `fastlane/metadata/android/en-US`; build/release notes for F-Droid are in [docs/FDROID.md](docs/FDROID.md).
 
 > Note: F-Droid builds and signs its own APKs from source, so they may lag behind GitHub releases while the new version works through the F-Droid build cycle. F-Droid and GitHub APK signatures differ — switching between the two requires an uninstall/reinstall.
 
-### Alpha builds
+### Release builds
 
-Every merge into `main` automatically publishes a pre-release tagged like `v0.3.0-alpha.N` on the [releases page](https://github.com/PixelPlayerHQ/PixelPlayerOSS/releases). These are cutting-edge builds for testing new changes before they reach a stable release — expect rough edges.
+Releases are cut by hand from `main` and published on the [releases page](https://github.com/pisces312/PixelPlayerOSS/releases) as `X.Y.Z-pisces.N`. There is no automated pre-release pipeline here, so no `vX.Y.Z-alpha.N` builds are published — expect the `-pisces.N` line only.
 
-To install one, download the APK for your device from the release assets and sideload it: `arm64-v8a` fits most modern devices, `armeabi-v7a` is for older 32-bit ones.
+To install one, download the APK from the release assets and sideload it: `arm64-v8a` is the only ABI built.
 
-Alpha builds are signed with a dedicated CI key, so they update over each other, but switching between alpha and a stable or F-Droid install requires an uninstall/reinstall. In Obtainium, enable "Include prereleases" to get alphas automatically.
+Release builds are signed with a personal key, so they update over each other. Switching between a fork build and an official or F-Droid install requires an uninstall/reinstall, since the signatures differ.
 
 ## Support
 
