@@ -18,8 +18,11 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 
 ## 分支
 
-- `main`：与上游保持一致，不直接开发。
-- `pisces/port`：自用途移植集成分支（本分支）。每功能一个 commit，英文 message。
+- `main`：本 fork 唯一的开发与发布分支。仓库只有 `pisces312` 一名维护者，
+  新功能**直接提交到 `main`**，不要求先开功能分支（2026-09-11 起取代早先
+  「`main` 不日常开发、一律经 `pisces/port` 中转」的做法）。每功能一个 commit，英文 message。
+- `pisces/port`：遗留的移植集成分支，提交已全部并入 `main`（`main` 是它的直接后代）。
+  仍可用于长期并行开发，但不再是必需的中转站。
 
 ## 技术栈与版本
 
@@ -88,9 +91,14 @@ printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
   （只有 v2、没有 v1 是正常的）；`aapt2 dump badging` 核对 `versionName` / `versionCode` / `native-code`。
 - 本机 build-tools：`D:/dev/android_sdk/build-tools/37.0.0/`。
 
-发版链路：`pisces/port` →（ff）`main` → 版本号提交（**message 里带 `[skip ci]`**，抑制
+发版链路：`main` → 版本号提交（**message 里带 `[skip ci]`**，抑制
 `.github/workflows/alpha-release.yml` 自动造 alpha 预发布）→ `tag v<版本名>` → `assembleRelease`
 → `gh release create`。版本号带 `-pisces.N` 后缀，版本码沿用 `主版本 * 100000 + 序号`。
+
+> `main` 现在是日常开发分支，而 `alpha-release.yml` 在 push `main` 时触发、`paths-ignore`
+> 只排除 `**.md` / `docs/**` / `assets/**` / `fastlane/**` / `metadata/**` / `LICENSE` /
+> `.github/**` —— **代码提交会真的触发它**。该 workflow 跑在 `blacksmith-4vcpu-ubuntu-2404`
+> 上，本 fork 没有对应 runner，所以代码提交若不带 `[skip ci]` 就会留下一个挂起/失败的 run。
 
 ## 新增一个设置开关（必读，缺一不可）
 
