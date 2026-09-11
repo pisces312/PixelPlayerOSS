@@ -125,6 +125,7 @@ class PlayerViewModelTest {
         coEvery { mockUserPreferencesRepository.tapBackgroundClosesPlayerFlow } returns flowOf(true)
         coEvery { mockUserPreferencesRepository.hapticsEnabledFlow } returns flowOf(true)
         coEvery { mockUserPreferencesRepository.foldersSortOptionFlow } returns flowOf("FolderNameAZ")
+        coEvery { mockUserPreferencesRepository.yearsSortOptionFlow } returns flowOf("year_bucket_newest")
         coEvery { mockUserPreferencesRepository.persistentShuffleEnabledFlow } returns flowOf(false)
         coEvery { mockUserPreferencesRepository.isShuffleOnFlow } returns flowOf(false)
         every { mockUserPreferencesRepository.repeatModeFlow } returns _repeatModeFlow
@@ -142,6 +143,7 @@ class PlayerViewModelTest {
         every { mockLibraryStateHolder.currentFolderSortOption } returns MutableStateFlow<SortOption>(SortOption.FolderNameAZ)
         every { mockLibraryStateHolder.currentFavoriteSortOption } returns MutableStateFlow<SortOption>(SortOption.LikedSongTitleAZ)
         every { mockLibraryStateHolder.currentStorageFilter } returns MutableStateFlow(StorageFilter.ALL)
+        every { mockLibraryStateHolder.currentYearSortOption } returns MutableStateFlow<SortOption>(SortOption.YearBucketNewest)
 
         every { mockSearchStateHolder.searchHistory } returns _searchHistoryFlow
         every { mockSearchStateHolder.searchResults } returns _searchResultsFlow

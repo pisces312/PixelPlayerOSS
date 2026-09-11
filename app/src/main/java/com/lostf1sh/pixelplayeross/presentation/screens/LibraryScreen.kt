@@ -2541,11 +2541,17 @@ internal fun resolveFolderNavigationDirection(initialPath: String?, targetPath: 
         else -> FOLDER_NAVIGATION_FORWARD
     }
 
+/**
+ * Folder paths originate from MediaStore and are POSIX ("/") on every platform this code ever
+ * sees -- the Android runtime and the JVM that runs the unit tests alike. Keying this off
+ * [java.io.File.separatorChar] made the result depend on the *host* OS rather than on the path
+ * format, which silently broke parent-folder detection on Windows hosts.
+ */
 private fun isDescendantFolderPath(ancestorPath: String, candidatePath: String): Boolean {
-    val normalizedAncestor = ancestorPath.trimEnd(File.separatorChar)
-    val normalizedCandidate = candidatePath.trimEnd(File.separatorChar)
+    val normalizedAncestor = ancestorPath.trimEnd('/')
+    val normalizedCandidate = candidatePath.trimEnd('/')
     if (normalizedAncestor == normalizedCandidate) return false
-    return normalizedCandidate.startsWith("$normalizedAncestor${File.separatorChar}")
+    return normalizedCandidate.startsWith("$normalizedAncestor/")
 }
 
 @OptIn(ExperimentalAnimationApi::class, ExperimentalMaterial3ExpressiveApi::class)
