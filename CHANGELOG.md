@@ -2,10 +2,40 @@
 
 All notable changes to PixelPlayerOSS will be documented in this file.
 
-## [Unreleased]
+## [0.4.0-pisces.1] - 2026-09-11
+
+The first stable release of the personal fork, rolling up the work carried on the fork branch
+along with everything that landed on `main` afterwards.
+
+### Added
+- AI playlist generation: describe a mood or a moment in plain language and the pick is made from your own library. A dedicated AI settings category works with any OpenAI-compatible endpoint and ships three providers (Xiaomi MiMo, Volcano Engine Ark, and a custom provider with a user-supplied base URL), storing keys per provider and letting you set the API key and model id with a one-tap model list fetch and picker; Xiaomi MiMo Token Plan keys (`tp-`) and pay-as-you-go keys (`sk-`) resolve to their own endpoints automatically. The home AI Mix card opens the prompt sheet, built-in idea chips cover the common moods, and the library slice can be sampled from most-played tracks (stable results, so asking twice costs one request) or randomly (a fresh shuffle that reaches songs you never play) at 15, 25 or 40 songs. Results can be played immediately, trimmed song by song, or saved as a playlist named `yyyyMMdd-HHmm`, and a recently generated row lists the recent mixes.
+- Third-party import for Poweramp `.poweramp-backup` files, behind a source picker built to accept more sources later. The parsed backup is previewed with song, playlist and matched counts, the match rate, and examples of unmatched songs before you commit. Matching combines title, artist, album and duration with file paths, and normalises external SD card volume-serial paths (`9C33-6BBD/...`) and multiple storage roots. Playlists, playback history, play counts, and favourites and ratings import independently, with an optional rating threshold that marks highly rated songs as favourites, and a result summary is reported per category.
+- Five-star ratings stored as a database field instead of embedded file tags, so cloud tracks can be rated too. Un-favouriting a song keeps its rating, batch metadata edits no longer wipe unrelated tags, and an interactive star row was added to the song info sheet.
+- A Years library tab bucketing songs by release year, with a year detail screen supporting play, shuffle and sort.
+- Deletion protection, a switch that turns song deletion off by default so a mis-tap cannot destroy files.
+- In-app diagnostic logs with an adjustable level (Verbose to Error, WARN by default in release builds), one-tap export and share backed by an in-memory ring buffer with a rolling file and logcat fallback, diagnostic logs attached to crash reports, and oversized logs truncated so copying or sharing cannot hang.
+- AI provider configuration in backups, and a dedicated song-matching resolver for playlist restore.
+- The changelog sheet now renders the repository `CHANGELOG.md` at runtime instead of a hardcoded list, so it tracks the file and stays current without hand-editing in two languages per release. Section titles stay localized, and entries are shown verbatim.
+
+### Changed
+- Listening stats were promoted from a home card to a top-level bottom-bar tab and rebuilt: recently played grouped by day with repeated songs merged and counted, absolute period browsing (today, week, month, year, all) with previous, next and reset to the current period, an overview card for listening duration, plays, songs and artists, and full top-song, top-artist and top-album rankings with a show-all view and sorting by plays or duration.
+- Playback events now carry a play-count weight, opening the stats screen flushes the in-progress listening session so the song currently playing appears immediately, and zero-duration events imported from Poweramp are expanded by play count so imported history is not lost.
+- Media3 upgraded to 1.11.0.
+- Debug and release builds can coexist: the debug build has its own application id suffix, its own name, and a red launcher icon.
+- Only `arm64-v8a` is built, with a uniform artifact name of `pixelplayeross-<abi>-<version>-<buildtype>.apk`.
+- Release signing credentials fall back to the `KEY_*` environment variables when no keystore properties file is present, so passwords no longer need to touch the disk.
+- Ten design documents covering the AI port, listening stats, Poweramp history alignment, playlist restore, audio output options, and the Media3 upgrade path.
 
 ### Fixed
+- Playlist restore failing on release builds: the R8 keep rules did not cover `PendingSongRef` in `data.backup.restore`, so obfuscation renamed its fields and every string in the backup payload arrived null. A payload this build does not recognise now degrades to no metadata, which still accepts a direct-ID hit, instead of throwing.
+- Favourites backups failing because of a duplicate Gson field name.
+- The Media3 1.11.0 `onConnect` command-set regression that made playback state jump back after connecting.
 - Jellyfin playlists no longer go missing on Jellyfin 10.10 and newer, where playlists can hold mixed content and audio playlists are often reported without a media type.
+- Folder ancestry is compared using the path's own separator rather than the host `File.separatorChar`, so the result no longer depends on the operating system.
+- Play counts are preserved when exporting and restoring playback history.
+
+### Security
+- AI request logging redacts `key`, `token` and `secret` URL parameters before anything is written to disk, and API keys never enter a log entry.
 
 ## [0.3.0] - 2026-08-15
 
