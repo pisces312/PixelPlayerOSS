@@ -91,14 +91,15 @@ printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
   （只有 v2、没有 v1 是正常的）；`aapt2 dump badging` 核对 `versionName` / `versionCode` / `native-code`。
 - 本机 build-tools：`D:/dev/android_sdk/build-tools/37.0.0/`。
 
-发版链路：`main` → 版本号提交（**message 里带 `[skip ci]`**，抑制
-`.github/workflows/alpha-release.yml` 自动造 alpha 预发布）→ `tag v<版本名>` → `assembleRelease`
-→ `gh release create`。版本号带 `-pisces.N` 后缀，版本码沿用 `主版本 * 100000 + 序号`。
+发版链路：`main` → 版本号提交 → `tag v<版本名>` → `assembleRelease` → `gh release create`。
+版本号带 `-pisces.N` 后缀，版本码沿用 `主版本 * 100000 + 序号`。
 
-> `main` 现在是日常开发分支，而 `alpha-release.yml` 在 push `main` 时触发、`paths-ignore`
-> 只排除 `**.md` / `docs/**` / `assets/**` / `fastlane/**` / `metadata/**` / `LICENSE` /
-> `.github/**` —— **代码提交会真的触发它**。该 workflow 跑在 `blacksmith-4vcpu-ubuntu-2404`
-> 上，本 fork 没有对应 runner，所以代码提交若不带 `[skip ci]` 就会留下一个挂起/失败的 run。
+> 上游的 `.github/workflows/alpha-release.yml`（push `main` 自动造 `v<版本>-alpha.N` 预发布）
+> **已在本 fork 删除**：它跑在 `blacksmith-4vcpu-ubuntu-2404` 上，本 fork 没有对应 runner，
+> 而 `main` 现在是日常开发分支，留着会让每次代码提交都产生一个挂起/失败的 run。
+> 因此本地发布**不再需要**在 message 里写 `[skip ci]`。
+> 同一 runner 的 `pr-build.yml` 只在 PR 时触发（本 fork 不开 PR），`gitlab-mirror.yml` 有
+> `github.repository == 'PixelPlayerHQ/PixelPlayerOSS'` 守卫会自动跳过，二者均无影响。
 
 ## 新增一个设置开关（必读，缺一不可）
 
