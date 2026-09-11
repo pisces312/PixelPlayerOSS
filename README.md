@@ -29,9 +29,9 @@
 
 ## What It Is
 
-PixelPlayerOSS is an Android music player maintained upstream by [@lostf1sh](https://github.com/lostf1sh). It focuses on local playback, self-hosted music libraries, expressive Material 3 UI, and user-controlled online lookups.
+PixelPlayerOSS is an Android music player. This fork is maintained by [@pisces312](https://github.com/pisces312), based on the upstream FOSS release maintained by [@lostf1sh](https://github.com/lostf1sh). It focuses on local playback, self-hosted music libraries, expressive Material 3 UI, and user-controlled online lookups.
 
-This repository is a personal fork by [@pisces312](https://github.com/pisces312), carrying extra features on top of the upstream FOSS release. Fork builds keep the upstream package name but are signed with a different key, so they cannot be installed over an upstream or F-Droid build — see [Release builds](#release-builds).
+This fork carries extra features on top of the upstream release. Fork builds keep the upstream package name but are signed with a different key, so they cannot be installed over an upstream or F-Droid build — see [Release builds](#release-builds).
 
 The app works offline by default. Optional online services are disabled until you enable them in setup or settings.
 
