@@ -109,7 +109,7 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 2. `presentation/viewmodel/SettingsViewModel.kt`：`SettingsUiState` 字段 → `SettingsUiUpdate.Group2` 字段 → `init` 里 combine 的 flow 列表**末尾**追加 → `values[N]`（索引按位置对应，只能追加不能插队）→ `state.copy()` → `setXxx()`。
 3. `presentation/screens/SettingsCategoryScreen.kt`：对应 `SettingsCategory` 分支里加 `SettingsSubsection` + `SwitchSettingItem`，带 `Modifier.settingHighlight("item_xxx", highlightKey)`。
 4. `presentation/settings/search/SettingsRegistry.kt`：注册 `SettingSpec`（`type = SettingType.SWITCH`，带 `getValue` / `onToggle` 与关键词），`itemKey` 与第 3 步的 highlight key 一致。
-5. `res/values/strings_settings.xml`（英文）加 title/subtitle；其他语言留给翻译流程，不要手写。
+5. `res/values/strings_settings.xml` 加 title/subtitle，同时加 `values-zh-rCN/` 中文版；其他语言留给翻译流程，不要手写。
 
 ## 关键架构速查
 
@@ -122,5 +122,5 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 ## 约定
 
 - commit message 用英文；不修改上游 `CHANGELOG.md`（自用分支不提 PR）。
-- 新字符串只加英文 `values/`，不写死中文。
+- 新功能字符串同时加中文（`values-zh-rCN/`）与英文（`values/`）两种语言，不手写其他语言。
 - 改动后至少跑 `assembleDebug`，UI 类改动装真机验证。
