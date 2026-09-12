@@ -1,6 +1,108 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- Settings category -->
+    <string name="settings_category_ai_title">AI</string>
+    <string name="settings_category_ai_subtitle">用兼容 OpenAI 的模型生成歌单</string>
+
+    <!-- AI settings screen -->
+    <string name="ai_section_provider">服务商</string>
+    <string name="ai_provider_label">服务商</string>
+    <string name="ai_provider_subtitle">要调用的兼容 OpenAI 的接口</string>
+    <string name="ai_section_credentials">凭据与模型</string>
+    <string name="ai_api_key_label">API Key</string>
+    <string name="ai_api_key_placeholder">未设置</string>
+    <string name="ai_endpoint_resolved">接口地址：%1$s</string>
+    <string name="ai_base_url_label">Base URL</string>
+    <string name="ai_base_url_placeholder">https://example.com/v1</string>
+    <string name="ai_model_label">模型</string>
+    <string name="ai_model_placeholder">获取模型列表或手动输入 id</string>
+    <string name="ai_model_fetch">获取</string>
+    <string name="ai_model_no_list">还没有模型列表——请手动输入模型 id</string>
+    <string name="ai_model_pick">选择模型</string>
+
+    <string name="ai_thinking_title">启用思考</string>
+    <string name="ai_thinking_subtitle">让模型在回答前先推理。会消耗更多 token 并增加延迟。</string>
+
+    <string name="ai_section_actions">诊断</string>
+    <string name="ai_action_test">测试连接</string>
+    <string name="ai_action_clear_cache">清除缓存</string>
+    <string name="ai_action_request_log">请求日志</string>
+
+    <string name="ai_request_log_title">AI 请求日志</string>
+    <string name="ai_request_log_detail_title">AI 请求详情</string>
+    <string name="ai_request_log_empty">还没有任何 AI 请求记录</string>
+    <string name="ai_request_log_clear_all">清空全部</string>
+    <string name="ai_request_log_clear_all_message">删除全部 %1$d 条请求日志？</string>
+    <string name="ai_request_log_status_success">成功</string>
+    <string name="ai_request_log_status_failed">失败</string>
+    <string name="ai_request_log_status_cached">来自缓存</string>
+    <string name="ai_request_log_copy_all">复制全部</string>
+    <string name="ai_request_log_copy_response">复制响应</string>
+    <string name="ai_request_log_share">分享</string>
+
+    <string name="ai_section_usage">用量</string>
+    <string name="ai_usage_summary">输入 %1$d · 输出 %2$d · 思考 %3$d</string>
+    <string name="ai_usage_none">还没有任何请求记录</string>
+
+    <!-- Home entry + generation dialog -->
+    <string name="ai_playlist_entry_title">AI 歌单</string>
+    <string name="ai_playlist_entry_subtitle">描述你想听的音乐</string>
+    <string name="ai_playlist_entry_unconfigured">请先在设置中配置 AI</string>
+    <string name="ai_playlist_entry_action">说一句</string>
+    <string name="ai_serendipity_button">不期而遇！</string>
+    <string name="playlist_ai_prompt_label">AI 描述</string>
+    <string name="ai_playlist_dialog_title">AI 歌单</string>
+    <string name="ai_playlist_dialog_subtitle">描述一种心情或一个时刻——歌曲将从你的曲库中匹配</string>
+    <string name="ai_playlist_sample_mode_label">曲库切片</string>
+    <string name="ai_sample_mode_most_played">最常播放</string>
+    <string name="ai_sample_mode_most_played_hint">列表稳定，问两次只消耗一次请求</string>
+    <string name="ai_sample_mode_random">随机</string>
+    <string name="ai_sample_mode_random_hint">每次都是全新打乱，能触达你从没听过的歌</string>
+    <string name="ai_playlist_sample_size_label">发给模型的歌曲数</string>
+    <string name="ai_playlist_sample_size_value">%1$d 首</string>
+    <string name="ai_playlist_sample_size_hint">从曲库中随机取一片。歌曲越多匹配越准，但 token 也越多。</string>
+    <string name="ai_playlist_name_label">歌单名称</string>
+
+    <!-- Serendipity：零输入、按此刻情境生成 -->
+    <string name="ai_section_serendipity">不期而遇</string>
+    <string name="ai_serendipity_sheet_title">不期而遇！</string>
+    <string name="ai_serendipity_collecting">正在感知此刻……</string>
+    <string name="ai_serendipity_signals_label">此刻</string>
+    <string name="ai_serendipity_prompt_label">这张歌单的依据</string>
+    <string name="ai_serendipity_reshuffle">换一句</string>
+    <string name="ai_serendipity_rephrase">让 AI 换个说法</string>
+    <string name="ai_serendipity_rephrasing">正在改写……</string>
+    <string name="ai_serendipity_rephrase_failed">连不上服务商，保留本地句子</string>
+    <string name="ai_serendipity_chip_time">%1$s %2$s · %3$s</string>
+    <string name="ai_serendipity_chip_weather">%1$s %2$d°C</string>
+    <string name="ai_serendipity_chip_steps">约 %1$s 步</string>
+    <string name="ai_serendipity_time_morning">早晨</string>
+    <string name="ai_serendipity_time_afternoon">午后</string>
+    <string name="ai_serendipity_time_evening">傍晚</string>
+    <string name="ai_serendipity_time_late_night">深夜</string>
+    <string name="ai_serendipity_weather_clear">晴</string>
+    <string name="ai_serendipity_weather_cloudy">多云</string>
+    <string name="ai_serendipity_weather_fog">雾</string>
+    <string name="ai_serendipity_weather_rain">雨</string>
+    <string name="ai_serendipity_weather_snow">雪</string>
+    <string name="ai_serendipity_weather_thunderstorm">雷雨</string>
+    <!-- 天气来源。默认走「指定城市」：不需要位置权限，也不会读取手机位置。 -->
+    <string name="ai_serendipity_weather_source_label">天气来源</string>
+    <string name="ai_serendipity_source_device">设备定位</string>
+    <string name="ai_serendipity_source_city">指定城市</string>
+    <string name="ai_serendipity_source_off">关闭</string>
+    <string name="ai_serendipity_source_device_hint">读取手机的大致位置，出差旅行时歌单会跟着你走。需要位置权限。</string>
+    <string name="ai_serendipity_source_city_hint">按下方选择的城市查天气。不需要位置权限，也不会读取手机位置。</string>
+    <string name="ai_serendipity_source_off_hint">不获取天气，只按时间生成歌单。</string>
+    <string name="ai_serendipity_city_label">天气城市</string>
+    <string name="ai_serendipity_city_placeholder">搜索城市或区县</string>
+    <string name="ai_serendipity_city_hint">天气按这座城市查询。</string>
+    <string name="ai_serendipity_city_hint_empty">在这里选择城市，否则歌单只会参考时间。</string>
+    <string name="ai_serendipity_city_none">未设置</string>
+    <string name="ai_serendipity_city_pick">选择城市或区县</string>
+    <string name="ai_serendipity_city_no_match">没有匹配“%1$s”的地方</string>
+
     <!-- AI mix sheet (home) -->
     <string name="ai_mix_sheet_title">AI 歌单</string>
     <string name="ai_mix_prompt_hint">描述一种心情、一个此刻或你正在做的事……</string>
@@ -19,5 +121,18 @@
     <string name="ai_mix_save_only">仅保存</string>
     <string name="ai_mix_remove_song">移除歌曲</string>
     <string name="ai_mix_saved">已保存「%1$s」</string>
+
+    <!-- Status messages -->
+    <string name="ai_status_models_loaded">可用模型 %1$d 个</string>
+    <string name="ai_status_test_ok">连接正常</string>
+    <string name="ai_status_cache_cleared">AI 缓存已清除</string>
+    <string name="ai_error_unauthorized">未授权——请检查 API Key 及其所属接口</string>
+    <string name="ai_error_quota">配额已用完</string>
+    <string name="ai_error_model_not_found">找不到模型——请检查模型 id</string>
+    <string name="ai_error_rate_limited">触发限流——请稍后再试</string>
+    <string name="ai_error_server">服务商服务器错误</string>
+    <string name="ai_error_network">网络不可达</string>
+    <string name="ai_error_parse">服务商返回了意外响应</string>
+    <string name="ai_error_unknown">请求失败</string>
 
 </resources>

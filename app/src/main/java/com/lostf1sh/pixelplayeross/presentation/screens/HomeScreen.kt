@@ -4,7 +4,10 @@ import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafely
 import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafelyReplacing
 
 import android.content.Intent
+import android.Manifest
 import androidx.activity.compose.ReportDrawnWhen
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -77,6 +80,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityTimeOfDay
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityWeatherGroup
 import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.CollagePattern
 import com.lostf1sh.pixelplayeross.presentation.components.AiGenerateEntryCard
@@ -111,8 +116,22 @@ import com.lostf1sh.pixelplayeross.ui.theme.ShapeCache
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import androidx.compose.ui.res.stringResource
 import com.lostf1sh.pixelplayeross.presentation.components.rememberModalSheetState
+import java.text.NumberFormat
+import java.time.format.TextStyle
+import java.util.Locale
 
 private const val HomeLoadingPlaceholderMinDurationMillis = 1200L
+
+/**
+ * Requested the first time Serendipity is opened; a refusal only costs the mix its extra lines.
+ *
+ * The location permission is asked for only when the weather source is the device's own position:
+ * with a city chosen in settings, Serendipity never needs to know where the phone is.
+ */
+private val SerendipityStepPermissions = arrayOf(Manifest.permission.ACTIVITY_RECOGNITION)
+
+private val SerendipityLocationPermissions =
+    SerendipityStepPermissions + Manifest.permission.ACCESS_COARSE_LOCATION
 
 @androidx.annotation.OptIn(UnstableApi::class)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -139,7 +158,42 @@ fun HomeScreen(
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
     val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
     val recentAiMixes by playlistViewModel.recentAiMixes.collectAsStateWithLifecycle()
+    val serendipityState by playlistViewModel.serendipityState.collectAsStateWithLifecycle()
+    val serendipityWantsLocation by
+            playlistViewModel.serendipityWantsLocation.collectAsStateWithLifecycle()
     var showAiMixSheet by remember { mutableStateOf(false) }
+    // Which button opened the sheet: both share it, only the input phase differs.
+    var aiEntryIsSerendipity by remember { mutableStateOf(false) }
+
+    val openSerendipitySheet: () -> Unit = {
+        aiEntryIsSerendipity = true
+        playlistViewModel.openSerendipity()
+        showAiMixSheet = true
+    }
+
+    // Asked the first time Serendipity is used, never at startup. The result is ignored on
+    // purpose: a refusal only means the prompt loses its weather and step lines.
+    val serendipityPermissionLauncher =
+            rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions()
+            ) { openSerendipitySheet() }
+
+    // Both AI card actions share this guard: with no provider configured they route to AI settings.
+    val openAiEntry: (Boolean) -> Unit = { serendipity ->
+        if (isAiConfigured) {
+            if (serendipity) {
+                serendipityPermissionLauncher.launch(
+                        if (serendipityWantsLocation) SerendipityLocationPermissions
+                        else SerendipityStepPermissions
+                )
+            } else {
+                aiEntryIsSerendipity = false
+                showAiMixSheet = true
+            }
+        } else {
+            navController.navigateSafely(Screen.SettingsCategory.createRoute(SettingsCategory.AI.id))
+        }
+    }
 
     val usesFallbackHomeMix = remember(curatedYourMixSongs, dailyMixSongs) {
         curatedYourMixSongs.isEmpty() && dailyMixSongs.isEmpty()
@@ -282,15 +336,10 @@ fun HomeScreen(
                     AiGenerateEntryCard(
                         configured = isAiConfigured,
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        onClick = {
-                            if (isAiConfigured) {
-                                showAiMixSheet = true
-                            } else {
-                                navController.navigateSafely(
-                                    Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
-                                )
-                            }
-                        }
+                        onClick = { openAiEntry(false) },
+                        // Serendipity asks for the location and step permissions before it opens,
+                        // because the collected context is what its sheet explains.
+                        onSerendipityClick = { openAiEntry(true) }
                     )
                 }
                 if (recentAiMixes.isNotEmpty()) {
@@ -504,10 +553,52 @@ fun HomeScreen(
         }
     }
 
+    // Serendipity keeps its signals in localized chips, and names the mix after them. Both are
+    // derived here rather than in the sheet so the sheet stays free of resource lookups.
+    val serendipityContext = if (aiEntryIsSerendipity) serendipityState?.context else null
+    val serendipityChips = mutableListOf<String>()
+    var serendipityDefaultName: String? = null
+    if (serendipityContext != null) {
+        serendipityChips +=
+                stringResource(
+                        R.string.ai_serendipity_chip_time,
+                        serendipityContext.weekday.getDisplayName(TextStyle.FULL, Locale.getDefault()),
+                        serendipityContext.clockTime,
+                        stringResource(serendipityTimeOfDayLabelRes(serendipityContext.timeOfDay))
+                )
+        serendipityContext.weather?.let { weather ->
+            serendipityChips +=
+                    stringResource(
+                            R.string.ai_serendipity_chip_weather,
+                            stringResource(serendipityWeatherLabelRes(weather.group)),
+                            weather.temperatureC
+                    )
+        }
+        // The chip is read by the user, so it takes the localized name when there is one; the
+        // prompt itself keeps the Latin spelling.
+        (serendipityContext.cityLabel ?: serendipityContext.city)?.let { serendipityChips += it }
+        serendipityContext.stepsToday?.let { steps ->
+            serendipityChips +=
+                    stringResource(
+                            R.string.ai_serendipity_chip_steps,
+                            NumberFormat.getIntegerInstance().format(steps)
+                    )
+        }
+        serendipityDefaultName =
+                buildList {
+                            serendipityContext.weather?.let {
+                                add(stringResource(serendipityWeatherLabelRes(it.group)))
+                            }
+                            add(stringResource(serendipityTimeOfDayLabelRes(serendipityContext.timeOfDay)))
+                        }
+                        .joinToString(" · ") + " · " + serendipityContext.clockTime
+    }
+
     if (showAiMixSheet) {
         ModalBottomSheet(
             onDismissRequest = {
                 playlistViewModel.resetAiPlaylistPreview()
+                playlistViewModel.closeSerendipity()
                 showAiMixSheet = false
             },
             sheetState = aiMixSheetState
@@ -522,19 +613,35 @@ fun HomeScreen(
                     onModeChange = playlistViewModel::setAiLibrarySampleMode,
                     onSizeChange = playlistViewModel::setAiLibrarySampleSize
                 ),
-                onGenerate = playlistViewModel::generateAiPlaylistPreview,
+                serendipity = if (aiEntryIsSerendipity) serendipityState else null,
+                serendipityChips = serendipityChips,
+                serendipityDefaultName = serendipityDefaultName,
+                onReshuffleSerendipity = playlistViewModel::reshuffleSerendipityPrompt,
+                onRephraseSerendipity = playlistViewModel::rephraseSerendipityPrompt,
+                onGenerate = { prompt, maxLength ->
+                    if (aiEntryIsSerendipity) {
+                        playlistViewModel.generateSerendipityPreview(prompt, maxLength)
+                    } else {
+                        playlistViewModel.generateAiPlaylistPreview(prompt, maxLength)
+                    }
+                },
                 onSave = { name, songs, prompt, startPlayback ->
                     playlistViewModel.saveAiMix(
                         name = name,
                         songs = songs,
                         prompt = prompt,
-                        startPlayback = startPlayback
+                        startPlayback = startPlayback,
+                        source =
+                                if (aiEntryIsSerendipity) PlaylistViewModel.SERENDIPITY_SOURCE
+                                else PlaylistViewModel.AI_MIX_SOURCE
                     )
                     playlistViewModel.resetAiPlaylistPreview()
+                    playlistViewModel.closeSerendipity()
                     showAiMixSheet = false
                 },
                 onDismiss = {
                     playlistViewModel.resetAiPlaylistPreview()
+                    playlistViewModel.closeSerendipity()
                     showAiMixSheet = false
                 }
             )
@@ -782,3 +889,25 @@ fun SongListItemFavsWrapper(
     )
 }
 
+
+/** Localized label for a time-of-day bucket, used by the Serendipity chips and mix name. */
+@androidx.annotation.StringRes
+private fun serendipityTimeOfDayLabelRes(timeOfDay: SerendipityTimeOfDay): Int =
+    when (timeOfDay) {
+        SerendipityTimeOfDay.MORNING -> R.string.ai_serendipity_time_morning
+        SerendipityTimeOfDay.AFTERNOON -> R.string.ai_serendipity_time_afternoon
+        SerendipityTimeOfDay.EVENING -> R.string.ai_serendipity_time_evening
+        SerendipityTimeOfDay.LATE_NIGHT -> R.string.ai_serendipity_time_late_night
+    }
+
+/** Localized label for a coarse weather bucket, used by the Serendipity chips and mix name. */
+@androidx.annotation.StringRes
+private fun serendipityWeatherLabelRes(group: SerendipityWeatherGroup): Int =
+    when (group) {
+        SerendipityWeatherGroup.CLEAR -> R.string.ai_serendipity_weather_clear
+        SerendipityWeatherGroup.CLOUDY -> R.string.ai_serendipity_weather_cloudy
+        SerendipityWeatherGroup.FOG -> R.string.ai_serendipity_weather_fog
+        SerendipityWeatherGroup.RAIN -> R.string.ai_serendipity_weather_rain
+        SerendipityWeatherGroup.SNOW -> R.string.ai_serendipity_weather_snow
+        SerendipityWeatherGroup.THUNDERSTORM -> R.string.ai_serendipity_weather_thunderstorm
+    }

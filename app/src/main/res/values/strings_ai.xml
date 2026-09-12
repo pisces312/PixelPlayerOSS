@@ -48,7 +48,9 @@
     <string name="ai_playlist_entry_title">AI Playlist</string>
     <string name="ai_playlist_entry_subtitle">Describe the music you want to hear</string>
     <string name="ai_playlist_entry_unconfigured">Set up AI in settings first</string>
-    <string name="ai_playlist_entry_action">Start</string>
+    <string name="ai_playlist_entry_action">Describe</string>
+    <string name="ai_serendipity_button">Serendipity!</string>
+    <string name="playlist_ai_prompt_label">AI prompt</string>
     <string name="ai_playlist_dialog_title">AI Playlist</string>
     <string name="ai_playlist_dialog_subtitle">Describe a mood or moment — songs are matched from your library</string>
     <string name="ai_playlist_sample_mode_label">Library slice</string>
@@ -60,6 +62,46 @@
     <string name="ai_playlist_sample_size_value">%1$d songs</string>
     <string name="ai_playlist_sample_size_hint">A random slice of your library. More songs means better matches and more tokens.</string>
     <string name="ai_playlist_name_label">Playlist name</string>
+
+    <!-- Serendipity: the zero-input, context-aware mix -->
+    <string name="ai_section_serendipity">Serendipity</string>
+    <string name="ai_serendipity_sheet_title">Serendipity!</string>
+    <string name="ai_serendipity_collecting">Reading the moment…</string>
+    <string name="ai_serendipity_signals_label">Right now</string>
+    <string name="ai_serendipity_prompt_label">What this mix is for</string>
+    <string name="ai_serendipity_reshuffle">Another line</string>
+    <string name="ai_serendipity_rephrase">Let the AI rephrase it</string>
+    <string name="ai_serendipity_rephrasing">Rephrasing…</string>
+    <string name="ai_serendipity_rephrase_failed">Provider unreachable — keeping the local wording</string>
+    <string name="ai_serendipity_chip_time">%1$s %2$s · %3$s</string>
+    <string name="ai_serendipity_chip_weather">%1$s %2$d°C</string>
+    <string name="ai_serendipity_chip_steps">%1$s steps</string>
+    <string name="ai_serendipity_time_morning">morning</string>
+    <string name="ai_serendipity_time_afternoon">afternoon</string>
+    <string name="ai_serendipity_time_evening">evening</string>
+    <string name="ai_serendipity_time_late_night">late night</string>
+    <string name="ai_serendipity_weather_clear">Clear</string>
+    <string name="ai_serendipity_weather_cloudy">Cloudy</string>
+    <string name="ai_serendipity_weather_fog">Fog</string>
+    <string name="ai_serendipity_weather_rain">Rain</string>
+    <string name="ai_serendipity_weather_snow">Snow</string>
+    <string name="ai_serendipity_weather_thunderstorm">Thunderstorms</string>
+    <!-- Where the weather comes from. The city route is the default: it needs no location
+         permission and never reads where the phone is. -->
+    <string name="ai_serendipity_weather_source_label">Weather source</string>
+    <string name="ai_serendipity_source_device">Device location</string>
+    <string name="ai_serendipity_source_city">Chosen city</string>
+    <string name="ai_serendipity_source_off">Off</string>
+    <string name="ai_serendipity_source_device_hint">Reads the phone\'s approximate location, so the mix follows you when you travel. Asks for the location permission.</string>
+    <string name="ai_serendipity_source_city_hint">Looks the weather up for the city picked below. No location permission, and the phone\'s position is never read.</string>
+    <string name="ai_serendipity_source_off_hint">No weather — the mix is built from the time of day alone.</string>
+    <string name="ai_serendipity_city_label">Weather city</string>
+    <string name="ai_serendipity_city_placeholder">Search a city or district</string>
+    <string name="ai_serendipity_city_hint">The weather is looked up for this city.</string>
+    <string name="ai_serendipity_city_hint_empty">Pick a city here, or the mix will only know the time.</string>
+    <string name="ai_serendipity_city_none">Not set</string>
+    <string name="ai_serendipity_city_pick">Choose a city or district</string>
+    <string name="ai_serendipity_city_no_match">Nothing matches “%1$s”</string>
 
     <!-- AI mix sheet (home) -->
     <string name="ai_mix_sheet_title">AI Mix</string>

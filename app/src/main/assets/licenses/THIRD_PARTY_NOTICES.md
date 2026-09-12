@@ -9,6 +9,13 @@ Bundled fonts:
 | Google Sans Flex (`gflex_variable.ttf`) | `https://fonts.google.com/specimen/Google+Sans+Flex/license?preview.script=Latn` | SIL Open Font License 1.1 |
 | Roboto Flex (`genre_variable.ttf`) | `https://github.com/googlefonts/roboto-flex` | SIL Open Font License 1.1 |
 
+Bundled data:
+
+| Asset | Source | License |
+| --- | --- | --- |
+| `cities.json` (China) | `https://github.com/xiangyuecn/AreaCity-JsSpider-StatsGov` | MIT |
+| `cities.json` (rest of the world) | GeoNames `cities15000`, `https://download.geonames.org/export/dump/` | CC-BY 4.0 |
+
 Native runtime artifacts:
 
 | Artifact | Native library | License/source evidence |

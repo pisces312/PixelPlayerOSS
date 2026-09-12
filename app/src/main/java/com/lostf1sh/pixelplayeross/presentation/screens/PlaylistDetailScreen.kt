@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DragIndicator
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -70,6 +71,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
@@ -115,6 +117,7 @@ import androidx.navigation.NavController
 import coil.size.Size
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.presentation.components.AutoScrollingTextOnDemand
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.PlaylistBottomSheet
 import com.lostf1sh.pixelplayeross.presentation.components.QueuePlaylistSongItem
@@ -732,6 +735,11 @@ fun PlaylistDetailScreen(
                                 )
                             }
                         ) {
+                            currentPlaylist?.aiPrompt?.takeIf { it.isNotBlank() }?.let { prompt ->
+                                item(key = "ai_prompt", contentType = "ai_prompt") {
+                                    AiPromptBanner(prompt = prompt)
+                                }
+                            }
                             items(
                                 localReorderableEntries,
                                 key = { it.index },
@@ -1170,6 +1178,50 @@ fun PlaylistDetailScreen(
     }
 }
 
+
+/**
+ * Shows what an AI playlist was asked for, above its songs.
+ *
+ * The prompt is long free text, so it scrolls on overflow instead of being truncated — the name
+ * itself stays a short identifier (it is searched, exported and used as the queue name).
+ */
+@Composable
+private fun AiPromptBanner(prompt: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.playlist_ai_prompt_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            AutoScrollingTextOnDemand(
+                text = prompt,
+                style = MaterialTheme.typography.bodyMedium,
+                gradientEdgeColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                expansionFractionProvider = { 1f },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
 
 @Composable
 private fun PlaylistActionItem(

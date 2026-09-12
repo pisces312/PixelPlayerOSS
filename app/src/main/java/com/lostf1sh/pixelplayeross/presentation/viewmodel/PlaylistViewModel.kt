@@ -15,8 +15,14 @@ import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylist
 import com.lostf1sh.pixelplayeross.data.model.toPlaylistSource
 import com.lostf1sh.pixelplayeross.data.playlist.M3uManager
 import com.lostf1sh.pixelplayeross.data.playlist.NlpPlaylistGenerator
+import com.lostf1sh.pixelplayeross.data.ai.AiHandler
 import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.ai.AiPlaylistGenerator
+import com.lostf1sh.pixelplayeross.data.ai.AiSystemPromptEngine
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityContext
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityContextCollector
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityPromptComposer
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityWeatherSource
 import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiErrorKind
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProviderException
@@ -54,6 +60,7 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import kotlin.random.Random
 import timber.log.Timber
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -98,6 +105,24 @@ data class NlpPlaylistPreviewState(
     val errorMessage: String? = null,
 )
 
+/**
+ * Serendipity sheet state: the signals gathered for "right now" plus the prompt they composed.
+ *
+ * [context] is null while the collector is still running, and stays null-free afterwards: a signal
+ * that could not be read is a null field *inside* the context, which is what lets the sheet show
+ * "no weather this time" instead of pretending it never had the option.
+ */
+data class SerendipityUiState(
+    val context: SerendipityContext? = null,
+    val prompt: String = "",
+    /** Bumped by "reshuffle"; the composer walks its sentence shapes with it. */
+    val variant: Int = 0,
+    val isCollecting: Boolean = true,
+    val isRephrasing: Boolean = false,
+    /** True when the optional AI rephrase call failed and the local sentence is still in place. */
+    val rephraseFailed: Boolean = false,
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class PlaylistViewModel @Inject constructor(
@@ -107,6 +132,8 @@ class PlaylistViewModel @Inject constructor(
     private val m3uManager: M3uManager,
     private val nlpPlaylistGenerator: NlpPlaylistGenerator,
     private val aiPlaylistGenerator: AiPlaylistGenerator,
+    private val aiHandler: AiHandler,
+    private val serendipityContextCollector: SerendipityContextCollector,
     private val aiPreferences: AiPreferencesRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -119,6 +146,21 @@ class PlaylistViewModel @Inject constructor(
 
     private val _aiPlaylistPreviewState = MutableStateFlow(NlpPlaylistPreviewState())
     val aiPlaylistPreviewState: StateFlow<NlpPlaylistPreviewState> = _aiPlaylistPreviewState.asStateFlow()
+
+    /** Non-null while the Serendipity sheet is open. */
+    private val _serendipityState = MutableStateFlow<SerendipityUiState?>(null)
+    val serendipityState: StateFlow<SerendipityUiState?> = _serendipityState.asStateFlow()
+
+    /**
+     * Whether Serendipity is going to read the device location.
+     *
+     * The sheet asks for the location permission only when this is true, so picking a city (or
+     * turning weather off) really does mean the app never asks.
+     */
+    val serendipityWantsLocation: StateFlow<Boolean> =
+            aiPreferences.getSerendipityWeatherSource()
+                    .map { it == SerendipityWeatherSource.DEVICE_LOCATION }
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /** Whether the active provider has what it needs to run (key, or a url for custom ones). */
     val isAiConfigured: StateFlow<Boolean> =
@@ -145,7 +187,7 @@ class PlaylistViewModel @Inject constructor(
             _uiState
                     .map { state ->
                         state.playlists
-                                .filter { it.source == AI_MIX_SOURCE }
+                                .filter { it.source == AI_MIX_SOURCE || it.source == SERENDIPITY_SOURCE }
                                 .sortedByDescending { it.createdAt }
                     }
                     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -163,8 +205,17 @@ class PlaylistViewModel @Inject constructor(
 
         /** How many tracks a generated mix asks for when the user has not picked a length. */
         const val DEFAULT_AI_MIX_LENGTH = 25
-        /** Marks a playlist produced by the AI mix flow (Serendipity will use its own value). */
+        /** Marks a playlist produced by the AI mix flow. */
         const val AI_MIX_SOURCE = "AI"
+
+        /**
+         * Marks a playlist produced by Serendipity.
+         *
+         * Its own value rather than "AI" so the two can be told apart later (usage, filters), while
+         * [recentAiMixes] deliberately accepts both — a mix the user generated is worth offering
+         * again whichever button produced it.
+         */
+        const val SERENDIPITY_SOURCE = "AI_SERENDIPITY"
 
         fun sanitizeFileName(name: String): String {
             val sanitized = name.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").trim('_')
@@ -426,12 +477,27 @@ class PlaylistViewModel @Inject constructor(
      * nothing.
      */
     fun generateAiPlaylistPreview(description: String, maxLength: Int = DEFAULT_AI_MIX_LENGTH) {
+        startPreview(description) { aiPlaylistGenerator.generate(description, maxLength) }
+    }
+
+    /**
+     * Generation for the Serendipity entry point.
+     *
+     * Same preview state and same sheet as [generateAiPlaylistPreview]; only the generator call
+     * differs (forced random sampling, no cache). Keeping one state means the result screen, the
+     * "play / save only" actions and the error handling are shared rather than duplicated.
+     */
+    fun generateSerendipityPreview(description: String, maxLength: Int = DEFAULT_AI_MIX_LENGTH) {
+        startPreview(description) { aiPlaylistGenerator.generateSerendipity(description, maxLength) }
+    }
+
+    private fun startPreview(description: String, generate: suspend () -> List<Song>) {
         if (description.isBlank()) return
         viewModelScope.launch {
             _aiPlaylistPreviewState.update {
                 it.copy(isGenerating = true, errorMessage = null, hasResult = false)
             }
-            val result = runCatching { aiPlaylistGenerator.generate(description, maxLength) }
+            val result = runCatching { generate() }
             _aiPlaylistPreviewState.value =
                     result.fold(
                             onSuccess = { songs ->
@@ -451,6 +517,82 @@ class PlaylistViewModel @Inject constructor(
                             }
                     )
         }
+    }
+
+    /**
+     * Opens Serendipity: gather the moment's signals, compose a local prompt, show the sheet.
+     *
+     * The prompt is built on the device, so the sheet appears with text already in it and costs
+     * nothing — the AI is only asked once the user confirms.
+     */
+    fun openSerendipity() {
+        _serendipityState.value = SerendipityUiState()
+        viewModelScope.launch {
+            val context = runCatching { serendipityContextCollector.collect() }.getOrNull()
+            // The sheet may have been dismissed while the weather call was in flight.
+            if (_serendipityState.value == null) return@launch
+            val variant = Random.nextInt(SerendipityPromptComposer.VARIANT_COUNT)
+            _serendipityState.value =
+                    SerendipityUiState(
+                            context = context,
+                            prompt = context?.let { SerendipityPromptComposer.compose(it, variant) }.orEmpty(),
+                            variant = variant,
+                            isCollecting = false
+                    )
+        }
+    }
+
+    /** Another wording from the same signals: no re-collection, no network, no cost. */
+    fun reshuffleSerendipityPrompt() {
+        val current = _serendipityState.value ?: return
+        val context = current.context ?: return
+        val variant = Random.nextInt(SerendipityPromptComposer.VARIANT_COUNT)
+        _serendipityState.value =
+                current.copy(
+                        prompt = SerendipityPromptComposer.compose(context, variant),
+                        variant = variant,
+                        rephraseFailed = false
+                )
+    }
+
+    /**
+     * Optional second call: asks the provider to rewrite the local sentence.
+     *
+     * Failure is silent beyond a hint line — the local sentence is still perfectly usable, so
+     * there is nothing to recover from.
+     */
+    fun rephraseSerendipityPrompt() {
+        val current = _serendipityState.value ?: return
+        if (current.prompt.isBlank() || current.isRephrasing) return
+        viewModelScope.launch {
+            _serendipityState.update { it?.copy(isRephrasing = true, rephraseFailed = false) }
+            val rephrased =
+                    runCatching {
+                                aiHandler.generateText(
+                                        systemPrompt = AiSystemPromptEngine.serendipityRephraseSystemPrompt(),
+                                        userPrompt =
+                                                AiSystemPromptEngine.serendipityRephraseUserPrompt(
+                                                        current.prompt
+                                                ),
+                                        promptType = AiHandler.PROMPT_TYPE_SERENDIPITY_PROMPT
+                                )
+                            }
+                            .getOrNull()
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+            _serendipityState.update { state ->
+                state?.copy(
+                        prompt = rephrased ?: state.prompt,
+                        isRephrasing = false,
+                        rephraseFailed = rephrased == null
+                )
+            }
+        }
+    }
+
+    /** Clears the Serendipity state when its sheet closes. */
+    fun closeSerendipity() {
+        _serendipityState.value = null
     }
 
     /** How many song titles are handed to the model; the user picks this next to the prompt. */
@@ -503,7 +645,9 @@ class PlaylistViewModel @Inject constructor(
             val playlist = playlistPreferencesRepository.createPlaylist(
                 name = name,
                 songIds = songs.map { it.id },
-                source = source
+                source = source,
+                // Kept so the playlist screen can show what the mix was asked for.
+                aiPrompt = prompt.ifBlank { null }
             )
             _aiMixSaved.emit(
                 AiMixSaved(

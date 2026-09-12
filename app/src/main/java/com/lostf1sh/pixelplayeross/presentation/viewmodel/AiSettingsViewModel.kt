@@ -8,18 +8,24 @@ import com.lostf1sh.pixelplayeross.data.ai.AiHandler
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiErrorKind
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProvider
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProviderException
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.City
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.CityCatalog
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityWeatherSource
 import com.lostf1sh.pixelplayeross.data.database.AiCacheDao
 import com.lostf1sh.pixelplayeross.data.database.AiUsageDao
 import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -32,6 +38,7 @@ constructor(
     private val preferences: AiPreferencesRepository,
     private val handler: AiHandler,
     private val cacheDao: AiCacheDao,
+    private val cityCatalog: CityCatalog,
     usageDao: AiUsageDao
 ) : ViewModel() {
 
@@ -45,7 +52,11 @@ constructor(
         val thinkingEnabled: Boolean = false,
         val availableModels: List<String> = emptyList(),
         val modelsLoading: Boolean = false,
-        val testing: Boolean = false
+        val testing: Boolean = false,
+        /** Where Serendipity reads the weather from. */
+        val weatherSource: SerendipityWeatherSource = SerendipityWeatherSource.DEFAULT,
+        /** City Serendipity looks the weather up for; blank means "nothing picked yet". */
+        val city: String = ""
     )
 
     data class UsageStats(val promptTokens: Int = 0, val outputTokens: Int = 0, val thoughtTokens: Int = 0)
@@ -55,6 +66,9 @@ constructor(
     private val availableModels = MutableStateFlow<List<String>>(emptyList())
     private val modelsLoading = MutableStateFlow(false)
     private val testing = MutableStateFlow(false)
+
+    /** Raw text of the city picker's search box. */
+    private val cityQuery = MutableStateFlow("")
 
     private val _status = MutableStateFlow<StatusMessage?>(null)
     val status: StateFlow<StatusMessage?> = _status
@@ -81,18 +95,44 @@ constructor(
                     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiSettingsUiState())
 
     val uiState: StateFlow<AiSettingsUiState> =
-            combine(providerState, availableModels, modelsLoading, testing) {
-                            state,
-                            models,
-                            loading,
-                            isTesting ->
-                            state.copy(
-                                    availableModels = models,
-                                    modelsLoading = loading,
-                                    testing = isTesting
-                            )
-                        }
+            combine(
+                            providerState,
+                            availableModels,
+                            modelsLoading,
+                            testing,
+                            // Global rather than per provider: both describe the user, not the model.
+                            combine(
+                                    preferences.getSerendipityCity(),
+                                    preferences.getSerendipityWeatherSource()
+                            ) { city, source -> city to source }
+                    ) { state, models, loading, isTesting, serendipity ->
+                        state.copy(
+                                availableModels = models,
+                                modelsLoading = loading,
+                                testing = isTesting,
+                                city = serendipity.first,
+                                weatherSource = serendipity.second
+                        )
+                    }
                     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AiSettingsUiState())
+
+    /**
+     * Rows for the city picker, filtered by [setCityQuery].
+     *
+     * Scanning the bundled list is cheap but not free, so it runs off the main thread. An empty
+     * query returns the head of the list, which the bundled data is sorted to make the notable
+     * cities — capitals and provincial seats, home country first.
+     */
+    val cityResults: StateFlow<List<City>> =
+            cityQuery.map { cityCatalog.search(it) }
+                    .flowOn(Dispatchers.Default)
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        // Reading the bundled list takes long enough to be visible when the picker opens, so it is
+        // paid once here instead — while the user is still reading the rest of the screen.
+        viewModelScope.launch(Dispatchers.Default) { runCatching { cityCatalog.search("") } }
+    }
 
     val usage: StateFlow<UsageStats> =
             combine(
@@ -127,6 +167,26 @@ constructor(
         viewModelScope.launch {
             preferences.setThinkingEnabled(providerState.value.provider, enabled)
         }
+    }
+
+    /** Where Serendipity reads the weather from; see [SerendipityWeatherSource]. */
+    fun setWeatherSource(source: SerendipityWeatherSource) {
+        viewModelScope.launch { preferences.setSerendipityWeatherSource(source) }
+    }
+
+    /**
+     * City used for Serendipity's weather lookup.
+     *
+     * Picking one from the bundled list is what keeps the feature usable without granting the
+     * location permission at all, so this is a name out of that list rather than free text.
+     */
+    fun setSerendipityCity(value: String) {
+        viewModelScope.launch { preferences.setSerendipityCity(value) }
+    }
+
+    /** Filters [cityResults]. */
+    fun setCityQuery(value: String) {
+        cityQuery.value = value
     }
 
     /** Loads the provider's `/models` list so the user can pick instead of typing an id. */

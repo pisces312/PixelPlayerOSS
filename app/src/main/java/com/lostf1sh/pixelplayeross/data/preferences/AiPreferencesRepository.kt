@@ -5,9 +5,12 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProvider
+import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityWeatherSource
+import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -56,7 +59,11 @@ constructor(private val dataStore: DataStore<Preferences>) {
             setOf(
                 Keys.AI_PROVIDER.name,
                 Keys.LIBRARY_SAMPLE_SIZE.name,
-                Keys.LIBRARY_SAMPLE_MODE.name
+                Keys.LIBRARY_SAMPLE_MODE.name,
+                // The weather source and the chosen city are user choices, not device data: worth
+                // restoring on a new phone, where the name resolves again through the bundled list.
+                Keys.SERENDIPITY_WEATHER_SOURCE.name,
+                Keys.SERENDIPITY_CITY.name
             ) +
                     AiProvider.entries.flatMap { provider ->
                         listOfNotNull(
@@ -74,6 +81,25 @@ constructor(private val dataStore: DataStore<Preferences>) {
         val LIBRARY_SAMPLE_SIZE = intPreferencesKey("ai_library_sample_size")
 
         val LIBRARY_SAMPLE_MODE = stringPreferencesKey("ai_library_sample_mode")
+
+        /** Where Serendipity reads the weather from; see [SerendipityWeatherSource]. */
+        val SERENDIPITY_WEATHER_SOURCE = stringPreferencesKey("ai_serendipity_weather_source")
+
+        /**
+         * The city Serendipity looks the weather up for, as a name from the bundled city list.
+         *
+         * Only the name is stored: the coordinates behind it come from that same list, so a
+         * restored name is enough to rebuild the lookup without caching anything device-specific.
+         */
+        val SERENDIPITY_CITY = stringPreferencesKey("ai_serendipity_city")
+
+        /**
+         * Serendipity step bookkeeping, kept out of [allAiPreferenceKeyNames] on purpose: both
+         * values describe this device's counter, so restoring them on another phone would be
+         * meaningless and would break the day baseline.
+         */
+        val SERENDIPITY_STEP_DAY = longPreferencesKey("ai_serendipity_step_day")
+        val SERENDIPITY_STEP_BASELINE = intPreferencesKey("ai_serendipity_step_baseline")
 
         fun getApiKey(provider: AiProvider) = stringPreferencesKey("${provider.keyPrefix}_api_key")
 
@@ -164,6 +190,62 @@ constructor(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setLibrarySampleMode(mode: AiLibrarySampleMode) {
         dataStore.edit { preferences -> preferences[Keys.LIBRARY_SAMPLE_MODE] = mode.name }
+    }
+
+    /**
+     * How Serendipity gets its weather; see [SerendipityWeatherSource].
+     *
+     * The default asks for nothing, and the device-location mode only ever runs because the user
+     * picked it.
+     */
+    fun getSerendipityWeatherSource(): Flow<SerendipityWeatherSource> =
+            dataStore.data.map { preferences ->
+                SerendipityWeatherSource.fromName(preferences[Keys.SERENDIPITY_WEATHER_SOURCE])
+            }
+
+    suspend fun setSerendipityWeatherSource(source: SerendipityWeatherSource) {
+        dataStore.edit { preferences -> preferences[Keys.SERENDIPITY_WEATHER_SOURCE] = source.name }
+    }
+
+    /**
+     * City used to look up Serendipity weather without asking for the location permission.
+     *
+     * Stored exactly as the picker labels it; the collector hands the name back to the bundled
+     * city list for coordinates, so nothing about this device is written here.
+     */
+    fun getSerendipityCity(): Flow<String> =
+            dataStore.data.map { preferences -> preferences[Keys.SERENDIPITY_CITY]?.trim() ?: "" }
+
+    suspend fun setSerendipityCity(city: String) {
+        dataStore.edit { preferences -> preferences[Keys.SERENDIPITY_CITY] = city.trim() }
+    }
+
+    /**
+     * Steps taken today, given the device's raw counter (total since boot).
+     *
+     * `TYPE_STEP_COUNTER` never resets on its own, so today's number is a difference against a
+     * baseline captured the first time the counter is read after midnight. Steps taken before
+     * that first read are not counted — the sensor is only sampled on demand, and holding it open
+     * permanently would cost battery for a decorative line in a prompt.
+     *
+     * A baseline larger than the current counter means the device rebooted (the counter restarts
+     * from zero); the baseline is then moved to the current value rather than reporting a
+     * negative number.
+     */
+    suspend fun stepsToday(totalCounter: Int): Int {
+        val today = LocalDate.now().toEpochDay()
+        val snapshot = dataStore.data.first()
+        val storedDay = snapshot[Keys.SERENDIPITY_STEP_DAY]
+        val baseline = snapshot[Keys.SERENDIPITY_STEP_BASELINE]
+        if (storedDay == today && baseline != null && baseline <= totalCounter) {
+            return totalCounter - baseline
+        }
+        // First reading of the day, or the counter restarted: today starts counting from here.
+        dataStore.edit { preferences ->
+            preferences[Keys.SERENDIPITY_STEP_DAY] = today
+            preferences[Keys.SERENDIPITY_STEP_BASELINE] = totalCounter
+        }
+        return 0
     }
 
     /**

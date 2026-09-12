@@ -15,11 +15,14 @@
 | 5 | 首页新增「最近生成」横滑，位置＝AI 横幅正下方（Your Mix 之上，自然也在最近播放之上） |
 | 6 | 结果卡双按钮：**「播放」（主）+「仅保存」**，不做无脑自动播放 |
 | 7 | AI 横幅新增第二个按钮：**Serendipity** —— 零输入，按此刻情境生成（见 §4） |
-| 8 | 命名本地化：中文「**不期而遇！**」/ 英文「**Serendipity!**」（都带叹号），给一个区别于普通入口的**特殊按钮** |
+| 8 | 命名本地化：中文「**不期而遇！**」/ 英文「**Serendipity!**」（都带叹号），给一个区别于普通入口的**特殊按钮**；图标用 `AutoFixHigh`（魔法棒），**不用 `AutoAwesome`** |
+| 13 | 按钮位置（2026-09-12 定）：与 `Start` 胶囊**并列同一行，置于 `Start` 之前**；同日把 `Start` 更名为中文「**说一句**」/ 英文「**Describe**」 |
 | 9 | Serendipity 产物用**情境短语**命名（`Rainy Evening · 19:20`） |
 | 10 | **权限即开关**：经纬度/步数由系统权限决定，没授权就不进提示词；**不做**四个独立信号开关 |
 | 11 | 天气**只精确到城市**，且优先用用户手动填的城市（免任何权限） |
 | 12 | 首页巨型「为你\n推荐」（64sp / 256dp）降级重设计，别抢 AI 的风头（见 §5） |
+| 14 | **Serendipity 交互（2026-09-12 定，覆盖 #7 的「直接生成」）**：点按钮 → 弹 sheet 显示情境 chips + **本地合成**的提示词（可编辑）→「生成」→ 走现有结果卡。**默认不调 AI 写词**（省一次往返）；另设可选按钮「让 AI 换个说法」，点了才发第二次小请求 |
+| 15 | **AI 歌单存完整提示词**（2026-09-12 定）：新增 `playlists.ai_prompt` 列（DB v9 + `MIGRATION_8_9`）。歌单名仍是短标识符，**详情页标题下方用滚动文本**显示提示词 —— 名字要被搜索/导出/当作队列名，不能塞长文本 |
 
 ---
 
@@ -106,27 +109,98 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
 
 其他语言先留英文（按仓库惯例，翻译留给翻译流程）。
 
-### 按钮设计（要「特殊」）
+### 按钮设计（要「特殊」）— 2026-09-12 定稿
 
-普通入口是一句话描述的输入框，Serendipity 必须一眼不同：
+采用**方案 A：胶囊 + 魔法棒**（对比过骰子圆钮、星芒圆钮两案：骰子有赌具联想且无音乐温度，
+星芒含义偏抽象，均不选）。普通入口是一句话描述的输入框，Serendipity 必须一眼不同：
 
-- **形状**：胶囊 chip，实心渐变/高饱和容器色（区别于输入框的 `surfaceContainerHigh` 描边样式）。
-- **图标**：`AutoAwesome` + 轻微 shimmer/旋转动画（仅生成中时持续动，静止时不动，省电）。
-- **文案**：`✦ Serendipity!` / `✦ 不期而遇！`，右上角可挂一个「零输入」小标签。
-- **位置**：AI 横幅内、描述输入行**右侧或下方**，与主输入并列，不做成二级菜单。
-- **点击后**：不弹任何对话框，直接进入生成中状态（缺权限时按 §4 策略静默降级）。
+| 项 | 定稿 |
+|---|---|
+| 图标 | `Icons.Rounded.AutoFixHigh`（魔法棒）—— **刻意不用 `AutoAwesome`**：后者已是 AI 家族的通用图标（横幅左侧、最近生成卡片、设置 AI 分类都在用），复用会消解「特殊按钮」的差异感 |
+| 形状 | 胶囊，**半透明白底**（`onPrimary.copy(alpha = 0.18f)`，与现有 `Start` 胶囊同款容器规则；横幅本身已是 `primary → tertiary` 渐变，高饱和实心容器在渐变上会糊成一团） |
+| 文案 | `✦ 不期而遇！` / `✦ Serendipity!`，叹号保留（是功能人格的一部分） |
+| 位置 | AI 横幅按钮行内，**`Start` 胶囊之前**（左），形成「交给运气 → 交给你说」的阅读顺序 |
+| 图标差异 | 「**不期而遇！**」= `Icons.Rounded.AutoFixHigh`（魔法棒）；「**说一句**」= `Icons.Rounded.AutoAwesome`（星芒）—— 两者图标不同，且不期而遇在左，一眼可辨。<br>**已知取舍**：横幅左侧引导图标也是 `AutoAwesome`，同一张卡内出现两次星芒（15dp vs 28dp）。实测若觉得重复，把「说一句」换成铅笔类图标即可（改动只有一行） |
+| 动画 | **静止时完全不动**（省电）；仅生成中做 shimmer 扫光 / 魔法棒轻微旋转，生成结束即停 |
+| 点击后 | **打开 Serendipity sheet**（不直接生成）：显示情境 chips + 可编辑提示词 →「生成」→ 复用现有生成中/结果态。详见下方「Serendipity 交互流程」 |
+| 未配置 AI | 按钮置灰；或与主按钮一致跳 AI 设置（跟随 `isAiConfigured` 的现有分支，不额外加态） |
+
+**横幅按钮行布局（宽度约束，重要）**
+
+标题列 + 两个文字胶囊**无法真正同行**：360dp 屏上横幅内部可用宽约 292dp，
+`[28dp 图标] + 14 + 标题列 + 12 + 两个胶囊` 里，两个胶囊（labelMedium ≈ 98dp + 56dp + 8 间距 = 162dp）
+会把标题列压到 ~78dp，`AI Playlist` 会被强制折行。故定稿为**两行**：
+
+```
+┌──────────────────────────────────────────────┐
+│  ✨  AI 歌单                                  │
+│      描述你想听的音乐                          │
+│                        [✦ 不期而遇！] [说一句] │  ← 按钮行右对齐，Serendipity 在左
+└──────────────────────────────────────────────┘
+```
+
+- 按钮行右对齐（`Spacer(Modifier.weight(1f))` 起头），两个胶囊 `Arrangement.spacedBy(8.dp)`。
+- **副作用（正向）**：主胶囊从第一行移走后，标题列拿回全部 ~250dp，
+  `Describe the music you want to hear` 由两行折行变为**单行**；因此**不需要** `maxLines` 或缩字号。
+- **卡片高度**：`heightIn(min = 76.dp)` → 约 **104dp**（两行内容 + 12dp 行间距），
+  实现时把 min 提到 ~100dp 或直接放宽（内容自然撑开，不要再写死）。
+- 若后续实测 360dp 下仍觉拥挤，降级顺序：① 胶囊内边距 14→10dp；② 文案「不期而遇！」→「不期而遇」；
+  ③ 退回纯图标圆钮（方案 C 形态）。
+
+**字符串改动**
+
+| key | 英文 | 中文 | 说明 |
+|---|---|---|---|
+| `ai_serendipity_button`（新） | `Serendipity!` | `不期而遇！` | ✦ 前缀在 composable 里用图标实现，不写进字符串 |
+| `ai_playlist_entry_action`（改） | `Start` → `Describe` | `说一句` | 顺带补 zh-rCN —— 该组 `ai_playlist_entry_*` 字符串**当前只有英文**，中文用户看到的是英文回退，属既有缺口，本次一并补上 |
+| `playlist_ai_prompt_label`（新） | `AI prompt` | `AI 描述` | 歌单详情页提示词卡片的标签 |
+
+### Serendipity 交互流程（2026-09-12 定稿）
+
+```
+点「不期而遇！」
+   ↓  采集（本地，无网络开销）
+时间/天气(城市)/步数  ── 拿不到的信号直接不显示，不留占位符
+   ↓  本地模板合成（零 AI 调用、可离线）
+「周五 19:20，傍晚。小雨 14°C，上海。今天约 8,400 步，挺活跃。挑些贴合此刻的歌。」
+   ↓  sheet 展示：情境 chips + 可编辑提示词 + 两个动作
+[换一句]（本地重新随机句式，不重新采集信号）
+[让 AI 换个说法]（可选，第二次小请求；thinking 固定关闭，输出上限写死在代码里）
+   ↓  [生成]
+现有 AI 管线（1 次调用）→ 生成中 → 结果卡（播放 / 仅保存）
+```
+
+**为什么默认不调 AI 写词**：本地模板 + 句式随机化已能做到"每次不一样"，AI 此时只增益文采，
+却让冷启动路径从 1 次往返变 2 次、token 翻倍。把它降级为可选按钮，两种诉求都满足。
+
+**额外收益**：用户在 sheet 里能直接看到"这次没有天气/没有步数"，把原本静默的降级变成可见 ——
+比文档早先设计的"缺什么少一句、用户不知情"透明得多。
+
+**缓存策略**：Serendipity 路径**不读不写 `ai_cache`**（RANDOM 采样 + 随机描述 → 命中率≈0，
+写进去只污染且无限增长）；但 `ai_usage` 两次请求都要记，promptType 分开
+（`serendipity_prompt` / `serendipity_playlist`），否则用量报告失真。
+
 
 ### 信号来源
 
 | 信号 | 获取方式 | 权限 / 网络 | 缺失时 |
 |---|---|---|---|
 | 时间 | 系统时钟 + 星期 + 时段（morning/afternoon/evening/late night） | 无 | 始终可用 |
-| 天气 | **Open-Meteo**（免费、无 API key、CC-BY 4.0、无 GMS）；**粒度＝城市**，三级取值：① 用户手填的城市 ② `ACCESS_COARSE_LOCATION` 反查城市 ③ 放弃 | 无 / INTERNET | 提示词里不出现天气 |
-| 步数 | `SensorManager.TYPE_STEP_COUNTER`（本地存当日基线）+ 活跃度分档 | `ACTIVITY_RECOGNITION`（可选，API 29+） | 提示词里不出现步数 |
+| 天气 | **Open-Meteo**（免费、无 API key、CC-BY 4.0、无 GMS）；**粒度＝城市**，三级取值：① 用户手填的城市（AI 设置页「天气城市（可选）」，经 Open-Meteo geocoding 转坐标）② `ACCESS_COARSE_LOCATION` 粗定位 → `Geocoder` 反查城市名 ③ 放弃 | 无 / INTERNET | 提示词里不出现天气 |
+| 步数 | `SensorManager.TYPE_STEP_COUNTER`（按需采样一次，非常驻监听）+ 当日基线 + 活跃度分档 | `ACTIVITY_RECOGNITION` | 提示词里不出现步数 |
 | 随机 | `AiLibrarySampleMode.RANDOM` + `sample size = 100` | 无 | 默认开 |
 
+**WMO 天气码收敛为 6 档**：`CLEAR`(0,1) / `CLOUDY`(2,3) / `FOG`(45,48) / `RAIN`(51–67,80–82) /
+`SNOW`(71–77,85,86) / `THUNDERSTORM`(95,96,99)。细分「毛毛雨 / 阵雨」不会改变选歌结果，
+却要多出两组翻译字符串 —— 收敛是对成本与收益的判断，不是遗漏。
+
+**步数采样方式**：只在需要时注册 `TYPE_STEP_COUNTER` 监听、拿到第一个事件即注销
+（`withTimeoutOrNull(2s)` 兜底），不做常驻监听。代价是**读不到「今天第一次读取之前」的步数**
+（基线在当日首次读取时才建立），换来的是这个装饰性数值不耗电。
+
 **经纬度永不进入提示词**：位置只用来换一个城市名，且城市名也只是作为天气查询的输入。
-提示词里出现的最细粒度是城市（如 "in Shanghai"），**没有坐标、没有街道、没有步数原始值**。
+提示词里出现的最细粒度是城市（如 "in Shanghai"），**没有坐标、没有街道、没有步数原始值**
+（步数还会先向下取整到百位）。
 
 ### 关键设计
 
@@ -148,8 +222,11 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
    - AI 设置页只保留**一个**输入框：「天气城市（可选）」—— 填了就用它，不填才考虑定位。
      这让用户**完全不给定位权限也能有天气**。
 4. **命名**：Serendipity 的产物用情境短语而非纯时间戳，辨识度更高 ——
-   `Rainy Evening · 19:20` / `Sunny Morning · 08:41`（取「天气 + 时段」两个标签 + 时间）。
-   取不到天气就退化为时段 + 时间（`Late Night · 23:40`）。
+   取「天气 · 时段 · 时间」三段用 ` · ` 连接：`Rain · Evening · 19:20` / `小雨 · 傍晚 · 19:20`。
+   取不到天气就是 `Evening · 19:20` / `傍晚 · 19:20`。
+   **与早期草案的差异**：草案写的是 `Rainy Evening · 19:20`（天气当形容词、和时段拼成一个词组）。
+   实现改成三段并列，因为「形容词 + 时段」的拼法要求每种语言各备一套连接规则
+   （英文要空格、中文不能有），而 ` · ` 并列在两种语言下都读得通，翻译量也少一半。
 
 ### 权限改动（AndroidManifest）
 
@@ -232,7 +309,7 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
 | **0** | 首页标题降级：`YourMixHeader` 64sp → section 标题 + 本地化副标题 + 56dp shuffle 图标按钮 | **已完成**（待真机确认） |
 | **1** | 结果管线改造：新 `AiMixSheet`（描述 + chips + 生成中 + 结果卡）、`PlaylistViewModel` 加 `SharedFlow<AiMixSaved>`、落库（`AI Mix · MM-dd HH:mm`，`source="AI"`）、结果卡双按钮 + 编辑能力、HomeScreen 接线 | **已完成**（待真机确认） |
 | **2** | 「最近生成」横滑：**不新增存储**，从现有 playlists 流派生（`source="AI"` + `createdAt` 排序）+ `RecentAiMixesSection` + 首页插入 AI 横幅下方、Your Mix 之上 | **已完成**（待真机确认） |
-| **3** | Serendipity：情境采集器（时间/天气(城市)/步数）、情境→description 合成、特殊按钮、强制 RANDOM+100、情境式命名 | 待开始（依赖 1） |
+| **3** | Serendipity：情境采集器（时间/天气(城市)/步数）、情境→description 合成、**横幅双胶囊按钮行（不期而遇！+ 说一句）**、强制 RANDOM+100、情境式命名 | **已完成**（3.1–3.3、3.4 决定不做、3.5–3.14 全落地）：编译 + 单测通过，真机验证待做 |
 | **4** | 权限与隐私：manifest 加 `ACCESS_COARSE_LOCATION` / `ACTIVITY_RECOGNITION`、首次使用时申请、AI 设置页加「天气城市」输入框（不设四个开关）、字符串（英文 + zh-rCN）、PRIVACY.md 更新 | 待开始（依赖 3） |
 
 每 Phase 结束后跑 `:app:assembleDebug`，UI 改动装真机验证。
@@ -281,6 +358,106 @@ AI 横幅 → 一句话描述 + 长度 chips → 生成中（可取消）
   直接从现有 playlists 流派生，零存储、零同步、零脏数据。
 - 代价：`prompt` 不入库，所以「最近生成」卡片不显示原始提示词（只有 mix 名称）。
   名称本身已经承载了意图（`AI Mix · 09-10 20:24`），够用；真需要 prompt 再单独加字段。
+
+### Phase 3 步骤
+
+- [x] 3.1 **横幅按钮行重构**（`AiGenerateEntryCard.kt`）：改为一行标题 + 一行按钮（右对齐）；
+      新增 `onSerendipityClick: (() -> Unit)? = null` 参数 —— 为 `null` 时按钮不渲染、布局**退回原单行内联胶囊**
+      （当前唯一调用点是 `HomeScreen`，该保留让未来其他入口零改动）。
+      卡片 `heightIn(min)` 76dp → **100dp**（仅双按钮时）。
+- [x] 3.2 **图标与容器**：抽出私有 `ActionPill`（胶囊、`onPrimary @ 18%` 白底、labelLarge）；
+      「不期而遇！」= `Icons.Rounded.AutoFixHigh` + **24% 白底**（比普通胶囊亮一档，视为主按钮），
+      「说一句」= `Icons.Rounded.AutoAwesome`（星芒，15dp）+ 18% 白底。
+      注意：星芒胶囊**自身不设 onClick**（整卡已是描述入口，点击穿透到外层卡），只有不期而遇是独立可点按钮。
+- [x] 3.3 **字符串**：新增 `ai_serendipity_button`（英文 `Serendipity!` / 中文 `不期而遇！`）；
+      `ai_playlist_entry_action` 改 `Describe` / `说一句`；补齐整组 `ai_playlist_entry_*` 的 zh-rCN
+      （title/subtitle/unconfigured/action 四条，原先只有英文）。
+- [x] 3.4 **动画**：**未做，且决定不做**。原计划「生成中 shimmer 扫光 / 魔法棒微旋转」需要给
+      `AiGenerateEntryCard` 的胶囊加一个常驻 `rememberInfiniteTransition` 分支，而按钮只在**打开 sheet
+      之前**可见 —— sheet 一开，生成态在 sheet 里，胶囊根本看不到，等于为一个看不见的状态付动画开销。
+      改为沿用现有 `LoadingIndicator`（sheet 内已有），按钮本身静止。保留「不做常驻动画」这条纪律。
+- [x] 3.5 **情境采集器**：`data/ai/serendipity/SerendipityContextCollector.kt`
+      —— 时间（`ZonedDateTime` + `SerendipityTimeOfDay`）、城市（① 用户手填→Open-Meteo geocoding
+      ② `ACCESS_COARSE_LOCATION` 粗定位→`Geocoder` 反查 ③ 放弃）、天气（Open-Meteo `current`，
+      WMO 码收敛为 6 档）、步数（`TYPE_STEP_COUNTER` 采样一次 + 当日基线）。
+      **每一条信号都可缺失**：拿不到就保持 `null`，整句省略，不补占位符。
+- [x] 3.6 **情境→description 合成**：`SerendipityPromptComposer`（纯 object，零 AI 调用、可离线）
+      拼出英文一段话喂给现有管线，生成层零改动。
+- [x] 3.7 **强制采样参数**：`AiPlaylistGenerator.generateSerendipity()` 固定
+      `RANDOM` + `SERENDIPITY_SAMPLE_SIZE = 100`，忽略用户默认设置。
+- [x] 3.8 **情境式命名**：`{天气} · {时段} · {HH:mm}`（如「雨 · 傍晚 · 19:20」/ `Rain · Evening · 19:20`），
+      取不到天气退化为 `{时段} · {HH:mm}`；`source = PlaylistViewModel.SERENDIPITY_SOURCE`
+      （`AI_SERENDIPITY`），同时把 `recentAiMixes` 的过滤放宽为「两种来源都收」——
+      否则 Serendipity 生成的歌单会从「最近生成」里凭空消失。
+- [x] 3.9 **接线**：`HomeScreen` 分流 `openAiEntry(serendipity: Boolean)`；点「不期而遇！」先申请
+      `ACTIVITY_RECOGNITION` + `ACCESS_COARSE_LOCATION`（`RequestMultiplePermissions`，**首次使用才申请**），
+      回调里无论授权与否都照常采集 —— 拒绝只意味着少两句。
+- [x] 3.10 `assembleDebug` 通过 + 单测通过（`SerendipityPromptComposerTest`）。
+      **真机验证待做**（含 360dp 窄屏按钮行、天气/步数 chips 是否出现）。
+- [x] 3.11 **Serendipity sheet**：**没有新建 `SerendipitySheet.kt`**，而是给 `AiMixSheet` 加了一个
+      可空的 `serendipity: SerendipityUiState?` —— 复用它已有的「生成中 / 结果 / 播放 / 仅保存 / 错误」
+      四态与全部回调，Serendipity 只替换输入态并隐藏采样控件（那条路径的采样是强制的，显示出来就是撒谎）。
+      多加出的参数：`serendipityChips` / `serendipityDefaultName` / `onReshuffleSerendipity` /
+      `onRephraseSerendipity`，全部有默认值，其他调用点零改动。
+- [x] 3.12 **本地提示词模板**：`SerendipityPromptComposer`（5 种句式变体 × 信号子集），
+      纯函数、`(context, variant)` 决定输出，已单测（全信号 / 只时间 / 有天气无城市 / 变体互异 /
+      越界回绕 / 步数取整 / WMO 映射 / 时段分桶，共 10 例）。
+- [x] 3.13 **可选 AI 润色**：`AiHandler.generateText()`（无 library sample、不读写 `ai_cache`、
+      `ai_usage` 记 `serendipity_prompt`、thinking 固定 `false`）；失败保留本地句 + 一行提示。
+- [x] 3.14 **缓存策略**：`AiHandler.generate(..., promptType, useCache)` 把缓存开关提到参数上；
+      播放列表路径传 `useCache = false`、`promptType = serendipity_playlist`，
+      `ai_usage` 两次调用分开记账（`serendipity_prompt` / `serendipity_playlist`）。
+
+> 依赖：Phase 3.5/3.6 依赖 Phase 1 的生成管线（已完成）。
+> **遗留**：3.4 明确不做（见上，代价大于收益）。
+
+---
+
+## 9. AI 歌单的提示词存储与展示（2026-09-12 实施）
+
+### 为什么不在名字里
+
+歌单名是被 6+ 处消费的**标识符**，长文本会直接破坏这些位置：
+
+| 消费点 | 位置 |
+|---|---|
+| 搜索 | `MusicRepositoryImpl:562`（`playlist.name.contains(query)`）|
+| 导出文件名 | `sanitizeFileName` —— `PlaylistDetailScreen:932` / `PlaylistViewModel:1134/1141/1150` |
+| 起播队列名 | `PlaylistDetailScreen:436` → `playSongs(queueName = name)` 进播放器 |
+| toast / 列表 / 详情标题 | `HomeScreen:507`、Library 列表、详情页大标题 |
+
+所以：**name 保持短**（`AI Mix · 09-12 20:24` / `小雨傍晚 · 23:20`），提示词单独存。
+
+### 数据层（已实施）
+
+| 文件 | 改动 |
+|---|---|
+| `data/model/PlayList.kt` | `Playlist` 末尾新增 `aiPrompt: String? = null`（放末尾 → 所有位置参数调用点不受影响）|
+| `data/database/PlaylistEntity.kt` | `@ColumnInfo(name = "ai_prompt")` + 两个映射函数 |
+| `data/database/Migrations.kt` | `MIGRATION_8_9`：`addColumnIfMissing("playlists", "ai_prompt", "`ai_prompt` TEXT")` |
+| `data/database/PixelPlayerDatabase.kt` | `version = 9`（schema `9.json` 已随编译导出）|
+| `di/AppModule.kt` | `addMigrations(…, MIGRATION_8_9)` |
+| `data/preferences/PlaylistPreferencesRepository.kt` | `createPlaylist(…, aiPrompt: String? = null)` |
+| `presentation/viewmodel/PlaylistViewModel.kt` | `saveAiMix` 落库时带 `aiPrompt = prompt`（此前 `prompt` 只进事件、不入库）|
+
+**备份兼容性**：`PlaylistsModuleHandler` 用 Gson 反序列化 `List<Playlist>`，还原走
+`replaceAllPlaylists` → `toEntity()`，新增可空字段天然双向兼容（旧备份 → null；新备份被旧版读 → 忽略），
+备份模块**无需改动**。
+
+### 展示（已实施）
+
+`PlaylistDetailScreen` 歌曲列表顶部插入一条 `item(key = "ai_prompt")`，仅当
+`currentPlaylist?.aiPrompt` 非空时渲染 `AiPromptBanner`：
+
+- 标签行：`AutoAwesome`（14dp，tertiary 色）+ `playlist_ai_prompt_label`（`AI prompt` / `AI 描述`）。
+- 正文：`AutoScrollingTextOnDemand`（`MarqueeText.kt:35`，`expansionFractionProvider = { 1f }`
+  → 常驻可滚动；`gradientEdgeColor` 传卡片底色做渐变遮罩），**溢出即滚动**，不截断。
+- 容器：`surfaceContainerLow` + 16dp 圆角，比列表底（`surfaceContainerHigh`）低一档，读作卡片。
+
+### 后续可选
+
+- 「最近生成」卡片（`RecentAiMixesSection`）改用提示词前若干字符做副标题 —— 现在有字段了，一行取用。
+- 「重新生成」可读回 `aiPrompt` 直接复用原描述。
 
 ---
 
