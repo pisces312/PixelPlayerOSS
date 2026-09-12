@@ -30,16 +30,58 @@ constructor(
 
     private data class Suggestion(val title: String, val artist: String)
 
-    suspend fun generate(description: String, maxLength: Int = DEFAULT_MAX_LENGTH): List<Song> =
+    /**
+     * Asks the model for songs matching [description] and keeps only the ones in the library.
+     *
+     * [sampleMode] / [sampleSize] override the saved sampling settings when non-null. Serendipity
+     * uses that to force RANDOM over a wider slice: a stable ordering permanently excludes every
+     * song past the cut-off, and a mix that claims to be "for right now" should be able to surface
+     * anything the user owns. [promptType] / [useCache] are forwarded to [AiHandler] so the
+     * Serendipity path can opt out of the response cache and label its own usage rows.
+     */
+    suspend fun generate(
+        description: String,
+        maxLength: Int = DEFAULT_MAX_LENGTH,
+        sampleMode: AiLibrarySampleMode? = null,
+        sampleSize: Int? = null,
+        promptType: String = AiHandler.PROMPT_TYPE_PLAYLIST,
+        useCache: Boolean = true
+    ): List<Song> =
             withContext(Dispatchers.Default) {
                 val songs = musicRepository.getAllSongsOnce()
                 if (songs.isEmpty()) return@withContext emptyList()
 
-                val sampleSize = preferences.getLibrarySampleSize().first()
-                val sampleMode = preferences.getLibrarySampleMode().first()
-                val raw = handler.generate(description, librarySample(songs, sampleMode, sampleSize))
+                val resolvedSize = sampleSize ?: preferences.getLibrarySampleSize().first()
+                val resolvedMode = sampleMode ?: preferences.getLibrarySampleMode().first()
+                val raw =
+                        handler.generate(
+                                request = description,
+                                librarySample = librarySample(songs, resolvedMode, resolvedSize),
+                                promptType = promptType,
+                                useCache = useCache
+                        )
                 resolve(parse(raw), songs, maxLength)
             }
+
+    /**
+     * Serendipity's generation policy, kept here so the view model cannot get it half right:
+     * random sampling over a wide slice, its own usage label, and no response cache.
+     *
+     * The prompt is rebuilt from scratch on every tap ("Friday 19:20, evening. Rain, 14°C ..."),
+     * so a cache entry could never be read back — writing one would only grow the table.
+     */
+    suspend fun generateSerendipity(
+        description: String,
+        maxLength: Int = DEFAULT_MAX_LENGTH
+    ): List<Song> =
+            generate(
+                    description = description,
+                    maxLength = maxLength,
+                    sampleMode = AiLibrarySampleMode.RANDOM,
+                    sampleSize = SERENDIPITY_SAMPLE_SIZE,
+                    promptType = AiHandler.PROMPT_TYPE_SERENDIPITY_PLAYLIST,
+                    useCache = false
+            )
 
     /**
      * The slice of the library sent as context, chosen according to [mode].
@@ -153,6 +195,9 @@ constructor(
 
     private companion object {
         const val DEFAULT_MAX_LENGTH = 25
+
+        /** How many titles Serendipity sends as context; wider than the user setting on purpose. */
+        const val SERENDIPITY_SAMPLE_SIZE = 100
 
         const val TITLE_THRESHOLD = 0.5f
         const val ARTIST_WEIGHT = 0.25f

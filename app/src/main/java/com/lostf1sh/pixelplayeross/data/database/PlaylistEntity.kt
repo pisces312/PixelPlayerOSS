@@ -42,6 +42,9 @@ data class PlaylistEntity(
     val coverShapeDetail4: Float? = null,
     @ColumnInfo(name = "source")
     val source: String = "LOCAL",
+    /** Generation prompt for AI playlists; null for everything else. Added in schema v9. */
+    @ColumnInfo(name = "ai_prompt")
+    val aiPrompt: String? = null,
 )
 
 fun PlaylistEntity.toPlaylist(songIds: List<String>): Playlist {
@@ -61,6 +64,7 @@ fun PlaylistEntity.toPlaylist(songIds: List<String>): Playlist {
         coverShapeDetail3 = coverShapeDetail3,
         coverShapeDetail4 = coverShapeDetail4,
         source = source,
+        aiPrompt = aiPrompt,
     )
 }
 
@@ -80,5 +84,6 @@ fun Playlist.toEntity(): PlaylistEntity {
         coverShapeDetail3 = coverShapeDetail3,
         coverShapeDetail4 = coverShapeDetail4,
         source = source,
+        aiPrompt = aiPrompt,
     )
 }

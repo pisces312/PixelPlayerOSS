@@ -251,3 +251,15 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         )
     }
 }
+
+/**
+ * v8 -> v9: remember the prompt an AI playlist was generated from.
+ *
+ * Nullable with no default value: existing rows (and every manually built playlist) simply have
+ * no prompt, and the column stays out of the way for all non-AI flows.
+ */
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.addColumnIfMissing("playlists", "ai_prompt", "`ai_prompt` TEXT")
+    }
+}

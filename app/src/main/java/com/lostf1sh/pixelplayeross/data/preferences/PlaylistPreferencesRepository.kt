@@ -52,7 +52,9 @@ class PlaylistPreferencesRepository @Inject constructor(
         coverShapeDetail3: Float? = null,
         coverShapeDetail4: Float? = null,
         customId: String? = null,
-        source: String = "LOCAL"
+        source: String = "LOCAL",
+        /** Prompt/context this playlist was generated from; null for manual playlists. */
+        aiPrompt: String? = null
     ): Playlist {
         ensureMigratedIfNeeded()
         val now = System.currentTimeMillis()
@@ -72,6 +74,7 @@ class PlaylistPreferencesRepository @Inject constructor(
             coverShapeDetail3 = coverShapeDetail3,
             coverShapeDetail4 = coverShapeDetail4,
             source = source,
+            aiPrompt = aiPrompt,
         )
         localPlaylistDao.upsertPlaylist(newPlaylist.toEntity())
         localPlaylistDao.replacePlaylistSongs(newPlaylist.id, newPlaylist.songIds)

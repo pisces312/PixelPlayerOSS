@@ -21,7 +21,13 @@ data class Playlist(
     val coverShapeDetail2: Float? = null,
     val coverShapeDetail3: Float? = null,
     val coverShapeDetail4: Float? = null,
-    val source: String = "LOCAL"
+    val source: String = "LOCAL",
+    /**
+     * The description (or Serendipity context sentence) this playlist was generated from.
+     * Null for manually built playlists. Kept out of [name] on purpose: names are identifiers
+     * that get searched, exported as file names and shown as queue names, while this is content.
+     */
+    val aiPrompt: String? = null
 )
 
 enum class PlaylistShapeType {

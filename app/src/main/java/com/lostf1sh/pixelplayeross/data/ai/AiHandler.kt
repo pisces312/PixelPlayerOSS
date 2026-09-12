@@ -49,9 +49,19 @@ constructor(
     /**
      * Runs [request] against the active provider and returns the raw model response.
      *
-     * Results are cached per (model, prompt) so repeating a request costs nothing.
+     * Results are cached per (model, prompt) so repeating a request costs nothing. Serendipity
+     * passes `useCache = false`: its prompts are random by design, so a cache entry could only be
+     * written and never read, growing the table for no benefit.
+     *
+     * [promptType] only labels the usage row and the request log, which is how the settings screen
+     * can tell an ordinary mix from one that also paid for a rephrased prompt.
      */
-    suspend fun generate(request: String, librarySample: String): String {
+    suspend fun generate(
+        request: String,
+        librarySample: String,
+        promptType: String = PROMPT_TYPE_PLAYLIST,
+        useCache: Boolean = true
+    ): String {
         val (provider, apiKey, baseUrl) = credentials()
         val model = preferences.getModel(provider).first()
         val thinking =
@@ -61,22 +71,25 @@ constructor(
         val userPrompt = AiSystemPromptEngine.userPrompt(request, librarySample)
         val hash = sha256("$model|$userPrompt")
 
-        val cached = cacheDao.getCache(hash)
-        if (cached != null && System.currentTimeMillis() - cached.timestamp < CACHE_TTL_MILLIS) {
-            requestLogStore.write(
-                AiRequestLog(
-                    timestamp = System.currentTimeMillis(),
-                    status = AiRequestLog.STATUS_FROM_CACHE,
-                    promptType = PROMPT_TYPE_PLAYLIST,
-                    provider = provider.displayName,
-                    model = model,
-                    endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions"),
-                    systemPrompt = AiSystemPromptEngine.systemPrompt(),
-                    userPrompt = userPrompt,
-                    responseText = cached.responseJson
+        if (useCache) {
+            val cached = cacheDao.getCache(hash)
+            if (cached != null &&
+                    System.currentTimeMillis() - cached.timestamp < CACHE_TTL_MILLIS) {
+                requestLogStore.write(
+                    AiRequestLog(
+                        timestamp = System.currentTimeMillis(),
+                        status = AiRequestLog.STATUS_FROM_CACHE,
+                        promptType = promptType,
+                        provider = provider.displayName,
+                        model = model,
+                        endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions"),
+                        systemPrompt = AiSystemPromptEngine.systemPrompt(),
+                        userPrompt = userPrompt,
+                        responseText = cached.responseJson
+                    )
                 )
-            )
-            return cached.responseJson
+                return cached.responseJson
+            }
         }
 
         val requestStart = System.currentTimeMillis()
@@ -95,7 +108,7 @@ constructor(
                     AiRequestLog(
                         timestamp = System.currentTimeMillis(),
                         status = AiRequestLog.STATUS_FAILED,
-                        promptType = PROMPT_TYPE_PLAYLIST,
+                        promptType = promptType,
                         provider = provider.displayName,
                         model = model,
                         endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions"),
@@ -110,22 +123,24 @@ constructor(
 
         val now = System.currentTimeMillis()
 
-        // The library sample is reshuffled per request, so prompts rarely repeat and stale rows
-        // would otherwise pile up forever.
-        cacheDao.clearOldCache(now - CACHE_TTL_MILLIS)
-        cacheDao.insert(
-                AiCacheEntity(
-                        promptHash = hash,
-                        responseJson = result.content,
-                        timestamp = now
-                )
-        )
+        if (useCache) {
+            // The library sample is reshuffled per request, so prompts rarely repeat and stale
+            // rows would otherwise pile up forever.
+            cacheDao.clearOldCache(now - CACHE_TTL_MILLIS)
+            cacheDao.insert(
+                    AiCacheEntity(
+                            promptHash = hash,
+                            responseJson = result.content,
+                            timestamp = now
+                    )
+            )
+        }
         usageDao.insertUsage(
                 AiUsageEntity(
                         timestamp = now,
                         provider = provider.name,
                         model = model,
-                        promptType = PROMPT_TYPE_PLAYLIST,
+                        promptType = promptType,
                         promptTokens = result.promptTokens,
                         outputTokens = result.outputTokens,
                         thoughtTokens = result.thoughtTokens
@@ -135,12 +150,92 @@ constructor(
                 AiRequestLog(
                         timestamp = now,
                         status = AiRequestLog.STATUS_SUCCESS,
-                        promptType = PROMPT_TYPE_PLAYLIST,
+                        promptType = promptType,
                         provider = provider.displayName,
                         model = model,
                         endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions"),
                         durationMs = now - requestStart,
                         systemPrompt = AiSystemPromptEngine.systemPrompt(),
+                        userPrompt = userPrompt,
+                        responseText = result.content,
+                        promptTokens = result.promptTokens,
+                        outputTokens = result.outputTokens,
+                        thoughtTokens = result.thoughtTokens
+                )
+        )
+
+        return result.content
+    }
+
+    /**
+     * A one-shot text completion with no library sample attached and no cache.
+     *
+     * Used by Serendipity's optional "let the AI rephrase it" step: the input and the output are
+     * both short, the answer is only useful once, and caching it would just add a row that never
+     * gets read. Thinking is forced off — rephrasing one sentence does not need a chain of
+     * thought, and the user is waiting on it.
+     */
+    suspend fun generateText(
+        systemPrompt: String,
+        userPrompt: String,
+        promptType: String
+    ): String {
+        val (provider, apiKey, baseUrl) = credentials()
+        val model = preferences.getModel(provider).first()
+        val thinking = if (provider.supportsThinkingParam) false else null
+        val endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions")
+
+        val requestStart = System.currentTimeMillis()
+        val result =
+                try {
+                    client.chat(
+                            baseUrl = baseUrl,
+                            apiKey = apiKey,
+                            model = model,
+                            systemPrompt = systemPrompt,
+                            userPrompt = userPrompt,
+                            thinkingEnabled = thinking
+                    )
+                } catch (t: Throwable) {
+                    requestLogStore.write(
+                            AiRequestLog(
+                                    timestamp = System.currentTimeMillis(),
+                                    status = AiRequestLog.STATUS_FAILED,
+                                    promptType = promptType,
+                                    provider = provider.displayName,
+                                    model = model,
+                                    endpoint = endpoint,
+                                    durationMs = System.currentTimeMillis() - requestStart,
+                                    systemPrompt = systemPrompt,
+                                    userPrompt = userPrompt,
+                                    errorMessage = t.message ?: t.javaClass.simpleName
+                            )
+                    )
+                    throw t
+                }
+
+        val now = System.currentTimeMillis()
+        usageDao.insertUsage(
+                AiUsageEntity(
+                        timestamp = now,
+                        provider = provider.name,
+                        model = model,
+                        promptType = promptType,
+                        promptTokens = result.promptTokens,
+                        outputTokens = result.outputTokens,
+                        thoughtTokens = result.thoughtTokens
+                )
+        )
+        requestLogStore.write(
+                AiRequestLog(
+                        timestamp = now,
+                        status = AiRequestLog.STATUS_SUCCESS,
+                        promptType = promptType,
+                        provider = provider.displayName,
+                        model = model,
+                        endpoint = endpoint,
+                        durationMs = now - requestStart,
+                        systemPrompt = systemPrompt,
                         userPrompt = userPrompt,
                         responseText = result.content,
                         promptTokens = result.promptTokens,
@@ -167,8 +262,15 @@ constructor(
                     .digest(value.toByteArray())
                     .joinToString("") { "%02x".format(it) }
 
-    private companion object {
+    companion object {
         const val PROMPT_TYPE_PLAYLIST = "playlist"
-        const val CACHE_TTL_MILLIS = AiPreferencesRepository.CACHE_TTL_MILLIS
+
+        /** Serendipity's playlist request: random by design, so never cached. */
+        const val PROMPT_TYPE_SERENDIPITY_PLAYLIST = "serendipity_playlist"
+
+        /** Serendipity's optional "let the AI rephrase it" step. */
+        const val PROMPT_TYPE_SERENDIPITY_PROMPT = "serendipity_prompt"
+
+        private const val CACHE_TTL_MILLIS = AiPreferencesRepository.CACHE_TTL_MILLIS
     }
 }
