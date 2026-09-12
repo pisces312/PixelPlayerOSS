@@ -2,6 +2,30 @@
 
 All notable changes to PixelPlayerOSS will be documented in this file.
 
+## [0.4.1-pisces.1] - 2026-09-13
+
+Second fork release. The AI side gets a second entry point that reads the moment, and a mix now
+remembers the prompt it was generated from.
+
+### Added
+- Serendipity (`不期而遇` in Chinese): a zero-input AI playlist built from right now. The AI banner carries its own magic-wand pill next to the describe field; tapping it opens a sheet showing what it could read as chips (weekday and time of day, city weather, today's step count), the prompt it composed on the device, and two ways to change that prompt: Another line reshuffles the local wording without re-reading anything, and Let the AI rephrase it spends one small extra request, falling back to the local wording if the provider is unreachable. The prompt stays editable before generating, and a signal that could not be read is simply absent instead of being faked.
+- A weather source setting with three options: device location (approximate location, permission requested on first use), a chosen city or district, or off. The chosen-city and off options never request the location permission and never read the phone's position. Turning coordinates into a place name is fully offline against a bundled gazetteer of roughly 8,900 places (every Chinese province, city and district, plus world cities above 100,000 residents), so only the forecast request itself goes online, and that endpoint (Open-Meteo) needs no API key.
+- Step count is read on demand, only while the moment line is being composed, instead of listening to the step sensor in the background.
+- AI playlists remember the prompt they were generated from and show it under the title on the playlist screen. Manually built playlists have no prompt and are unaffected.
+- A rating segment in the player toggle row: tapping the star expands a five-star row so a song can be rated without leaving the player.
+- A Year row in the song info sheet that opens that year's detail screen.
+- Playing the whole top-songs list as a queue straight from listening stats.
+- A Statistics section in settings with No limit on stats rankings, so song, artist and album rankings show everything instead of stopping at 100.
+- The recent-mixes row became a compact card row with its own screen listing every generated mix, and a mix is named after the idea word that was tapped.
+
+### Changed
+- The AI banner's Start pill is renamed Describe (`说一句` in Chinese) and both pills moved onto their own line, so the banner title no longer has to wrap on a 360dp screen.
+- The AI entry and Serendipity surfaces are localized in Simplified Chinese, including the idea chips, the sampling controls and the new weather settings.
+- The song info sheet can also be opened by tapping the title in the full player.
+
+### Fixed
+- Lists no longer end underneath the mini player: the missing bottom space was added on the duplicate-songs screen, the year detail song list and the three stats ranking screens.
+
 ## [0.4.0-pisces.1] - 2026-09-11
 
 The first stable release of the personal fork, rolling up the work carried on the fork branch
