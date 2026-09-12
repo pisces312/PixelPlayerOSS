@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.R
@@ -36,8 +37,8 @@ private const val HOME_AI_MIX_PREVIEW_COUNT = 6
 
 private val MIX_CARD_WIDTH = 152.dp
 
-/** Fixed so a one-line and a two-line name produce cards of the same height. */
-private val MIX_CARD_HEIGHT = 96.dp
+/** Fixed so every card lines up, whatever the name and timestamp lengths are. */
+private val MIX_CARD_HEIGHT = 72.dp
 
 /**
  * Home screen row of the most recent generated mixes.
@@ -113,21 +114,34 @@ private fun RecentAiMixCard(mix: Playlist, onClick: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = mix.name,
+                    text = aiMixDisplayName(mix.name),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
             }
-            Text(
-                text = stringResource(R.string.ai_mix_result_count, mix.songIds.size),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Not weighted: the timestamp keeps its natural width so it never gets clipped,
+                // which is what tells two mixes made minutes apart apart.
+                Text(
+                    text = formatMixTimestamp(mix.createdAt),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.ai_mix_result_count, mix.songIds.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

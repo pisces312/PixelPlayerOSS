@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.presentation.components
 
 import java.time.LocalDateTime
+import java.time.ZoneId
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 
@@ -27,5 +28,21 @@ class AiMixNamingTest {
     @Test
     fun `a blank prompt falls back to the generic prefix`() {
         assertEquals("AI Mix · 09-12 12:17", aiMixDefaultName("   ", ideas, now))
+    }
+
+    @Test
+    fun `display name drops the timestamp the name was saved with`() {
+        assertEquals("Workout", aiMixDisplayName("Workout · 09-12 12:17"))
+    }
+
+    @Test
+    fun `display name keeps a hand-written name as it is`() {
+        assertEquals("My mix", aiMixDisplayName("My mix"))
+    }
+
+    @Test
+    fun `timestamp comes from the creation time, not from the name`() {
+        val epochMillis = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals("09-12 12:17", formatMixTimestamp(epochMillis))
     }
 }
