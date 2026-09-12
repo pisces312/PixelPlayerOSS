@@ -73,6 +73,7 @@ fun ListeningStatsScreen(
 ) {
     val uiState by statsViewModel.uiState.collectAsStateWithLifecycle()
     val summary = uiState.summary
+    val hotSongsQueueName = stringResource(R.string.presentation_batch_g_stats_hot_songs)
     val recentState = rememberRecentlyPlayedHomeState(playerViewModel)
     val currentSongId by remember(playerViewModel.stablePlayerState) {
         playerViewModel.stablePlayerState.map { it.currentSong?.id }.distinctUntilChanged()
@@ -127,7 +128,13 @@ fun ListeningStatsScreen(
             item(key = "stats_rankings", contentType = "listening_stats_rankings") {
                 StatsRankings(
                     summary = summary,
-                    onSongClick = { songId -> playerViewModel.playSongById(songId) },
+                    onSongClick = { songId, queueSongIds ->
+                        playerViewModel.playSongByIds(
+                            startSongId = songId,
+                            queueSongIds = queueSongIds,
+                            queueName = hotSongsQueueName
+                        )
+                    },
                     onArtistClick = { artist ->
                         statsViewModel.resolveArtistId(artist)?.let { artistId ->
                             navController.navigateSafely(Screen.ArtistDetail.createRoute(artistId))
@@ -195,7 +202,7 @@ private fun StatsTopBar(
 @Composable
 private fun StatsRankings(
     summary: PlaybackStatsSummary?,
-    onSongClick: (String) -> Unit,
+    onSongClick: (songId: String, queueSongIds: List<String>) -> Unit,
     onArtistClick: (String) -> Unit,
     onAlbumClick: (String) -> Unit,
     onShowAllSongs: () -> Unit,
@@ -217,7 +224,7 @@ private fun StatsRankings(
             trailing = { stringResource(R.string.presentation_batch_g_stats_n_plays, it.playCount) },
             leadingIcon = Icons.Rounded.MusicNote,
             coverArtUri = { it.albumArtUri },
-            onClick = { onSongClick(it.songId) },
+            onClick = { onSongClick(it.songId, summary.songs.map { song -> song.songId }) },
             showMoreLabel = showAllLabel(
                 totalCount = summary.songs.size,
                 labelRes = R.string.presentation_batch_g_stats_hot_songs_show_more

@@ -4779,11 +4779,25 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    /** Resolves a song id (for example from listening stats) and starts playback. */
-    fun playSongById(songId: String) {
+    /**
+     * Resolves a song id and the queue surrounding it (for example the top-songs ranking
+     * from listening stats) and starts playback so the next tracks keep playing afterwards.
+     * Songs that no longer resolve (deleted from the library) are skipped.
+     */
+    fun playSongByIds(startSongId: String, queueSongIds: List<String>, queueName: String) {
         viewModelScope.launch {
-            val song = musicRepository.getSong(songId).first() ?: return@launch
-            playSong(song)
+            val songIds = buildList {
+                add(startSongId)
+                queueSongIds.forEach { if (it != startSongId) add(it) }
+            }
+            val resolvedById = getSongsByIdsChunked(songIds).associateBy { it.id }
+            val songs = songIds.mapNotNull { resolvedById[it] }
+            val startSong = songs.firstOrNull { it.id == startSongId }
+            if (startSong == null) {
+                _toastEvents.emit(context.getString(R.string.no_valid_songs))
+                return@launch
+            }
+            playSongs(songs, startSong, queueName)
         }
     }
 

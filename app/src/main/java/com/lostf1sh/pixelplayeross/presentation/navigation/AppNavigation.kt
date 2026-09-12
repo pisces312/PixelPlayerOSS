@@ -413,10 +413,17 @@ fun AppNavigation(
                         navController.getBackStackEntry(Screen.Stats.route)
                     }
                 )
+                val hotSongsQueueName = stringResource(R.string.presentation_batch_g_stats_hot_songs)
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                     StatsHotSongsScreen(
                         onBack = { navController.popBackStack() },
-                        onSongClick = { songId -> playerViewModel.playSongById(songId) },
+                        onSongClick = { songId, queueSongIds ->
+                            playerViewModel.playSongByIds(
+                                startSongId = songId,
+                                queueSongIds = queueSongIds,
+                                queueName = hotSongsQueueName
+                            )
+                        },
                         paddingValues = paddingValues,
                         statsViewModel = statsViewModel
                     )

@@ -48,7 +48,7 @@ import kotlinx.collections.immutable.toImmutableList
 @Composable
 fun StatsHotSongsScreen(
     onBack: () -> Unit,
-    onSongClick: (String) -> Unit,
+    onSongClick: (songId: String, queueSongIds: List<String>) -> Unit,
     paddingValues: PaddingValues,
     statsViewModel: StatsViewModel = hiltViewModel()
 ) {
@@ -112,7 +112,7 @@ fun StatsHotSongsScreen(
                         albumArtUri = entry.albumArtUri,
                         playCount = entry.playCount,
                         totalDurationMs = entry.totalDurationMs,
-                        onClick = { onSongClick(entry.songId) }
+                        onClick = { onSongClick(entry.songId, songs.map { it.songId }) }
                     )
                 }
             }
