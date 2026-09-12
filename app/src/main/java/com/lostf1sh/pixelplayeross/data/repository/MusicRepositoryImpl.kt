@@ -794,6 +794,11 @@ class MusicRepositoryImpl @Inject constructor(
         favoritesDao.getRating(id)
     }
 
+    override fun observeSongRating(songId: String): Flow<Int> {
+        val id = songId.toLongOrNull() ?: return flowOf(0)
+        return favoritesDao.observeRating(id).map { it ?: 0 }
+    }
+
     override suspend fun getFavoriteSongIdsOnce(): Set<String> = withContext(Dispatchers.IO) {
         favoritesDao.getFavoriteSongIdsOnce()
             .map { it.toString() }

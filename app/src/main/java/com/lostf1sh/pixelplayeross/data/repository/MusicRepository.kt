@@ -279,6 +279,13 @@ interface MusicRepository {
     suspend fun getSongRating(songId: String): Int?
 
     /**
+     * Observes the stored 0–5 rating for a song. Emits 0 when the song has no rating yet or when
+     * the id cannot be resolved to a local row.
+     * @param songId The song ID.
+     */
+    fun observeSongRating(songId: String): Flow<Int>
+
+    /**
      * Returns favorite song IDs directly from Room (favorites table).
      */
     suspend fun getFavoriteSongIdsOnce(): Set<String>

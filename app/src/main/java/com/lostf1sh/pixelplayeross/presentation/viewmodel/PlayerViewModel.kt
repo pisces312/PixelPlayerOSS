@@ -1112,6 +1112,29 @@ class PlayerViewModel @Inject constructor(
     }.distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    /** 0–5 star rating of the current song; 0 means unrated. Independent from the favorite flag. */
+    val currentSongRating: StateFlow<Int> = stablePlayerState
+        .map { it.currentSong }
+        .distinctUntilChanged { old, new ->
+            old?.id == new?.id &&
+                old?.contentUriString == new?.contentUriString &&
+                old?.path == new?.path
+        }
+        .flatMapLatest { song ->
+            kotlinx.coroutines.flow.flow {
+                emit(resolveFavoriteSongId(song))
+            }
+        }
+        .flatMapLatest { favoriteSongId ->
+            if (favoriteSongId == null) {
+                flowOf(0)
+            } else {
+                musicRepository.observeSongRating(favoriteSongId)
+            }
+        }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     data class FullPlayerSlice(
         val currentSongArtists: ImmutableList<Artist> = persistentListOf(),
         val lyricsSyncOffset: Int = 0,
@@ -3132,6 +3155,15 @@ class PlayerViewModel @Inject constructor(
             val favoriteSongId = resolveFavoriteSongId(currentSong) ?: return@launch
             val currentlyFavorite = favoriteSongIds.value.contains(favoriteSongId)
             setFavoriteStatusEverywhere(favoriteSongId, !currentlyFavorite)
+        }
+    }
+
+    /** Sets the current song rating (0–5). Passing 0 clears the rating. */
+    fun setCurrentSongRating(rating: Int) {
+        val currentSong = playbackStateHolder.stablePlayerState.value.currentSong ?: return
+        viewModelScope.launch {
+            val favoriteSongId = resolveFavoriteSongId(currentSong) ?: return@launch
+            musicRepository.setSongRating(favoriteSongId, rating)
         }
     }
 
