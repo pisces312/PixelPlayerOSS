@@ -501,6 +501,13 @@ fun GenreDetailScreen(
                             }
                             showSongOptionsSheet = null
                         },
+                        onNavigateToYear = { year ->
+                            navController.navigateSafelyReplacing(
+                                route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.YearDetail.createRoute(year),
+                                patternToPop = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.YearDetail.route
+                            )
+                            showSongOptionsSheet = null
+                        },
                         onEditSong = { newTitle, newArtist, newAlbum, newAlbumArtist, newComposer, newGenre, newLyrics, newTrackNumber, newDiscNumber, replayGainTrackGainDb, replayGainAlbumGainDb, coverArtUpdate, customMetadataChanges ->
                             playerViewModel.editSongMetadata(
                                 song,

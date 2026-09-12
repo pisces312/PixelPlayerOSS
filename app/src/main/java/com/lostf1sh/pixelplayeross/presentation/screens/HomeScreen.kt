@@ -421,6 +421,11 @@ fun HomeScreen(
                                     navController.navigateSafely(Screen.GenreDetail.createRoute(java.net.URLEncoder.encode(it, "UTF-8")))
                                 }
                             },
+                            onNavigateToYear = { song ->
+                                song.year.takeIf { it > 0 }?.let {
+                                    navController.navigateSafely(Screen.YearDetail.createRoute(it))
+                                }
+                            },
                             playerViewModel = playerViewModel
                         )
                     }

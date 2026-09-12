@@ -515,6 +515,13 @@ fun ArtistDetailScreen(
                     }
                     showSongInfoBottomSheet = false
                 },
+                onNavigateToYear = { year ->
+                    navController.navigateSafelyReplacing(
+                        route = Screen.YearDetail.createRoute(year),
+                        patternToPop = Screen.YearDetail.route
+                    )
+                    showSongInfoBottomSheet = false
+                },
                 onEditSong = { newTitle, newArtist, newAlbum, newAlbumArtist, newComposer, newGenre, newLyrics, newTrackNumber, newDiscNumber, replayGainTrackGainDb, replayGainAlbumGainDb, coverArtUpdate, customMetadataChanges ->
                     playerViewModel.editSongMetadata(
                         currentSong,

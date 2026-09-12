@@ -50,6 +50,7 @@
     <string name="song_field_album">Album</string>
     <string name="song_field_album_artist">Album artist</string>
     <string name="song_field_genre">Genre</string>
+    <string name="song_field_year">Year</string>
     <string name="song_field_composer">Composer</string>
 
     <string name="edit_song_info_dialog_title">Editing song metadata</string>
@@ -126,6 +127,7 @@
     <string name="song_info_label_song_metadata">Song info</string>
     <string name="cd_duration_icon">Duration</string>
     <string name="cd_genre_icon">Genre</string>
+    <string name="cd_year_icon">Year</string>
     <string name="cd_album_icon">Album</string>
     <string name="cd_artist_icon">Artist</string>
     <string name="cd_audio_format_icon">Audio format</string>

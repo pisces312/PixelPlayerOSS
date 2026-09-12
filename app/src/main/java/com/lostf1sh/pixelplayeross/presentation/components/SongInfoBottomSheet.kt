@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudDone
@@ -113,6 +114,7 @@ fun SongInfoBottomSheet(
     onNavigateToArtist: () -> Unit,
     onNavigateToArtistById: (Long) -> Unit = { onNavigateToArtist() },
     onNavigateToGenre: () -> Unit,
+    onNavigateToYear: (Int) -> Unit,
     onEditSong: (
         title: String,
         artist: String,
@@ -724,6 +726,17 @@ fun SongInfoBottomSheet(
                                                     iconDescription = stringResource(R.string.cd_duration_icon),
                                                     shape = infoSegmentItemShape,
                                                 )
+
+                                                if (song.year > 0) {
+                                                    SongInfoSegmentedListItem(
+                                                        headline = stringResource(R.string.song_field_year),
+                                                        supporting = song.year.toString(),
+                                                        icon = Icons.Rounded.CalendarMonth,
+                                                        iconDescription = stringResource(R.string.cd_year_icon),
+                                                        shape = infoSegmentItemShape,
+                                                        onClick = { onNavigateToYear(song.year) },
+                                                    )
+                                                }
 
                                                 if (!song.genre.isNullOrEmpty()) {
                                                     SongInfoSegmentedListItem(

@@ -50,6 +50,7 @@
     <string name="song_field_album">专辑</string>
     <string name="song_field_album_artist">专辑艺术家</string>
     <string name="song_field_genre">流派</string>
+    <string name="song_field_year">年份</string>
     <string name="song_field_composer">作曲</string>
 
     <string name="edit_song_info_dialog_title">编辑歌曲元数据</string>
@@ -116,6 +117,7 @@
     <string name="song_info_label_song_metadata">歌曲信息</string>
     <string name="cd_duration_icon">时长</string>
     <string name="cd_genre_icon">流派</string>
+    <string name="cd_year_icon">年份</string>
     <string name="cd_album_icon">专辑</string>
     <string name="cd_artist_icon">艺术家</string>
     <string name="cd_audio_format_icon">音频格式</string>
