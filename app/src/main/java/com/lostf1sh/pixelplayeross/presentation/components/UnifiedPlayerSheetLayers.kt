@@ -61,6 +61,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
     playerViewModel: PlayerViewModel,
     currentPositionProvider: () -> Long,
     isFavorite: Boolean,
+    rating: Int,
     shouldRenderFullPlayer: Boolean = true,
     onShowQueueClicked: () -> Unit,
     onQueueDragStart: () -> Unit,
@@ -149,6 +150,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                 ) {
                     val latestInfrequentPlayerState = rememberUpdatedState(infrequentPlayerState)
                     val latestIsFavorite = rememberUpdatedState(isFavorite)
+                    val latestRating = rememberUpdatedState(rating)
                     val expansionFractionProvider = remember(playerContentExpansionFraction) {
                         { playerContentExpansionFraction.value }
                     }
@@ -173,6 +175,9 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                     val isFavoriteProvider = remember {
                         { latestIsFavorite.value }
                     }
+                    val ratingProvider = remember {
+                        { latestRating.value }
+                    }
                     val onPlayPause = remember(playerViewModel) { playerViewModel::playPause }
                     val onSeek = remember(playerViewModel) { playerViewModel::seekTo }
                     val onNext = remember(playerViewModel) { playerViewModel::nextSong }
@@ -185,6 +190,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                     }
                     val onRepeatToggle = remember(playerViewModel) { playerViewModel::cycleRepeatMode }
                     val onFavoriteToggle = remember(playerViewModel) { playerViewModel::toggleFavorite }
+                    val onRatingSelected = remember(playerViewModel) { playerViewModel::setCurrentSongRating }
 
                     FullPlayerContent(
                         currentSong = currentSongNonNull,
@@ -210,6 +216,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                         lyricsProvider = lyricsProvider,
                         isOutputConnecting = isOutputConnecting,
                         isFavoriteProvider = isFavoriteProvider,
+                        ratingProvider = ratingProvider,
                         onPlayPause = onPlayPause,
                         onSeek = onSeek,
                         onNext = onNext,
@@ -221,7 +228,8 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                         onQueueRelease = onQueueRelease,
                         onShuffleToggle = onShuffleToggle,
                         onRepeatToggle = onRepeatToggle,
-                        onFavoriteToggle = onFavoriteToggle
+                        onFavoriteToggle = onFavoriteToggle,
+                        onRatingSelected = onRatingSelected
                     )
                 }
             }
@@ -244,6 +252,7 @@ internal fun UnifiedPlayerPrewarmLayer(
     currentPositionProvider: () -> Long,
     isOutputConnecting: Boolean,
     isFavorite: Boolean,
+    rating: Int,
     onShowQueueClicked: () -> Unit,
     onQueueDragStart: () -> Unit,
     onQueueDrag: (Float) -> Unit,
@@ -264,6 +273,7 @@ internal fun UnifiedPlayerPrewarmLayer(
             ) {
                 val latestInfrequentPlayerState = rememberUpdatedState(infrequentPlayerState)
                 val latestIsFavorite = rememberUpdatedState(isFavorite)
+                val latestRating = rememberUpdatedState(rating)
                 val isPlayingProvider = remember { { latestInfrequentPlayerState.value.isPlaying } }
                 val playWhenReadyProvider = remember { { latestInfrequentPlayerState.value.playWhenReady } }
                 val repeatModeProvider = remember { { latestInfrequentPlayerState.value.repeatMode } }
@@ -271,6 +281,7 @@ internal fun UnifiedPlayerPrewarmLayer(
                 val totalDurationProvider = remember { { latestInfrequentPlayerState.value.totalDuration } }
                 val lyricsProvider = remember { { latestInfrequentPlayerState.value.lyrics } }
                 val isFavoriteProvider = remember { { latestIsFavorite.value } }
+                val ratingProvider = remember { { latestRating.value } }
                 val onPlayPause = remember(playerViewModel) { playerViewModel::playPause }
                 val onSeek = remember(playerViewModel) { playerViewModel::seekTo }
                 val onNext = remember(playerViewModel) { playerViewModel::nextSong }
@@ -278,6 +289,7 @@ internal fun UnifiedPlayerPrewarmLayer(
                 val onShuffleToggle = remember(playerViewModel) { { playerViewModel.toggleShuffle() } }
                 val onRepeatToggle = remember(playerViewModel) { playerViewModel::cycleRepeatMode }
                 val onFavoriteToggle = remember(playerViewModel) { playerViewModel::toggleFavorite }
+                val onRatingSelected = remember(playerViewModel) { playerViewModel::setCurrentSongRating }
 
                 FullPlayerContent(
                     currentSong = currentSong,
@@ -302,6 +314,7 @@ internal fun UnifiedPlayerPrewarmLayer(
                     lyricsProvider = lyricsProvider,
                     isOutputConnecting = isOutputConnecting,
                     isFavoriteProvider = isFavoriteProvider,
+                    ratingProvider = ratingProvider,
                     onShowQueueClicked = onShowQueueClicked,
                     onQueueDragStart = onQueueDragStart,
                     onQueueDrag = onQueueDrag,
@@ -313,7 +326,8 @@ internal fun UnifiedPlayerPrewarmLayer(
                     onCollapse = {},
                     onShuffleToggle = onShuffleToggle,
                     onRepeatToggle = onRepeatToggle,
-                    onFavoriteToggle = onFavoriteToggle
+                    onFavoriteToggle = onFavoriteToggle,
+                    onRatingSelected = onRatingSelected
                 )
             }
         }

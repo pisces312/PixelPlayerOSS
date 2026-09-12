@@ -161,6 +161,7 @@ fun UnifiedPlayerSheetV2(
     }
 
     val isFavorite by playerViewModel.isCurrentSongFavorite.collectAsStateWithLifecycle()
+    val currentSongRating by playerViewModel.currentSongRating.collectAsStateWithLifecycle()
 
     val playerUiSheetSlice by remember {
         playerViewModel.playerUiState
@@ -655,6 +656,7 @@ fun UnifiedPlayerSheetV2(
                             playerViewModel = playerViewModel,
                             currentPositionProvider = positionToDisplayProvider,
                             isFavorite = isFavorite,
+                            rating = currentSongRating,
                             shouldRenderFullPlayer = shouldRenderFullPlayer,
                             onShowQueueClicked = sheetActionHandlers.openQueueSheet,
                             onQueueDragStart = sheetActionHandlers.beginQueueDrag,
@@ -677,6 +679,7 @@ fun UnifiedPlayerSheetV2(
                     currentPositionProvider = positionToDisplayProvider,
                     isOutputConnecting = isOutputConnecting,
                     isFavorite = isFavorite,
+                    rating = currentSongRating,
                     onShowQueueClicked = sheetActionHandlers.openQueueSheet,
                     onQueueDragStart = sheetActionHandlers.beginQueueDrag,
                     onQueueDrag = sheetActionHandlers.dragQueueBy,

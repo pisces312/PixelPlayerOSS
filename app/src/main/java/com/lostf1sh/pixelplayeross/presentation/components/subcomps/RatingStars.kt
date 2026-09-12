@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -34,10 +36,17 @@ fun RatingStars(
     onRatingChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
     starCount: Int = 5,
-    starSize: Dp = 36.dp
+    starSize: Dp = 36.dp,
+    horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
+    selectedTint: Color = MaterialTheme.colorScheme.tertiary,
+    unselectedTint: Color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
 ) {
     val haptics = LocalHapticFeedback.current
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = horizontalArrangement,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         for (star in 1..starCount) {
             val selected = star <= rating
             val scale by animateFloatAsState(
@@ -48,11 +57,7 @@ fun RatingStars(
             Icon(
                 imageVector = if (selected) Icons.Rounded.Star else Icons.Rounded.StarBorder,
                 contentDescription = stringResource(R.string.song_info_cd_rate_stars, star),
-                tint = if (selected) {
-                    MaterialTheme.colorScheme.tertiary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
-                },
+                tint = if (selected) selectedTint else unselectedTint,
                 modifier = Modifier
                     .size(starSize)
                     .clickable {

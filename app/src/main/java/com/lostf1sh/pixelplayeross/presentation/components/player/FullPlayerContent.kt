@@ -122,6 +122,7 @@ import com.lostf1sh.pixelplayeross.presentation.components.AutoScrollingTextOnDe
 import com.lostf1sh.pixelplayeross.presentation.components.LocalMaterialTheme
 import com.lostf1sh.pixelplayeross.presentation.components.LyricsSheet
 import com.lostf1sh.pixelplayeross.presentation.components.scoped.rememberSmoothProgress
+import com.lostf1sh.pixelplayeross.presentation.components.subcomps.RatingSegment
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.FetchLyricsDialog
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.LyricsSearchUiState
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerSheetState
@@ -207,6 +208,7 @@ fun FullPlayerContent(
     isPlayingProvider: () -> Boolean,
     playWhenReadyProvider: () -> Boolean,
     isFavoriteProvider: () -> Boolean,
+    ratingProvider: () -> Int,
     repeatModeProvider: () -> Int,
     isShuffleEnabledProvider: () -> Boolean,
     totalDurationProvider: () -> Long,
@@ -223,7 +225,8 @@ fun FullPlayerContent(
     onQueueRelease: (Float, Float) -> Unit,
     onShuffleToggle: () -> Unit,
     onRepeatToggle: () -> Unit,
-    onFavoriteToggle: () -> Unit
+    onFavoriteToggle: () -> Unit,
+    onRatingSelected: (Int) -> Unit
 ) {
     var retainedSong by remember { mutableStateOf(currentSong) }
     LaunchedEffect(currentSong?.id) {
@@ -570,9 +573,11 @@ fun FullPlayerContent(
             shuffleTransitionInProgress = shuffleTransitionInProgress,
             repeatModeProvider = repeatModeProvider,
             isFavoriteProvider = isFavoriteProvider,
+            ratingProvider = ratingProvider,
             onShuffleToggle = onShuffleToggle,
             onRepeatToggle = onRepeatToggle,
-            onFavoriteToggle = onFavoriteToggle
+            onFavoriteToggle = onFavoriteToggle,
+            onRatingSelected = onRatingSelected
         )
     }
 
@@ -1008,9 +1013,11 @@ private fun FullPlayerControlsSection(
     shuffleTransitionInProgress: Boolean,
     repeatModeProvider: () -> Int,
     isFavoriteProvider: () -> Boolean,
+    ratingProvider: () -> Int,
     onShuffleToggle: () -> Unit,
     onRepeatToggle: () -> Unit,
-    onFavoriteToggle: () -> Unit
+    onFavoriteToggle: () -> Unit,
+    onRatingSelected: (Int) -> Unit
 ) {
     val stableControlAnimationSpec = remember {
         tween<Float>(durationMillis = 240, easing = FastOutSlowInEasing)
@@ -1066,15 +1073,16 @@ private fun FullPlayerControlsSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 66.dp, max = 86.dp)
-                    .padding(horizontal = 26.dp, vertical = 0.dp)
                     .padding(bottom = 6.dp),
                 isShuffleEnabled = isShuffleEnabledProvider(),
                 isShuffleTransitionInProgress = shuffleTransitionInProgress,
                 repeatMode = repeatModeProvider(),
                 isFavoriteProvider = isFavoriteProvider,
+                ratingProvider = ratingProvider,
                 onShuffleToggle = onShuffleToggle,
                 onRepeatToggle = onRepeatToggle,
-                onFavoriteToggle = onFavoriteToggle
+                onFavoriteToggle = onFavoriteToggle,
+                onRatingSelected = onRatingSelected
             )
         }
     }
@@ -2398,35 +2406,69 @@ private fun BottomToggleRow(
     isShuffleTransitionInProgress: Boolean,
     repeatMode: Int,
     isFavoriteProvider: () -> Boolean,
+    ratingProvider: () -> Int,
     onShuffleToggle: () -> Unit,
     onRepeatToggle: () -> Unit,
-    onFavoriteToggle: () -> Unit
+    onFavoriteToggle: () -> Unit,
+    onRatingSelected: (Int) -> Unit
 ) {
     val isFavorite = isFavoriteProvider()
+    val rating = ratingProvider()
     val rowCorners = 60.dp
     val inactiveBg = LocalMaterialTheme.current.onSurface.copy(alpha = 0.07f)
     val inactiveContentColor = LocalMaterialTheme.current.onSurface
 
+    // Tapping the rating slot expands the stars in place: it widens, the other three shrink.
+    var ratingExpanded by remember { mutableStateOf(false) }
+    val collapseRating: () -> Unit = { ratingExpanded = false }
+    val sideWeight by animateFloatAsState(
+        targetValue = if (ratingExpanded) 0.6f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "sideSegmentWeight"
+    )
+    val ratingWeight by animateFloatAsState(
+        targetValue = if (ratingExpanded) 3.2f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "ratingSegmentWeight"
+    )
+    // The pill grows towards the screen edges so five stars fit without hiding the other slots.
+    val outerPadding by animateDpAsState(
+        targetValue = if (ratingExpanded) 12.dp else 26.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "toggleRowOuterPadding"
+    )
+    val rowInnerPadding by animateDpAsState(
+        targetValue = if (ratingExpanded) 4.dp else 6.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "toggleRowInnerPadding"
+    )
+    val rowSpacing by animateDpAsState(
+        targetValue = if (ratingExpanded) 4.dp else 6.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "toggleRowSpacing"
+    )
 
     Box(
-        modifier = modifier.background(
-            color = LocalMaterialTheme.current.surfaceContainerLowest.copy(alpha = 0.7f),
-            shape = AbsoluteSmoothCornerShape(
-                cornerRadiusBL = rowCorners,
-                smoothnessAsPercentTR = 60,
-                cornerRadiusBR = rowCorners,
-                smoothnessAsPercentBL = 60,
-                cornerRadiusTL = rowCorners,
-                smoothnessAsPercentBR = 60,
-                cornerRadiusTR = rowCorners,
-                smoothnessAsPercentTL = 60
+        modifier = modifier
+            .padding(horizontal = outerPadding)
+            .background(
+                color = LocalMaterialTheme.current.surfaceContainerLowest.copy(alpha = 0.7f),
+                shape = AbsoluteSmoothCornerShape(
+                    cornerRadiusBL = rowCorners,
+                    smoothnessAsPercentTR = 60,
+                    cornerRadiusBR = rowCorners,
+                    smoothnessAsPercentBL = 60,
+                    cornerRadiusTL = rowCorners,
+                    smoothnessAsPercentBR = 60,
+                    cornerRadiusTR = rowCorners,
+                    smoothnessAsPercentTL = 60
+                )
             )
-        )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(6.dp)
+                .padding(horizontal = rowInnerPadding, vertical = 6.dp)
                 .clip(
                     AbsoluteSmoothCornerShape(
                         cornerRadiusBL = rowCorners,
@@ -2440,13 +2482,14 @@ private fun BottomToggleRow(
                     )
                 )
                 .background(Color.Transparent),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(rowSpacing),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val commonModifier = Modifier.weight(1f)
+            val sideModifier = Modifier.weight(sideWeight)
+            val ratingModifier = Modifier.weight(ratingWeight)
 
             ToggleSegmentButton(
-                modifier = commonModifier,
+                modifier = sideModifier,
                 active = isShuffleEnabled,
                 enabled = !isShuffleTransitionInProgress,
                 activeColor = LocalMaterialTheme.current.primaryFixed,
@@ -2454,7 +2497,7 @@ private fun BottomToggleRow(
                 activeContentColor = LocalMaterialTheme.current.onPrimaryFixed,
                 inactiveColor = inactiveBg,
                 inactiveContentColor = inactiveContentColor,
-                onClick = onShuffleToggle,
+                onClick = { collapseRating(); onShuffleToggle() },
                 iconId = R.drawable.rounded_shuffle_24,
                 contentDesc = "Shuffle"
             )
@@ -2465,28 +2508,45 @@ private fun BottomToggleRow(
                 else -> R.drawable.rounded_repeat_24
             }
             ToggleSegmentButton(
-                modifier = commonModifier,
+                modifier = sideModifier,
                 active = repeatActive,
                 activeColor = LocalMaterialTheme.current.secondaryFixed,
                 activeCornerRadius = rowCorners,
                 activeContentColor = LocalMaterialTheme.current.onSecondaryFixed,
                 inactiveColor = inactiveBg,
                 inactiveContentColor = inactiveContentColor,
-                onClick = onRepeatToggle,
+                onClick = { collapseRating(); onRepeatToggle() },
                 iconId = repeatIcon,
                 contentDesc = "Repeat"
             )
             ToggleSegmentButton(
-                modifier = commonModifier,
+                modifier = sideModifier,
                 active = isFavorite,
                 activeColor = LocalMaterialTheme.current.tertiaryFixed,
                 activeCornerRadius = rowCorners,
                 activeContentColor = LocalMaterialTheme.current.onTertiaryFixed,
                 inactiveColor = inactiveBg,
                 inactiveContentColor = inactiveContentColor,
-                onClick = onFavoriteToggle,
+                onClick = { collapseRating(); onFavoriteToggle() },
                 iconId = if (isFavorite) R.drawable.round_favorite_24 else R.drawable.rounded_favorite_24,
-                contentDesc = "Favorite"
+                contentDesc = stringResource(
+                    if (isFavorite) R.string.player_rating_favorite_on else R.string.player_rating_favorite_off
+                )
+            )
+            RatingSegment(
+                modifier = ratingModifier,
+                rating = rating,
+                expanded = ratingExpanded,
+                rowCorners = rowCorners,
+                activeColor = LocalMaterialTheme.current.tertiaryFixed,
+                activeContentColor = LocalMaterialTheme.current.onTertiaryFixed,
+                ratedColor = LocalMaterialTheme.current.tertiaryContainer,
+                ratedContentColor = LocalMaterialTheme.current.onTertiaryContainer,
+                inactiveColor = inactiveBg,
+                inactiveContentColor = inactiveContentColor,
+                onExpand = { ratingExpanded = true },
+                onCollapse = collapseRating,
+                onRatingSelected = onRatingSelected
             )
         }
     }

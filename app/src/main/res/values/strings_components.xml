@@ -189,4 +189,10 @@
     <string name="playlist_saved_toast">Saved</string>
     <string name="folder_state_excluded">Excluded</string>
     <string name="folder_state_included">Included</string>
+
+    <string name="player_rating_favorite_on">Favorite</string>
+    <string name="player_rating_favorite_off">Add to favorites</string>
+    <string name="player_rating_value_cd">rated %1$d stars</string>
+    <string name="player_rating_cd_unrated">Rate this song</string>
+    <string name="player_rating_tap_hint">tap to change</string>
 </resources>
