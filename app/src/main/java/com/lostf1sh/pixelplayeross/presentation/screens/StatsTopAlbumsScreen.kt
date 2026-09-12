@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lostf1sh.pixelplayeross.R
+import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.stats.RankingCoverArt
 import com.lostf1sh.pixelplayeross.presentation.stats.SongSortMetric
 import com.lostf1sh.pixelplayeross.presentation.stats.StatRankRow
@@ -53,6 +54,7 @@ import kotlinx.collections.immutable.toImmutableList
 fun StatsTopAlbumsScreen(
     onBack: () -> Unit,
     onAlbumClick: (String) -> Unit,
+    paddingValues: PaddingValues,
     statsViewModel: StatsViewModel = hiltViewModel()
 ) {
     val uiState by statsViewModel.uiState.collectAsStateWithLifecycle()
@@ -104,7 +106,10 @@ fun StatsTopAlbumsScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
+                    bottom = paddingValues.calculateBottomPadding() +
+                        MiniPlayerHeight +
+                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                        24.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {

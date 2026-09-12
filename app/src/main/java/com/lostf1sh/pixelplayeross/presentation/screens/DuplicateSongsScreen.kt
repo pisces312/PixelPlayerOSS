@@ -32,6 +32,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.library.DuplicateFinder
+import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerBottomSpacer
+import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.DuplicateSongsViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
@@ -77,7 +79,9 @@ fun DuplicateSongsScreen(
 
             else -> {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = MiniPlayerHeight + MiniPlayerBottomSpacer + 16.dp),
                     contentPadding = padding,
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {

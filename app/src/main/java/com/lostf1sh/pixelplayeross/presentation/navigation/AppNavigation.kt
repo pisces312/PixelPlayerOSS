@@ -402,6 +402,7 @@ fun AppNavigation(
                     StatsHotSongsScreen(
                         onBack = { navController.popBackStack() },
                         onSongClick = { songId -> playerViewModel.playSongById(songId) },
+                        paddingValues = paddingValues,
                         statsViewModel = statsViewModel
                     )
                 }
@@ -426,6 +427,7 @@ fun AppNavigation(
                                 navController.navigateSafely(Screen.ArtistDetail.createRoute(artistId))
                             }
                         },
+                        paddingValues = paddingValues,
                         statsViewModel = statsViewModel
                     )
                 }
@@ -450,6 +452,7 @@ fun AppNavigation(
                                 navController.navigateSafely(Screen.AlbumDetail.createRoute(albumId))
                             }
                         },
+                        paddingValues = paddingValues,
                         statsViewModel = statsViewModel
                     )
                 }
