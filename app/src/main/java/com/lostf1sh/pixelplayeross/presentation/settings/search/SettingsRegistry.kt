@@ -497,6 +497,19 @@ object SettingsRegistry {
                 onToggle = { viewModel, checked -> viewModel.setShowQueueHistory(checked) }
             ),
 
+            SettingSpec(
+                id = "playback_stats_unlimited",
+                itemKey = "item_playback_stats_ranking_limit",
+                titleRes = R.string.setcat_stats_ranking_unlimited_title,
+                subtitleRes = R.string.setcat_stats_ranking_unlimited_subtitle,
+                category = SettingsCategory.PLAYBACK,
+                subscreenRoute = Screen.SettingsCategory.createRoute("playback"),
+                type = SettingType.SWITCH,
+                keywordsStatic = listOf("stats", "ranking", "top songs", "hot songs", "limit", "listening", "100", "unlimited"),
+                getValue = { it.statsRankingLimit == 0 },
+                onToggle = { viewModel, checked -> viewModel.setStatsRankingUnlimited(checked) }
+            ),
+
             // --- BEHAVIOR CATEGORY ---
             SettingSpec(
                 id = "behavior_folder_back_gesture",

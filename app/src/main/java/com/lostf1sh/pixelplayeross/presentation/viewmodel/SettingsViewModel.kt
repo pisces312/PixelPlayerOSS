@@ -112,7 +112,8 @@ data class SettingsUiState(
     val minSongDuration: Int = 10000,
     val minTracksPerAlbum: Int = 1,
     val replayGainEnabled: Boolean = false,
-    val replayGainUseAlbumGain: Boolean = false
+    val replayGainUseAlbumGain: Boolean = false,
+    val statsRankingLimit: Int = 100
 )
 
 data class FailedSongInfo(
@@ -467,6 +468,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferencesRepository.replayGainUseAlbumGainFlow.collect { useAlbum ->
                 _uiState.update { it.copy(replayGainUseAlbumGain = useAlbum) }
+            }
+        }
+
+        viewModelScope.launch {
+            userPreferencesRepository.statsRankingLimitFlow.collect { limit ->
+                _uiState.update { it.copy(statsRankingLimit = limit) }
             }
         }
     }
@@ -862,6 +869,16 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferencesRepository.setReplayGainUseAlbumGain(useAlbumGain)
         }
+    }
+
+    fun setStatsRankingLimit(limit: Int) {
+        viewModelScope.launch {
+            userPreferencesRepository.setStatsRankingLimit(limit)
+        }
+    }
+
+    fun setStatsRankingUnlimited(enabled: Boolean) {
+        setStatsRankingLimit(if (enabled) 0 else 100)
     }
 
     fun setImmersiveLyricsEnabled(enabled: Boolean) {

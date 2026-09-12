@@ -182,6 +182,9 @@
     <string name="setcat_persistent_shuffle_subtitle">Remember shuffle setting even after closing the app.</string>
     <string name="setcat_show_queue_history_title">Show queue history</string>
     <string name="setcat_show_queue_history_subtitle">Show previously played songs in the queue.</string>
+    <string name="setcat_statistics_section">Statistics</string>
+    <string name="setcat_stats_ranking_unlimited_title">No limit on stats rankings</string>
+    <string name="setcat_stats_ranking_unlimited_subtitle">Show every ranked song, artist and album in listening stats instead of stopping at 100.</string>
 
     <string name="setcat_folders">Folders</string>
     <string name="setcat_folder_back_gesture_title">Back gesture controls folders</string>

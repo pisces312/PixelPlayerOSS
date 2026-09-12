@@ -28,16 +28,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import timber.log.Timber
+import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 
 @Singleton
 class PlaybackStatsRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val userPreferencesRepository: UserPreferencesRepository
 ) {
 
     private val gson = Gson()
@@ -48,6 +55,18 @@ class PlaybackStatsRepository @Inject constructor(
     private val eventsType = object : TypeToken<MutableList<PlaybackEvent>>() {}.type
     private val _refreshVersion = MutableStateFlow(0L)
     val refreshFlow: StateFlow<Long> = _refreshVersion.asStateFlow()
+
+    private val statsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    init {
+        // Recompute listening stats when the ranking-limit preference changes so the
+        // stats screens pick up the new cap without the user manually refreshing.
+        statsScope.launch {
+            userPreferencesRepository.statsRankingLimitFlow
+                .drop(1)
+                .collect { requestRefresh() }
+        }
+    }
 
     private val sessionGapThresholdMs = TimeUnit.MINUTES.toMillis(30)
 
@@ -159,7 +178,8 @@ class PlaybackStatsRepository @Inject constructor(
         val topGenres: List<GenrePlaybackSummary> = emptyList(),
         val timeline: List<TimelineEntry>,
         /**
-         * Full ranked artist/album lists for the period, capped by [MAX_RANKING_STATS_COUNT].
+         * Full ranked artist/album lists for the period, capped by the stats ranking-limit
+         * preference (default [MAX_RANKING_STATS_COUNT]).
          * The stats screen trims these for display and hands the whole list to the "show all" screens.
          */
         val topArtists: List<ArtistPlaybackSummary>,
@@ -216,12 +236,16 @@ class PlaybackStatsRepository @Inject constructor(
     ): PlaybackStatsSummary = withContext(Dispatchers.IO) {
         val zoneId = ZoneId.systemDefault()
         val allEvents = readEvents()
+        val limit = userPreferencesRepository.statsRankingLimitFlow.first().let { raw ->
+            if (raw <= 0) Int.MAX_VALUE else raw
+        }
         buildSummaryFromEvents(
             period = period,
             songs = songs,
             nowMillis = nowMillis,
             allEvents = allEvents,
-            zoneId = zoneId
+            zoneId = zoneId,
+            maxRankingCount = limit
         )
     }
 
@@ -255,13 +279,15 @@ class PlaybackStatsRepository @Inject constructor(
         songs: List<Song>,
         nowMillis: Long,
         allEvents: List<PlaybackEvent>,
-        zoneId: ZoneId = ZoneId.systemDefault()
+        zoneId: ZoneId = ZoneId.systemDefault(),
+        maxRankingCount: Int = MAX_RANKING_STATS_COUNT
     ): PlaybackStatsSummary = buildSummaryFromEvents(
         period = StatsPeriod(range),
         songs = songs,
         nowMillis = nowMillis,
         allEvents = allEvents,
-        zoneId = zoneId
+        zoneId = zoneId,
+        maxRankingCount = maxRankingCount
     )
 
     internal fun buildSummaryFromEvents(
@@ -269,7 +295,8 @@ class PlaybackStatsRepository @Inject constructor(
         songs: List<Song>,
         nowMillis: Long,
         allEvents: List<PlaybackEvent>,
-        zoneId: ZoneId = ZoneId.systemDefault()
+        zoneId: ZoneId = ZoneId.systemDefault(),
+        maxRankingCount: Int = MAX_RANKING_STATS_COUNT
     ): PlaybackStatsSummary {
         val songMap = songs.associateBy { it.id }
         // 必须先把导入事件展开成真实区间，再算时间边界：
@@ -337,7 +364,7 @@ class PlaybackStatsRepository @Inject constructor(
                 compareByDescending<SongPlaybackSummary> { it.totalDurationMs }
                     .thenByDescending { it.playCount }
             )
-            .take(MAX_RANKING_STATS_COUNT)
+            .take(maxRankingCount)
         val topSongs = allSongs.take(5)
 
         val topGenres = segmentsBySong.entries
@@ -441,7 +468,7 @@ class PlaybackStatsRepository @Inject constructor(
                 compareByDescending<ArtistPlaybackSummary> { it.totalDurationMs }
                     .thenByDescending { it.playCount }
             )
-            .take(MAX_RANKING_STATS_COUNT)
+            .take(maxRankingCount)
 
         val topAlbums = segmentsBySong.entries
             .groupBy { (songId, _) ->
@@ -467,7 +494,7 @@ class PlaybackStatsRepository @Inject constructor(
                 compareByDescending<AlbumPlaybackSummary> { it.totalDurationMs }
                     .thenByDescending { it.playCount }
             )
-            .take(MAX_RANKING_STATS_COUNT)
+            .take(maxRankingCount)
 
         val peakTimeline = timelineEntries
             .filter { it.totalDurationMs > 0L }

@@ -246,6 +246,7 @@ constructor(
 
         val REPLAYGAIN_ENABLED = booleanPreferencesKey("replaygain_enabled")
         val REPLAYGAIN_USE_ALBUM_GAIN = booleanPreferencesKey("replaygain_use_album_gain")
+        val STATS_RANKING_LIMIT = intPreferencesKey("stats_ranking_limit")
     }
 
     val appRebrandDialogShownFlow: Flow<Boolean> =
@@ -819,6 +820,21 @@ constructor(
     suspend fun setReplayGainUseAlbumGain(useAlbumGain: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.REPLAYGAIN_USE_ALBUM_GAIN] = useAlbumGain
+        }
+    }
+
+    /**
+     * Maximum number of items kept in each listening-stats ranking (songs, artists, albums).
+     * Default 100. A value of 0 means unlimited (the repository treats it as Int.MAX_VALUE).
+     */
+    val statsRankingLimitFlow: Flow<Int> =
+        dataStore.data.map { preferences ->
+            (preferences[PreferencesKeys.STATS_RANKING_LIMIT] ?: 100).coerceIn(0, 10000)
+        }
+
+    suspend fun setStatsRankingLimit(limit: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.STATS_RANKING_LIMIT] = limit.coerceIn(0, 10000)
         }
     }
 

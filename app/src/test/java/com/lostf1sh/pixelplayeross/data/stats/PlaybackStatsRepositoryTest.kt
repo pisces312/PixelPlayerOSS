@@ -3,6 +3,7 @@ package com.lostf1sh.pixelplayeross.data.stats
 import com.google.common.truth.Truth.assertThat
 import com.lostf1sh.pixelplayeross.data.model.ArtistRef
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -111,6 +112,47 @@ class PlaybackStatsRepositoryTest {
 
         assertThat(summary.totalDurationMs).isEqualTo(firstDurationMs + secondDurationMs)
         assertThat(summary.totalPlayCount).isEqualTo(2)
+    }
+
+    @Test
+    fun `buildSummaryFromEvents truncates song rankings to maxRankingCount`() = runTest {
+        val repository = createRepository()
+        val start = LocalDate.of(2026, 4, 10)
+            .atTime(9, 0)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        val durationMs = 30_000L
+        val count = 25
+        val songs = (1..count).map { song("song-$it") }
+        val events = (1..count).map { i ->
+            PlaybackStatsRepository.PlaybackEvent(
+                songId = "song-$i",
+                timestamp = start + durationMs * i,
+                durationMs = durationMs,
+                startTimestamp = start + durationMs * (i - 1),
+                endTimestamp = start + durationMs * i
+            )
+        }
+        val now = start + durationMs * (count + 1)
+
+        val capped = repository.buildSummaryFromEvents(
+            range = StatsTimeRange.DAY,
+            songs = songs,
+            allEvents = events,
+            nowMillis = now,
+            maxRankingCount = 10
+        )
+        assertThat(capped.songs).hasSize(10)
+
+        val unlimited = repository.buildSummaryFromEvents(
+            range = StatsTimeRange.DAY,
+            songs = songs,
+            allEvents = events,
+            nowMillis = now,
+            maxRankingCount = Int.MAX_VALUE
+        )
+        assertThat(unlimited.songs).hasSize(count)
     }
 
     @Test
@@ -449,7 +491,8 @@ class PlaybackStatsRepositoryTest {
         ).toFile()
         val testContext = mockk<android.content.Context>(relaxed = true)
         every { testContext.filesDir } returns uniqueDir
-        return PlaybackStatsRepository(testContext)
+        val userPreferencesRepository = mockk<UserPreferencesRepository>(relaxed = true)
+        return PlaybackStatsRepository(testContext, userPreferencesRepository)
     }
 
     private fun song(

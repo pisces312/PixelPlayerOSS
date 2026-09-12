@@ -86,6 +86,7 @@ import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.BarChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ButtonDefaults
@@ -931,6 +932,26 @@ fun SettingsCategoryScreen(
                                     onCheckedChange = { settingsViewModel.setResumeOnHeadsetReconnect(it) },
                                     leadingIcon = { Icon(painterResource(R.drawable.rounded_headphones_24), null, tint = MaterialTheme.colorScheme.secondary) },
                                     modifier = Modifier.settingHighlight("item_playback_headset_resume", highlightKey)
+                                )
+                            }
+
+                            SettingsSubsection(title = stringResource(R.string.setcat_statistics_section)) {
+                                SwitchSettingItem(
+                                    title = stringResource(R.string.setcat_stats_ranking_unlimited_title),
+                                    subtitle = stringResource(R.string.setcat_stats_ranking_unlimited_subtitle),
+                                    checked = uiState.statsRankingLimit == 0,
+                                    onCheckedChange = { settingsViewModel.setStatsRankingUnlimited(it) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Rounded.BarChart,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.secondary
+                                        )
+                                    },
+                                    modifier = Modifier.settingHighlight(
+                                        "item_playback_stats_ranking_limit",
+                                        highlightKey
+                                    )
                                 )
                             }
 
