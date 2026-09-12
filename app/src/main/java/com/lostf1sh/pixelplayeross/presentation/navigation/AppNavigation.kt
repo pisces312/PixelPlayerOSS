@@ -590,7 +590,8 @@ fun AppNavigation(
                     ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                         YearDetailScreen(
                             navController = navController,
-                            playerViewModel = playerViewModel
+                            playerViewModel = playerViewModel,
+                            paddingValues = paddingValues
                         )
                     }
                 }

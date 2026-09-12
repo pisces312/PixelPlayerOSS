@@ -86,6 +86,7 @@ import kotlinx.coroutines.flow.map
 fun YearDetailScreen(
     navController: NavHostController,
     playerViewModel: PlayerViewModel,
+    paddingValues: PaddingValues,
     viewModel: YearDetailViewModel = hiltViewModel(),
     playlistViewModel: PlaylistViewModel = hiltViewModel()
 ) {
@@ -131,7 +132,7 @@ fun YearDetailScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                bottom = MiniPlayerHeight + bottomBarHeightDp + 16.dp
+                bottom = paddingValues.calculateBottomPadding() + MiniPlayerHeight + 16.dp
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
