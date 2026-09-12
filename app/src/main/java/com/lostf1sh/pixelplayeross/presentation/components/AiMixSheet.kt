@@ -54,8 +54,6 @@ import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.NlpPlaylistPreviewState
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 /** Lengths offered as one-tap chips; they map straight to the generator's max length. */
 private val AI_MIX_LENGTHS = listOf(15, 25, 40)
@@ -68,11 +66,6 @@ private val AI_MIX_IDEAS = listOf(
     R.string.ai_mix_idea_cleaning,
     R.string.ai_mix_idea_sunday
 )
-
-private val TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("MM-dd HH:mm")
-
-private fun defaultMixName(): String =
-    "AI Mix · " + LocalDateTime.now().format(TIMESTAMP_FORMAT)
 
 /**
  * Home screen AI mix flow: describe a mood, get a list, then play it or just save it.
@@ -98,12 +91,19 @@ fun AiMixSheet(
     // Editable copy of the generated result: removing a song must not fight the view model state.
     val resultSongs = remember { mutableStateListOf<Song>() }
     var mixName by rememberSaveable { mutableStateOf("") }
+    // Last name this sheet produced on its own: an untouched name is replaced on regenerate,
+    // an edited one is left alone.
+    var lastGeneratedName by rememberSaveable { mutableStateOf("") }
+
+    val ideas = AI_MIX_IDEAS.map { stringResource(it) }
 
     LaunchedEffect(state) {
         if (state.hasResult && state.songs.isNotEmpty()) {
             resultSongs.clear()
             resultSongs.addAll(state.songs)
-            mixName = defaultMixName()
+            val generated = aiMixDefaultName(prompt, ideas)
+            if (mixName.isBlank() || mixName == lastGeneratedName) mixName = generated
+            lastGeneratedName = generated
         }
     }
 
@@ -149,6 +149,7 @@ fun AiMixSheet(
             when (phase) {
                 AiMixPhase.Input -> InputPhase(
                     prompt = prompt,
+                    ideas = ideas,
                     onPromptChange = { prompt = it },
                     maxLength = maxLength,
                     onLengthChange = { maxLength = it },
@@ -180,6 +181,7 @@ private enum class AiMixPhase { Input, Generating, Result }
 @Composable
 private fun InputPhase(
     prompt: String,
+    ideas: List<String>,
     onPromptChange: (String) -> Unit,
     maxLength: Int,
     onLengthChange: (Int) -> Unit,
@@ -202,15 +204,13 @@ private fun InputPhase(
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        // Resolved here, not inside onClick: a chip click handler is not a composable scope.
-        val ideas = AI_MIX_IDEAS.map { stringResource(it) }
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             ideas.forEach { idea ->
                 FilterChip(
-                    selected = false,
+                    selected = prompt.trim().equals(idea, ignoreCase = true),
                     onClick = { onPromptChange(idea) },
                     label = { Text(idea) }
                 )
