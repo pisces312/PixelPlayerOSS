@@ -64,6 +64,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
     rating: Int,
     shouldRenderFullPlayer: Boolean = true,
     onShowQueueClicked: () -> Unit,
+    onSongTitleClick: () -> Unit,
     onQueueDragStart: () -> Unit,
     onQueueDrag: (Float) -> Unit,
     onQueueRelease: (Float, Float) -> Unit
@@ -223,6 +224,7 @@ internal fun BoxScope.UnifiedPlayerMiniAndFullLayers(
                         onPrevious = onPrevious,
                         onCollapse = onCollapse,
                         onShowQueueClicked = onShowQueueClicked,
+                        onSongTitleClick = onSongTitleClick,
                         onQueueDragStart = onQueueDragStart,
                         onQueueDrag = onQueueDrag,
                         onQueueRelease = onQueueRelease,
@@ -254,6 +256,7 @@ internal fun UnifiedPlayerPrewarmLayer(
     isFavorite: Boolean,
     rating: Int,
     onShowQueueClicked: () -> Unit,
+    onSongTitleClick: () -> Unit,
     onQueueDragStart: () -> Unit,
     onQueueDrag: (Float) -> Unit,
     onQueueRelease: (Float, Float) -> Unit
@@ -316,6 +319,7 @@ internal fun UnifiedPlayerPrewarmLayer(
                     isFavoriteProvider = isFavoriteProvider,
                     ratingProvider = ratingProvider,
                     onShowQueueClicked = onShowQueueClicked,
+                    onSongTitleClick = onSongTitleClick,
                     onQueueDragStart = onQueueDragStart,
                     onQueueDrag = onQueueDrag,
                     onQueueRelease = onQueueRelease,

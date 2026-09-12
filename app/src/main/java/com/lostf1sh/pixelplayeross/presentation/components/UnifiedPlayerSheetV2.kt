@@ -659,6 +659,11 @@ fun UnifiedPlayerSheetV2(
                             rating = currentSongRating,
                             shouldRenderFullPlayer = shouldRenderFullPlayer,
                             onShowQueueClicked = sheetActionHandlers.openQueueSheet,
+                            onSongTitleClick = {
+                                sheetActionHandlers.onSelectedSongForInfoChange(
+                                    infrequentPlayerState.currentSong
+                                )
+                            },
                             onQueueDragStart = sheetActionHandlers.beginQueueDrag,
                             onQueueDrag = sheetActionHandlers.dragQueueBy,
                             onQueueRelease = sheetActionHandlers.endQueueDrag,
@@ -681,6 +686,9 @@ fun UnifiedPlayerSheetV2(
                     isFavorite = isFavorite,
                     rating = currentSongRating,
                     onShowQueueClicked = sheetActionHandlers.openQueueSheet,
+                    // Prewarm layer is invisible (alpha 0f) but still hit-testable: keep it inert
+                    // so taps on the collapsed player cannot open the song info sheet.
+                    onSongTitleClick = {},
                     onQueueDragStart = sheetActionHandlers.beginQueueDrag,
                     onQueueDrag = sheetActionHandlers.dragQueueBy,
                     onQueueRelease = sheetActionHandlers.endQueueDrag

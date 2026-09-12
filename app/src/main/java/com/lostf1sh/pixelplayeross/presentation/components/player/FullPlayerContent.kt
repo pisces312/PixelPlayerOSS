@@ -220,6 +220,7 @@ fun FullPlayerContent(
     onPrevious: () -> Unit,
     onCollapse: () -> Unit,
     onShowQueueClicked: () -> Unit,
+    onSongTitleClick: () -> Unit,
     onQueueDragStart: () -> Unit,
     onQueueDrag: (Float) -> Unit,
     onQueueRelease: (Float, Float) -> Unit,
@@ -236,7 +237,6 @@ fun FullPlayerContent(
     }
 
     val song = currentSong ?: retainedSong ?: return
-    var showSongInfoBottomSheet by remember { mutableStateOf(false) }
     var showLyricsSheet by remember { mutableStateOf(false) }
     var showArtistPicker by rememberSaveable { mutableStateOf(false) }
     var showSaveBookmarkDialog by rememberSaveable { mutableStateOf(false) }
@@ -406,11 +406,6 @@ fun FullPlayerContent(
             queueName = currentQueueSourceName,
             indexInQueue = index
         )
-    }
-
-    val onSongMetadataQueueClick = {
-        showSongInfoBottomSheet = true
-        onShowQueueClicked()
     }
 
     val onSongMetadataArtistClick = {
@@ -598,7 +593,8 @@ fun FullPlayerContent(
             gradientEdgeColor = LocalMaterialTheme.current.primaryContainer,
             chipColor = playerOnAccentColor.copy(alpha = 0.8f),
             chipContentColor = playerAccentColor,
-            onQueueClick = onSongMetadataQueueClick,
+            onQueueClick = onShowQueueClicked,
+            onTitleClick = onSongTitleClick,
             onArtistClick = onSongMetadataArtistClick,
             isPlayingProvider = isPlayingProvider
         )
@@ -621,7 +617,8 @@ fun FullPlayerContent(
             gradientEdgeColor = LocalMaterialTheme.current.primaryContainer,
             chipColor = playerOnAccentColor.copy(alpha = 0.8f),
             chipContentColor = playerAccentColor,
-            onQueueClick = onSongMetadataQueueClick,
+            onQueueClick = onShowQueueClicked,
+            onTitleClick = onSongTitleClick,
             onArtistClick = onSongMetadataArtistClick,
             isPlayingProvider = isPlayingProvider
         )
@@ -779,10 +776,7 @@ fun FullPlayerContent(
                                     .size(42.dp)
                                     .clip(CircleShape)
                                     .background(playerOnAccentColor.copy(alpha = 0.7f))
-                                    .clickable {
-                                        showSongInfoBottomSheet = true
-                                        onShowQueueClicked()
-                                    },
+                                    .clickable(onClick = onShowQueueClicked),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -1212,6 +1206,7 @@ private fun FullPlayerSongMetadataSection(
     chipColor: Color,
     chipContentColor: Color,
     onQueueClick: () -> Unit,
+    onTitleClick: () -> Unit,
     onArtistClick: () -> Unit,
     isPlayingProvider: () -> Boolean = { true }
 ) {
@@ -1257,6 +1252,7 @@ private fun FullPlayerSongMetadataSection(
             chipContentColor = chipContentColor,
             showQueueButton = isLandscape,
             onClickQueue = onQueueClick,
+            onClickTitle = onTitleClick,
             onClickArtist = onArtistClick,
             isPlayingProvider = isPlayingProvider
         )
@@ -1354,6 +1350,7 @@ private fun SongMetadataDisplaySection(
     chipColor: Color,
     chipContentColor: Color,
     onClickLyrics: () -> Unit,
+    onClickTitle: () -> Unit,
     showQueueButton: Boolean,
     onClickQueue: () -> Unit,
     onClickArtist: () -> Unit,
@@ -1378,6 +1375,7 @@ private fun SongMetadataDisplaySection(
                 artistTextColor = artistTextColor,
                 gradientEdgeColor = gradientEdgeColor,
                 playerViewModel = playerViewModel,
+                onClickTitle = onClickTitle,
                 onClickArtist = onClickArtist,
                 modifier = Modifier
                     .weight(1f)
@@ -2006,6 +2004,7 @@ private fun PlayerSongInfo(
     artistTextColor: Color,
     gradientEdgeColor: Color,
     playerViewModel: PlayerViewModel,
+    onClickTitle: () -> Unit,
     onClickArtist: () -> Unit,
     modifier: Modifier = Modifier,
     isPlayingProvider: () -> Boolean = { true }
@@ -2042,7 +2041,13 @@ private fun PlayerSongInfo(
             style = titleStyle,
             gradientEdgeColor = gradientEdgeColor,
             expansionFractionProvider = expansionFractionProvider,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { onClickTitle() }
+                ),
             canScroll = isPlayingProvider()
         )
         Spacer(modifier = Modifier.height(2.dp))
