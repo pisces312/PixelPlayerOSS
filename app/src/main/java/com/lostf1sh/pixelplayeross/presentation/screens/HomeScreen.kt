@@ -302,11 +302,7 @@ fun HomeScreen(
                             mixes = recentAiMixes,
                             onMixClick = { mix ->
                                 scope.launch {
-                                    val songs = playlistViewModel
-                                        .getPlaylistsWithSongs(listOf(mix.id))
-                                        .firstOrNull()
-                                        ?.second
-                                        .orEmpty()
+                                    val songs = playlistViewModel.songsOf(mix.id)
                                     if (songs.isNotEmpty()) {
                                         playerViewModel.playSongs(
                                             songsToPlay = songs,
@@ -316,6 +312,9 @@ fun HomeScreen(
                                         )
                                     }
                                 }
+                            },
+                            onShowAll = {
+                                navController.navigateSafely(Screen.AiMixes.route)
                             }
                         )
                     }

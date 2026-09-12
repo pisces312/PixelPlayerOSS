@@ -136,10 +136,10 @@ class PlaylistViewModel @Inject constructor(
     val aiMixSaved: SharedFlow<AiMixSaved> = _aiMixSaved.asSharedFlow()
 
     /**
-     * The newest generated mixes, for the home screen row.
+     * Every generated mix, newest first, for the home row and the full list behind it.
      *
      * No extra storage: a generated mix is a normal playlist tagged with [AI_MIX_SOURCE], so the
-     * existing playlists flow already carries everything the row needs.
+     * existing playlists flow already carries everything these screens need.
      */
     val recentAiMixes: StateFlow<List<Playlist>> =
             _uiState
@@ -147,7 +147,6 @@ class PlaylistViewModel @Inject constructor(
                         state.playlists
                                 .filter { it.source == AI_MIX_SOURCE }
                                 .sortedByDescending { it.createdAt }
-                                .take(RECENT_AI_MIX_LIMIT)
                     }
                     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -166,7 +165,6 @@ class PlaylistViewModel @Inject constructor(
         const val DEFAULT_AI_MIX_LENGTH = 25
         /** Marks a playlist produced by the AI mix flow (Serendipity will use its own value). */
         const val AI_MIX_SOURCE = "AI"
-        private const val RECENT_AI_MIX_LIMIT = 3
 
         fun sanitizeFileName(name: String): String {
             val sanitized = name.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").trim('_')
@@ -1101,6 +1099,10 @@ class PlaylistViewModel @Inject constructor(
             emptyList()
         }
     }
+
+    /** Tracks of a single playlist, for callers that only want to start playback. */
+    suspend fun songsOf(playlistId: String): List<Song> =
+            getPlaylistsWithSongs(listOf(playlistId)).firstOrNull()?.second.orEmpty()
 
     /**
      * Share all selected playlists as M3U files in a ZIP

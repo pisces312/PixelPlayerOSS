@@ -38,6 +38,7 @@ sealed class Screen(val route: String) {
 
     object  DailyMixScreen : Screen("daily_mix")
     object RecentlyPlayed : Screen("recently_played")
+    object AiMixes : Screen("ai_mixes")
     object Stats : Screen("stats")
     object StatsHotSongs : Screen("stats_hot_songs")
     object StatsTopArtists : Screen("stats_top_artists")

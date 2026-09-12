@@ -3,7 +3,10 @@ package com.lostf1sh.pixelplayeross.presentation.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -12,11 +15,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -25,6 +30,14 @@ import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Playlist
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
+
+/** How many mixes the home row shows before pointing at the full list. */
+private const val HOME_AI_MIX_PREVIEW_COUNT = 6
+
+private val MIX_CARD_WIDTH = 152.dp
+
+/** Fixed so a one-line and a two-line name produce cards of the same height. */
+private val MIX_CARD_HEIGHT = 96.dp
 
 /**
  * Home screen row of the most recent generated mixes.
@@ -36,7 +49,9 @@ import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 fun RecentAiMixesSection(
     mixes: List<Playlist>,
     onMixClick: (Playlist) -> Unit,
-    modifier: Modifier = Modifier
+    onShowAll: () -> Unit,
+    modifier: Modifier = Modifier,
+    previewCount: Int = HOME_AI_MIX_PREVIEW_COUNT
 ) {
     Column(modifier = modifier) {
         Text(
@@ -49,8 +64,18 @@ fun RecentAiMixesSection(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(mixes, key = { it.id }) { mix ->
+            items(mixes.take(previewCount), key = { it.id }) { mix ->
                 RecentAiMixCard(mix = mix, onClick = { onMixClick(mix) })
+            }
+        }
+        if (mixes.size > previewCount) {
+            FilledTonalButton(
+                onClick = onShowAll,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp)
+            ) {
+                Text(stringResource(R.string.home_recent_ai_mixes_show_more, mixes.size))
             }
         }
     }
@@ -60,7 +85,7 @@ fun RecentAiMixesSection(
 private fun RecentAiMixCard(mix: Playlist, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.width(152.dp),
+        modifier = Modifier.width(MIX_CARD_WIDTH).height(MIX_CARD_HEIGHT),
         shape = AbsoluteSmoothCornerShape(
             cornerRadiusTL = 22.dp,
             smoothnessAsPercentTL = 60,
@@ -73,22 +98,29 @@ private fun RecentAiMixCard(mix: Playlist, onClick: () -> Unit) {
         ),
         color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Icon(
-                imageVector = Icons.Rounded.AutoAwesome,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.height(18.dp))
-            Text(
-                text = mix.name,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = mix.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             Text(
                 text = stringResource(R.string.ai_mix_result_count, mix.songIds.size),
                 style = MaterialTheme.typography.labelMedium,

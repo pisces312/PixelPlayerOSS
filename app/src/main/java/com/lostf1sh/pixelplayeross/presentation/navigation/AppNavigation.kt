@@ -38,6 +38,7 @@ import com.lostf1sh.pixelplayeross.presentation.screens.AudioBookmarkFolderScree
 import com.lostf1sh.pixelplayeross.presentation.screens.AudioBookmarksScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.CloudDownloadsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.AccountsScreen
+import com.lostf1sh.pixelplayeross.presentation.screens.AiMixesScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.ArtistDetailScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.ArtistSettingsScreen
 import com.lostf1sh.pixelplayeross.presentation.screens.DailyMixScreen
@@ -381,6 +382,20 @@ fun AppNavigation(
                         paddingValuesParent = paddingValues,
                         playerViewModel = playerViewModel,
                         statsViewModel = statsViewModel
+                    )
+                }
+            }
+            composable(
+                route = Screen.AiMixes.route,
+                enterTransition = { enterTransition() },
+                exitTransition = { exitTransition() },
+                popEnterTransition = { popEnterTransition() },
+                popExitTransition = { popExitTransition() },
+            ) {
+                ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
+                    AiMixesScreen(
+                        onBack = { navController.popBackStack() },
+                        paddingValues = paddingValues
                     )
                 }
             }
