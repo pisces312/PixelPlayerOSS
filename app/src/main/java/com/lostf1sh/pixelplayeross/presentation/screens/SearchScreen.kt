@@ -168,7 +168,6 @@ fun SearchScreen(
             .distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = SearchUiSlice())
     val currentFilter = searchUiState.selectedSearchFilter
-    val genres by playerViewModel.genres.collectAsStateWithLifecycle()
     val stablePlayerState by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
     val favoriteSongIds by playerViewModel.favoriteSongIds.collectAsStateWithLifecycle()
     val selectedSongForInfo by playerViewModel.selectedSongForInfo.collectAsStateWithLifecycle()
@@ -190,7 +189,6 @@ fun SearchScreen(
             mapOf(
                 "durationMs" to
                     (android.os.SystemClock.elapsedRealtime() - searchScreenEnteredAt).toString(),
-                "genreCount" to genres.size.toString(),
             )
         }
     }
