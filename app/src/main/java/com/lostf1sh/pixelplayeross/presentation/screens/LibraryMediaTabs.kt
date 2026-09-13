@@ -98,6 +98,16 @@ fun LibraryAlbumsTab(
 ) {
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Library.route,
+        listState = listState
+    )
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopGridEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Library.route,
+        gridState = gridState
+    )
     val context = LocalContext.current
     val imageLoader = context.imageLoader
 
@@ -495,6 +505,11 @@ fun LibraryArtistsTab(
     storageFilter: StorageFilter = StorageFilter.ALL
 ) {
     val listState = rememberLazyListState()
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Library.route,
+        listState = listState
+    )
     val artistFastScrollLabelProvider = remember(artists, currentArtistSortOption) {
         { index: Int ->
             artistFastScrollLabel(

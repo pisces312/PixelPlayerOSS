@@ -242,6 +242,11 @@ fun PlaylistItems(
 ) {
     val stablePlayerState by playerViewModel.stablePlayerState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Library.route,
+        listState = listState
+    )
     val playlistFastScrollLabelProvider = remember(filteredPlaylists, currentSortOption) {
         { index: Int ->
             playlistFastScrollLabel(

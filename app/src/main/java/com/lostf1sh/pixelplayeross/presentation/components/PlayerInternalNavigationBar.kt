@@ -2,7 +2,6 @@ package com.lostf1sh.pixelplayeross.presentation.components
 
 import com.lostf1sh.pixelplayeross.presentation.navigation.navigateToTopLevelSafely
 
-import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,11 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -29,10 +25,7 @@ import androidx.navigation.NavHostController
 import com.lostf1sh.pixelplayeross.BottomNavItem
 import com.lostf1sh.pixelplayeross.data.preferences.NavBarStyle
 import com.lostf1sh.pixelplayeross.presentation.components.scoped.CustomNavigationBarItem
-import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import kotlinx.collections.immutable.ImmutableList
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 internal val NavBarContentHeight = 90.dp
 internal val NavBarCompactContentHeight = 64.dp
@@ -94,14 +87,14 @@ private fun PlayerInternalNavigationItemsRow(
     navBarStyle: String,
     compactMode: Boolean,
     bottomBarPadding: Dp,
-    onSearchIconDoubleTap: () -> Unit
+    onRootTabDoubleTap: (String) -> Unit
 ) {
     val navBarInsetPadding = sanitizeNavigationBarBottomInset(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     )
     val innerRowPadding = (navBarInsetPadding - bottomBarPadding).coerceAtLeast(0.dp)
     val latestCurrentRoute by rememberUpdatedState(currentRoute)
-    val latestOnSearchIconDoubleTap by rememberUpdatedState(onSearchIconDoubleTap)
+    val latestOnRootTabDoubleTap by rememberUpdatedState(onRootTabDoubleTap)
     val latestNavigationEnabled by rememberUpdatedState(currentRoute != null)
 
     val rowModifier = if (navBarStyle == NavBarStyle.FULL_WIDTH) {
@@ -118,8 +111,7 @@ private fun PlayerInternalNavigationItemsRow(
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val scope = rememberCoroutineScope()
-        var lastSearchTapTimestamp by remember { mutableStateOf(0L) }
+        val doubleTapDetector = remember { com.lostf1sh.pixelplayeross.presentation.components.scoped.TabDoubleTapDetector() }
         navItems.forEach { item ->
             val isSelected = currentRoute != null && currentRoute == item.screen.route
             val selectedColor = MaterialTheme.colorScheme.primary
@@ -154,45 +146,27 @@ private fun PlayerInternalNavigationItemsRow(
                     { Text(item.label) }
                 }
             }
-            val onClickLambda: () -> Unit = remember(item.screen.route, navController, scope) {
+            val onClickLambda: () -> Unit = remember(item.screen.route, navController, doubleTapDetector) {
                 click@{
                     if (!latestNavigationEnabled) {
-                        lastSearchTapTimestamp = 0L
+                        doubleTapDetector.reset()
                         return@click
                     }
 
                     val itemRoute = item.screen.route
-                    val isSearchTab = itemRoute == Screen.Search.route
                     val isAlreadySelected = latestCurrentRoute == itemRoute
+                    val isDoubleTapOnCurrent = doubleTapDetector.onClick(itemRoute, isAlreadySelected)
 
-                    if (isSearchTab) {
-                        val now = SystemClock.elapsedRealtime()
-                        val isDoubleTap = now - lastSearchTapTimestamp <= 350L
-                        lastSearchTapTimestamp = now
-
-                        if (!isAlreadySelected) {
-                            if (!navController.navigateToTopLevelSafely(itemRoute)) {
-                                lastSearchTapTimestamp = 0L
-                                return@click
-                            }
+                    if (!isAlreadySelected) {
+                        if (!navController.navigateToTopLevelSafely(itemRoute)) {
+                            doubleTapDetector.reset()
                         }
+                        return@click
+                    }
 
-                        if (isDoubleTap) {
-                            lastSearchTapTimestamp = 0L
-                            if (isAlreadySelected) {
-                                latestOnSearchIconDoubleTap()
-                            } else {
-                                scope.launch {
-                                    delay(160L)
-                                    latestOnSearchIconDoubleTap()
-                                }
-                            }
-                        }
-                    } else if (!isAlreadySelected) {
-                        lastSearchTapTimestamp = 0L
-                        navController.navigateToTopLevelSafely(itemRoute)
-                    } else {
-                        lastSearchTapTimestamp = 0L
+                    if (isDoubleTapOnCurrent) {
+                        doubleTapDetector.reset()
+                        latestOnRootTabDoubleTap(itemRoute)
                     }
                 }
             }
@@ -226,7 +200,7 @@ fun PlayerInternalNavigationBar(
     navBarStyle: String,
     compactMode: Boolean,
     bottomBarPadding: Dp = 0.dp,
-    onSearchIconDoubleTap: () -> Unit = {}
+    onRootTabDoubleTap: (String) -> Unit = {}
 ) {
     PlayerInternalNavigationItemsRow(
         navController = navController,
@@ -235,7 +209,7 @@ fun PlayerInternalNavigationBar(
         navBarStyle = navBarStyle,
         compactMode = compactMode,
         bottomBarPadding = bottomBarPadding,
-        onSearchIconDoubleTap = onSearchIconDoubleTap,
+        onRootTabDoubleTap = onRootTabDoubleTap,
         modifier = modifier
     )
 }

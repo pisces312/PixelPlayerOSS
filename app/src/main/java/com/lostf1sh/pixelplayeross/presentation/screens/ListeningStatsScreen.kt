@@ -78,6 +78,12 @@ fun ListeningStatsScreen(
     val currentSongId by remember(playerViewModel.stablePlayerState) {
         playerViewModel.stablePlayerState.map { it.currentSong?.id }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(initialValue = null)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Stats.route,
+        listState = listState
+    )
 
     Box(
         modifier = Modifier
@@ -85,6 +91,7 @@ fun ListeningStatsScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 72.dp,

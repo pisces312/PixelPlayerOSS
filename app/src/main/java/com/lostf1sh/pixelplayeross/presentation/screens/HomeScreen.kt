@@ -251,6 +251,11 @@ fun HomeScreen(
     LocalContext.current
 
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Home.route,
+        listState = listState
+    )
     val density = LocalDensity.current
     val scrollThresholdPx = remember(density) { with(density) { 180.dp.toPx() } }
     val isScrolledPastThreshold = remember {

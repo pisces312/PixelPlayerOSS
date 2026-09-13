@@ -122,6 +122,7 @@ import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -192,11 +193,13 @@ fun SearchScreen(
     }
 
     LaunchedEffect(playerViewModel, keyboardController) {
-        playerViewModel.searchNavDoubleTapEvents.collect {
-            delay(40L)
-            searchInputFocusRequester.requestFocus()
-            keyboardController?.show()
-        }
+        playerViewModel.rootTabDoubleTapEvents
+            .filter { it == com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Search.route }
+            .collect {
+                delay(40L)
+                searchInputFocusRequester.requestFocus()
+                keyboardController?.show()
+            }
     }
 
     LaunchedEffect(searchQuery, currentFilter) {

@@ -83,6 +83,11 @@ fun LibrarySongsTab(
     hasCurrentSong: Boolean = false
 ) {
     val listState = rememberLazyListState()
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Library.route,
+        listState = listState
+    )
     val pullToRefreshState = rememberPullToRefreshState()
     val coroutineScope = rememberCoroutineScope()
     val visibilityCallback by rememberUpdatedState(onLocateCurrentSongVisibilityChanged)

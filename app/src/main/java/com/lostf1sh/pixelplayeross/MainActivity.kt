@@ -787,14 +787,14 @@ class MainActivity : ComponentActivity() {
                         enter = expandHorizontally() + fadeIn(),
                         exit = shrinkHorizontally() + fadeOut()
                     ) {
-                        val onSearchIconDoubleTap = remember(playerViewModel) {
-                            { playerViewModel.onSearchNavIconDoubleTapped() }
+                        val onRootTabDoubleTap = remember(playerViewModel) {
+                            { route: String -> playerViewModel.onRootTabDoubleTapped(route) }
                         }
                         PlayerNavigationRail(
                             navController = navController,
                             navItems = commonNavItems,
                             currentRoute = currentRoute,
-                            onSearchIconDoubleTap = onSearchIconDoubleTap
+                            onRootTabDoubleTap = onRootTabDoubleTap
                         )
                     }
                 }
@@ -844,8 +844,8 @@ class MainActivity : ComponentActivity() {
                                 .height(navBarOccupiedHeight)
                                 .clipToBounds()
                         ) {
-                            val onSearchIconDoubleTap = remember(playerViewModel) {
-                                { playerViewModel.onSearchNavIconDoubleTapped() }
+                            val onRootTabDoubleTap = remember(playerViewModel) {
+                                { route: String -> playerViewModel.onRootTabDoubleTapped(route) }
                             }
 
                             Surface(
@@ -896,7 +896,7 @@ class MainActivity : ComponentActivity() {
                                     navBarStyle = navBarStyle,
                                     compactMode = navBarCompactMode,
                                     bottomBarPadding = bottomBarPadding,
-                                    onSearchIconDoubleTap = onSearchIconDoubleTap,
+                                    onRootTabDoubleTap = onRootTabDoubleTap,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }

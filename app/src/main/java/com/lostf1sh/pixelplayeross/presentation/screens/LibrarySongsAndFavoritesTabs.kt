@@ -92,6 +92,11 @@ fun LibraryFavoritesTab(
     hasCurrentSong: Boolean = false
 ) {
     val listState = rememberLazyListState()
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Library.route,
+        listState = listState
+    )
     val coroutineScope = rememberCoroutineScope()
     val visibilityCallback by rememberUpdatedState(onLocateCurrentSongVisibilityChanged)
     val registerActionCallback by rememberUpdatedState(onRegisterLocateCurrentSongAction)
@@ -308,6 +313,11 @@ fun LibrarySongsTabPaginated(
     onRefresh: () -> Unit
 ) {
     val listState = rememberLazyListState()
+    com.lostf1sh.pixelplayeross.presentation.components.RootTabScrollToTopEffect(
+        playerViewModel = playerViewModel,
+        route = com.lostf1sh.pixelplayeross.presentation.navigation.Screen.Library.route,
+        listState = listState
+    )
     val pullToRefreshState = rememberPullToRefreshState()
 
     when {

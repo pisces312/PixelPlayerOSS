@@ -36,6 +36,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.lostf1sh.pixelplayeross.R
+import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.data.EotStateHolder
 import com.lostf1sh.pixelplayeross.data.database.AlbumArtThemeDao
 import com.lostf1sh.pixelplayeross.data.media.CoverArtUpdate
@@ -569,6 +570,17 @@ class PlayerViewModel @Inject constructor(
     val artistNavigationRequests = _artistNavigationRequests.asSharedFlow()
     private val _searchNavDoubleTapEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val searchNavDoubleTapEvents = _searchNavDoubleTapEvents.asSharedFlow()
+
+    private val _rootTabDoubleTapEvents = MutableSharedFlow<String>(
+        extraBufferCapacity = 8,
+        onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    val rootTabDoubleTapEvents = _rootTabDoubleTapEvents.asSharedFlow()
+
+    fun onRootTabDoubleTapped(route: String) {
+        Timber.tag("RootTabDoubleTap").d("route=%s", route)
+        _rootTabDoubleTapEvents.tryEmit(route)
+    }
     
     private val _scrollToIndexEvent = MutableSharedFlow<Int>(extraBufferCapacity = 1)
     val scrollToIndexEvent = _scrollToIndexEvent.asSharedFlow()
@@ -939,6 +951,7 @@ class PlayerViewModel @Inject constructor(
 
     fun onSearchNavIconDoubleTapped() {
         _searchNavDoubleTapEvents.tryEmit(Unit)
+        _rootTabDoubleTapEvents.tryEmit(Screen.Search.route)
     }
 
 

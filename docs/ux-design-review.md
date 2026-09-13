@@ -34,15 +34,15 @@
 
 | ID | 问题 | 位置 | Status | 备注 |
 |---|---|---|---|---|
-| P1-1 | Mini 手势过载：skip 56–120dp，**120dp～40% 屏宽死区**，dismiss 需 40% 屏宽 | `MiniPlayerDismissGestureHandler.kt:39-43,72-74` | open | 去死区；dismiss 降至 ~30%；阈值预告（透明度/位移） |
-| P1-2 | 进度条区域空 `detectVerticalDragGestures` 吞竖滑 → sheet 无法从中部收起 | `FullPlayerContent.kt:1680-1682` | open | 删空 handler；sheet/queue 统一 nestedScroll owner |
-| P1-3 | 歌词页横滑切歌与纵向滚动轴向未锁；`hasTriggeredAction` 死代码 | `LyricsSheet.kt:597-641` | open | 进入 drag 先锁轴 |
-| P1-4 | 「关闭播放列表」语义三套：mini 双向 40% / queue 仅左滑 60dp / full 无 | `MiniPlayerDismissGestureHandler.kt` vs `QueueItemDismissGestureHandler.kt:38,71-74` | open | 抽统一 `SwipeDismissSpec`（距离/速度/触觉/RTL） |
-| P1-5 | 多选只能长按进入；三套 selection 模型；长按专辑清空歌曲选择；离开 Library 不清理 | `LibraryScreen.kt:394-399,423-428,704-714`；`EnhancedSongListItem.kt` | open | 可见「选择」入口；统一 state；离开时 clear |
-| P1-6 | 底部导航再点当前 tab 无响应（无 pop-to-root / scroll-top） | `PlayerInternalNavigationBar.kt:191-196` | open | 再点 → pop root 或 scroll top；Search 双击隐藏手势无提示 |
-| P1-7 | 云/本地同一按钮语义切换（下载 vs 删除）；无独立「移出曲库」UI | `SongInfoBottomSheet.kt:624-640`；`SongRemovalStateHolder.removeSongFromLibrary` 仅删文件后调用 | open | 文案/图标随来源变化；菜单拆「从曲库移除」 |
-| P1-8 | 空状态无 CTA；存储过滤器纯图标，易误判库为空 | `LibraryEmptyState.kt:135-195`；`LibraryActionRow.kt:327-336` | open | 按当前过滤给「清除筛选/扫描/设置」；过滤器加文字或 chip |
-| P1-9 | Queue 开启手势藏在 expansion≥0.99 + 避开 nav bar | `FullPlayerContent.kt:629-678` | open | 失败时给轻提示或降低手势门槛（按钮已有） |
+| P1-1 | Mini 手势：死区、dismiss 40% 过远、竖向偏移被当成横滑切歌 | `MiniPlayerDismissGestureHandler.kt` | fixed | 去死区；dismiss 30%；tension 48dp；竖向占优时放弃切歌 |
+| P1-2 | 进度条区域空 `detectVerticalDragGestures` 吞竖滑 | `FullPlayerContent.kt:1680-1682` | ignored | 有意隔离 seek 与 sheet 收起；用户确认 seek 竖滑是预期，暂不改 |
+| P1-3 | 歌词页横滑切歌与纵向滚动轴向未锁；`hasTriggeredAction` 死代码 | `LyricsSheet.kt` | fixed | 改 `detectHorizontalDragGestures`，竖滑交还 LazyColumn；删死代码 |
+| P1-4 | 「关闭播放列表」语义三套：mini 双向 / queue 仅左滑 / full 无 | Mini vs Queue dismiss | ignored | 使用中未觉不适，暂不改 |
+| P1-5 | 多选只能长按进入；三套 selection 模型；离开 Library 不清理 | `LibraryScreen.kt` | ignored | 使用中未觉不适，暂不改 |
+| P1-6 | 底部导航再点当前 tab 无响应（无 pop-to-root / scroll-top） | `PlayerInternalNavigationBar.kt` / `PlayerNavigationRail.kt` | fixed | 双击当前 tab 回顶；Search 双击回顶+聚焦搜索框。单击切换不变 |
+| P1-7 | 云/本地同一按钮语义切换（下载 vs 删除） | `SongInfoBottomSheet.kt:624-640` | ignored | 使用中未觉不适，暂不改 |
+| P1-8 | 空状态无 CTA；存储过滤器纯图标 | `LibraryEmptyState.kt` | ignored | 使用中未觉不适，暂不改 |
+| P1-9 | Queue 开启手势藏在 expansion≥0.99 | `FullPlayerContent.kt:629-678` | ignored | 使用中未觉不适，暂不改 |
 
 ---
 
@@ -170,5 +170,8 @@ showSetupScreen = !isSetupComplete!! || !permissionsValid
 | 2026-02-15 | 完成全量交互审阅，建本文档 | — |
 | 2026-02-15 | 修复 P0-1/3（PlayerViewModel）；P0-2 确认+toast；P0-4 通知权限降级；compileDebugKotlin 通过 | P0-1..4 |
 | 2026-02-15 | 补 UT：removeSong sheet 可见性、deleteSelected early-out、SetupUiState.requiredPermissionsGranted；testDebugUnitTest 通过 | P0-1,3,4 |
+| 2026-02-15 | 修复 P1-1 Mini 手势（死区/阈值/竖滑锁轴）与 P1-3 歌词横滑专用检测；P1-2/4/5/6/7/8/9 按用户反馈 ignored | P1-1,3 |
+| 2026-02-15 | P1-6：双击当前 root tab 回顶；Search 双击聚焦搜索框。覆盖 Home/Library 子页/Stats | P1-6 |
+| 2026-02-15 | 提交 P1-1/P1-3；开始排查双击回顶模拟器无效 | P1-6 |
 
 > 更新规则：开始改某项把 Status 改为 `fixing`；合入后改 `fixed` 并在上表补一行；有意不做改 `ignored` 并在备注写原因。
