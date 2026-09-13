@@ -33,7 +33,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.Sort
+import androidx.compose.material.icons.automirrored.rounded.ViewList
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.FilterList
@@ -103,7 +105,10 @@ fun LibraryActionRow(
     isShuffleEnabled: Boolean = false,
     showStorageFilterButton: Boolean = false,
     currentStorageFilter: com.lostf1sh.pixelplayeross.data.model.StorageFilter = com.lostf1sh.pixelplayeross.data.model.StorageFilter.ALL,
-    onStorageFilterClick: () -> Unit = {}
+    onStorageFilterClick: () -> Unit = {},
+    showViewModeButton: Boolean = false,
+    isGridViewMode: Boolean = false,
+    onViewModeClick: () -> Unit = {}
 ) {
     val shouldShowImport = isPlaylistTab && showImportButton
 
@@ -272,8 +277,13 @@ fun LibraryActionRow(
             val outerCorner = 26.dp
             
             val sortStartCorner by animateDpAsState(
-                targetValue = if (showLocateButton || showStorageFilterButton) 8.dp else outerCorner,
+                targetValue = if (showLocateButton || showStorageFilterButton || showViewModeButton) 8.dp else outerCorner,
                 label = "SortStartCorner"
+            )
+
+            val viewModeStartCorner by animateDpAsState(
+                targetValue = if (showLocateButton || showStorageFilterButton) 8.dp else outerCorner,
+                label = "ViewModeStartCorner"
             )
 
             val filterEndCorner = 8.dp
@@ -288,9 +298,13 @@ fun LibraryActionRow(
                 targetValue = if (showLocateButton) 4.dp else 0.dp,
                 label = "GapLocate"
             )
-            val gapBetweenFilterAndSort by animateDpAsState(
+            val gapBetweenFilterAndView by animateDpAsState(
                 targetValue = if (showStorageFilterButton) 4.dp else 0.dp,
                 label = "GapFilter"
+            )
+            val gapBetweenViewAndSort by animateDpAsState(
+                targetValue = if (showViewModeButton) 4.dp else 0.dp,
+                label = "GapViewMode"
             )
 
 
@@ -363,7 +377,35 @@ fun LibraryActionRow(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(gapBetweenFilterAndSort))
+                Spacer(modifier = Modifier.width(gapBetweenFilterAndView))
+
+                AnimatedVisibility(
+                    visible = showViewModeButton,
+                    enter = slideInHorizontally(initialOffsetX = { it / 2 }) + fadeIn(),
+                    exit = slideOutHorizontally(targetOffsetX = { it / 2 }) + fadeOut()
+                ) {
+                    FilledTonalIconButton(
+                        onClick = onViewModeClick,
+                        shape = RoundedCornerShape(
+                            topStart = viewModeStartCorner,
+                            bottomStart = viewModeStartCorner,
+                            topEnd = filterEndCorner,
+                            bottomEnd = filterEndCorner
+                        ),
+                        modifier = Modifier.size(genHeight)
+                    ) {
+                        Icon(
+                            imageVector = if (isGridViewMode) {
+                                Icons.AutoMirrored.Rounded.ViewList
+                            } else {
+                                Icons.Rounded.GridView
+                            },
+                            contentDescription = stringResource(R.string.cd_toggle_grid_list)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(gapBetweenViewAndSort))
 
                 FilledTonalIconButton(
                     onClick = onSortClick,

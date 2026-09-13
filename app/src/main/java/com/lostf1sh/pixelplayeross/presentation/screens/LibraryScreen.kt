@@ -986,6 +986,7 @@ fun LibraryScreen(
                                 .map { it.isShuffleEnabled }
                                 .distinctUntilChanged()
                         }.collectAsStateWithLifecycle(initialValue = false)
+                        val isGenreGridView by playerViewModel.isGenreGridView.collectAsStateWithLifecycle()
 
                         val currentSelectedSortOption: SortOption? = when (currentTabId) {
                             LibraryTabId.SONGS -> playerUiState.currentSongSortOption
@@ -1146,6 +1147,9 @@ fun LibraryScreen(
                                     onFolderClick = { playerViewModel.navigateToFolder(it) },
                                     onNavigateBack = { playerViewModel.navigateBackFolder() },
                                     isShuffleEnabled = isShuffleEnabled,
+                                    showViewModeButton = currentTabId == LibraryTabId.GENRES,
+                                    isGridViewMode = isGenreGridView,
+                                    onViewModeClick = { playerViewModel.toggleGenreViewMode() },
                                     showStorageFilterButton = currentTabId == LibraryTabId.SONGS ||
                                             currentTabId == LibraryTabId.ALBUMS ||
                                             currentTabId == LibraryTabId.ARTISTS ||
