@@ -128,6 +128,12 @@ private fun libraryEmptySpec(
             titleRes = R.string.lib_empty_years_title,
             subtitleRes = R.string.lib_empty_years_subtitle
         )
+
+        LibraryTabId.GENRES -> LibraryEmptySpec(
+            iconRes = R.drawable.rounded_library_music_24,
+            titleRes = R.string.lib_empty_genres_title,
+            subtitleRes = R.string.lib_empty_genres_subtitle
+        )
     }
 }
 

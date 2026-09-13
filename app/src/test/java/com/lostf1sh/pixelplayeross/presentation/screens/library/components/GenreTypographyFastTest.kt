@@ -1,4 +1,4 @@
-package com.lostf1sh.pixelplayeross.presentation.screens.search.components
+package com.lostf1sh.pixelplayeross.presentation.screens.library.components
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test

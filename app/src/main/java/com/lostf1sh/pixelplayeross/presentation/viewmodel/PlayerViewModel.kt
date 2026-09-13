@@ -188,7 +188,7 @@ data class PlaybackAudioMetadata(
 )
 
 private val DEFAULT_LIBRARY_TAB_ORDER: List<String> =
-    listOf("SONGS", "ALBUMS", "YEARS", "ARTIST", "PLAYLISTS", "FOLDERS", "LIKED")
+    listOf("SONGS", "ALBUMS", "YEARS", "ARTIST", "PLAYLISTS", "FOLDERS", "LIKED", "GENRES")
 
 private data class SortOptionsSnapshot(
     val songSort: SortOption,
@@ -997,6 +997,7 @@ class PlayerViewModel @Inject constructor(
                     LibraryTabId.PLAYLISTS -> SortOption.PLAYLISTS
                     LibraryTabId.FOLDERS -> SortOption.FOLDERS
                     LibraryTabId.LIKED -> SortOption.LIKED
+                    LibraryTabId.GENRES -> SortOption.GENRES
                 }
             } finally {
                 Trace.endSection()
@@ -1613,6 +1614,12 @@ class PlayerViewModel @Inject constructor(
                     SortOption.YearBucketNewest
                 )
 
+                val initialGenreSort = resolveSortOption(
+                    userPreferencesRepository.genresSortOptionFlow.first(),
+                    SortOption.GENRES,
+                    SortOption.GenreNameAZ
+                )
+
                 _playerUiState.update {
                     it.copy(
                         currentSongSortOption = initialSongSort,
@@ -1620,7 +1627,8 @@ class PlayerViewModel @Inject constructor(
                         currentArtistSortOption = initialArtistSort,
                         currentFolderSortOption = initialFolderSort,
                         currentFavoriteSortOption = initialLikedSort,
-                        currentYearSortOption = initialYearSort
+                        currentYearSortOption = initialYearSort,
+                        currentGenreSortOption = initialGenreSort
                     )
                 }
 
@@ -1630,6 +1638,7 @@ class PlayerViewModel @Inject constructor(
                 sortFolders(initialFolderSort, persist = false)
                 sortFavoriteSongs(initialLikedSort, persist = false)
                 sortYears(initialYearSort, persist = false)
+                sortGenres(initialGenreSort, persist = false)
             }
 
             viewModelScope.launch {
@@ -1757,6 +1766,11 @@ class PlayerViewModel @Inject constructor(
             viewModelScope.launch {
                 libraryStateHolder.currentYearSortOption.collect { yearSort ->
                     _playerUiState.update { it.copy(currentYearSortOption = yearSort) }
+                }
+            }
+            viewModelScope.launch {
+                libraryStateHolder.currentGenreSortOption.collect { genreSort ->
+                    _playerUiState.update { it.copy(currentGenreSortOption = genreSort) }
                 }
             }
             viewModelScope.launch {
@@ -3966,6 +3980,10 @@ class PlayerViewModel @Inject constructor(
 
     fun sortYears(sortOption: SortOption, persist: Boolean = true) {
         libraryStateHolder.sortYears(sortOption, persist)
+    }
+
+    fun sortGenres(sortOption: SortOption, persist: Boolean = true) {
+        libraryStateHolder.sortGenres(sortOption, persist)
     }
 
     fun setFoldersPlaylistView(isPlaylistView: Boolean) {

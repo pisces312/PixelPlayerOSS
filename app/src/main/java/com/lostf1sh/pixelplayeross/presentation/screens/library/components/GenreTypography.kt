@@ -1,4 +1,4 @@
-package com.lostf1sh.pixelplayeross.presentation.screens.search.components
+package com.lostf1sh.pixelplayeross.presentation.screens.library.components
 
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ExperimentalTextApi

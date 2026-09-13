@@ -6,6 +6,7 @@
     <string name="library_tab_playlists">歌单</string>
     <string name="library_tab_folders">文件夹</string>
     <string name="library_tab_liked">我喜欢</string>
+    <string name="library_tab_genres">流派</string>
     <string name="library_error_loading_songs">加载歌曲出错</string>
     <string name="library_error_loading_albums">加载专辑出错</string>
     <string name="library_error_loading_artists">加载艺术家出错</string>
@@ -64,4 +65,6 @@
     <string name="lib_empty_folders_subtitle">存放音乐的内部存储文件夹会显示在这里。</string>
     <string name="lib_empty_playlists_title">暂无歌单</string>
     <string name="lib_empty_playlists_subtitle">创建第一个歌单来整理你的音乐库。</string>
+    <string name="lib_empty_genres_title">暂无流派</string>
+    <string name="lib_empty_genres_subtitle">歌曲带有流派标签后，流派会显示在这里。</string>
 </resources>

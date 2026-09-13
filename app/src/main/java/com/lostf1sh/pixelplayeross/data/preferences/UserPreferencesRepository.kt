@@ -114,6 +114,7 @@ constructor(
         val PLAYLISTS_SORT_OPTION = stringPreferencesKey("playlists_sort_option")
         val FOLDERS_SORT_OPTION = stringPreferencesKey("folders_sort_option")
         val LIKED_SONGS_SORT_OPTION = stringPreferencesKey("liked_songs_sort_option")
+        val GENRES_SORT_OPTION = stringPreferencesKey("genres_sort_option")
         val YEARS_SORT_OPTION = stringPreferencesKey("years_sort_option")
         val YEAR_DETAIL_SORT_OPTION = stringPreferencesKey("year_detail_sort_option")
 
@@ -1127,6 +1128,16 @@ constructor(
                         .storageKey
             }
 
+    val genresSortOptionFlow: Flow<String> =
+            dataStore.data.map { preferences ->
+                SortOption.fromStorageKey(
+                                preferences[PreferencesKeys.GENRES_SORT_OPTION],
+                                SortOption.GENRES,
+                                SortOption.GenreNameAZ
+                        )
+                        .storageKey
+            }
+
     val yearsSortOptionFlow: Flow<String> =
             dataStore.data.map { preferences ->
                 SortOption.fromStorageKey(
@@ -1181,6 +1192,12 @@ constructor(
     suspend fun setLikedSongsSortOption(optionKey: String) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.LIKED_SONGS_SORT_OPTION] = optionKey
+        }
+    }
+
+    suspend fun setGenresSortOption(optionKey: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.GENRES_SORT_OPTION] = optionKey
         }
     }
 

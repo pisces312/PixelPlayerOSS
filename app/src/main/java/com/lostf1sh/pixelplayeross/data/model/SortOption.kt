@@ -326,6 +326,22 @@ sealed class SortOption(
         direction = SortDirection.Ascending
     )
 
+    // --- Genre list sort options (L1 Genres tab) ---
+    object GenreNameAZ : SortOption(
+        storageKey = "genre_name_az",
+        displayName = "Name (A-Z)",
+        methodLabel = "Name",
+        methodKey = "genre_name",
+        direction = SortDirection.Ascending
+    )
+    object GenreNameZA : SortOption(
+        storageKey = "genre_name_za",
+        displayName = "Name (Z-A)",
+        methodLabel = "Name",
+        methodKey = "genre_name",
+        direction = SortDirection.Descending
+    )
+
     // --- Year detail song sort options (L2: songs inside one year bucket) ---
     object YearSongPlayCount : SortOption(
         storageKey = "year_song_play_count",
@@ -549,6 +565,13 @@ sealed class SortOption(
             )
         }
 
+        val GENRES: List<SortOption> by lazy {
+            listOf(
+                GenreNameAZ,
+                GenreNameZA
+            )
+        }
+
         val YEAR_SONGS: List<SortOption> by lazy {
             listOf(
                 YearSongPlayCount,
@@ -572,7 +595,7 @@ sealed class SortOption(
         }
 
         private val ALL: List<SortOption> by lazy {
-            SONGS + ALBUMS + ARTISTS + PLAYLISTS + FOLDERS + LIKED + YEARS + YEAR_SONGS
+            SONGS + ALBUMS + ARTISTS + PLAYLISTS + FOLDERS + LIKED + YEARS + GENRES + YEAR_SONGS
         }
 
         private val defaultOptionByMethodKey: Map<String, SortOption> by lazy {

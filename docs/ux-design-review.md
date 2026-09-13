@@ -55,12 +55,12 @@
 | P2-3 | 设置搜索缺 highlight：palette_style、navbar_corner、experimental、crossfade 时长 | `SettingsRegistry.kt:272,335,586`；`SettingsCategoryScreen.kt:969` | open | 与 AGENTS.md 注册五步对齐 |
 | P2-4 | 「重置 Setup」「测试崩溃」无确认；「重置歌词」确认按钮非 error 色 | `SettingsCategoryScreen.kt:1190-1194,1211-1214,1522-1529` | open | 危险确认统一 error 色 |
 | P2-5 | 硬编码英文：Playback position / Connecting… / ListenBrainz 副标题等 | `PlayerSeekBar.kt:123`；`UnifiedPlayerSheetShared.kt:134-143`；`SettingsRegistry.kt:194` | open | 走 strings + zh-rCN |
-| P2-6 | 搜索历史行 pointerInput 不可见于 TalkBack | `SearchScreen.kt:615-618` | open | 改 `clickable`/semantics |
+| P2-6 | 搜索历史行 pointerInput 不可见于 TalkBack | `SearchScreen.kt:615-618` | fixed | 改 `clickable`，随搜索历史接线落地 |
 | P2-7 | Mini 传输按钮 36dp < 48dp；无全局最小触控尺寸 | `UnifiedPlayerSheetShared.kt:152,182,206` | open | |
 | P2-8 | 双 toast 通道：`toastEvents` vs 裸 `Toast.makeText` | `LibraryScreen.kt:692` 等 | open | 统一 toastEvents |
 | P2-9 | `DismissUndoBar` 仅用于关队列；文件删除/清空队列无 undo | `MainActivity.kt:986-1019`；`QueueBottomSheet.kt:1128-1150` | open | |
 | P2-10 | 播放列表 merge 失败静默；空白名 no-op | `PlaylistViewModel.kt:1211,1225-1227` | open | |
-| P2-11 | `clearSearchHistory()` 零调用方（死 API） | `PlayerViewModel.kt:4028` | open | 接 UI 或删除 |
+| P2-11 | `clearSearchHistory()` 零调用方（死 API） | `PlayerViewModel.kt:4028` | fixed | 搜索页空态接 `SearchHistoryList`，清空带二次确认 |
 | P2-12 | Seek 后 5s 忽略 position（差<0.04 除外）无 seeking 态 | `PlayerSeekBar.kt:67-76` | open | 缩短窗口 + pending chrome |
 | P2-13 | Full player 首次展开后永不 uncompose | `FullPlayerCompositionPolicy.kt:44-49` | open | 性能/内存 |
 | P2-14 | Mini free-drag 每帧 launch 新 animateTo | `MiniPlayerDismissGestureHandler.kt:159-169` | open | jank 源 |
@@ -173,5 +173,6 @@ showSetupScreen = !isSetupComplete!! || !permissionsValid
 | 2026-02-15 | 修复 P1-1 Mini 手势（死区/阈值/竖滑锁轴）与 P1-3 歌词横滑专用检测；P1-2/4/5/6/7/8/9 按用户反馈 ignored | P1-1,3 |
 | 2026-02-15 | P1-6：双击当前 root tab 回顶；Search 双击聚焦搜索框。覆盖 Home/Library 子页/Stats | P1-6 |
 | 2026-02-15 | 提交 P1-1/P1-3；开始排查双击回顶模拟器无效 | P1-6 |
+| 2026-09-13 | 搜索页空态改为搜索历史（清空二次确认 + 单项删除 + TalkBack 可点）；流派从搜索页移入音乐库独立 tab（名称排序） | P2-6, P2-11 |
 
 > 更新规则：开始改某项把 Status 改为 `fixing`；合入后改 `fixed` 并在上表补一行；有意不做改 `ignored` 并在备注写原因。

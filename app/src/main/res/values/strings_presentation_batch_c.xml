@@ -6,6 +6,7 @@
     <string name="library_tab_playlists">Playlists</string>
     <string name="library_tab_folders">Folders</string>
     <string name="library_tab_liked">Liked</string>
+    <string name="library_tab_genres">Genres</string>
 
     <string name="library_error_loading_songs">Error loading songs</string>
     <string name="library_error_loading_albums">Error loading albums</string>
@@ -65,4 +66,6 @@
     <string name="lib_empty_folders_subtitle">Internal storage folders with music will appear here.</string>
     <string name="lib_empty_playlists_title">No playlists yet</string>
     <string name="lib_empty_playlists_subtitle">Create your first playlist to organize your library.</string>
+    <string name="lib_empty_genres_title">No genres available</string>
+    <string name="lib_empty_genres_subtitle">Genres appear here once your songs carry genre tags.</string>
 </resources>

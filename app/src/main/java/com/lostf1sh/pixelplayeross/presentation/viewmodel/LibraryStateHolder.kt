@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
@@ -168,7 +169,10 @@ class LibraryStateHolder @Inject constructor(
         .flatMapLatest { filter -> musicRepository.getFavoriteSongCountFlow(filter) }
         .flowOn(Dispatchers.IO)
 
-    val genres: kotlinx.coroutines.flow.Flow<ImmutableList<com.lostf1sh.pixelplayeross.data.model.Genre>> =
+    private val _currentGenreSortOption = MutableStateFlow<SortOption>(SortOption.GenreNameAZ)
+    val currentGenreSortOption = _currentGenreSortOption.asStateFlow()
+
+    private val unsortedGenres: kotlinx.coroutines.flow.Flow<ImmutableList<com.lostf1sh.pixelplayeross.data.model.Genre>> =
         musicRepository.getGenres()
         .map { genres ->
             genres.map { genre ->
@@ -195,7 +199,29 @@ class LibraryStateHolder @Inject constructor(
             }
                 .toImmutableList()
         }
-        .flowOn(Dispatchers.Default)
+
+    val genres: kotlinx.coroutines.flow.Flow<ImmutableList<com.lostf1sh.pixelplayeross.data.model.Genre>> =
+        combine(unsortedGenres, _currentGenreSortOption) { genres, sortOption ->
+            sortGenresList(genres, sortOption).toImmutableList()
+        }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+
+    private fun sortGenresList(
+        genres: List<com.lostf1sh.pixelplayeross.data.model.Genre>,
+        sortOption: SortOption
+    ): List<com.lostf1sh.pixelplayeross.data.model.Genre> {
+        return when (sortOption) {
+            SortOption.GenreNameZA -> genres.sortedWith(
+                compareByDescending<com.lostf1sh.pixelplayeross.data.model.Genre> { it.name.lowercase() }
+                    .thenBy { it.id }
+            )
+            else -> genres.sortedWith(
+                compareBy<com.lostf1sh.pixelplayeross.data.model.Genre> { it.name.lowercase() }
+                    .thenBy { it.id }
+            )
+        }
+    }
 
 
     private var scope: CoroutineScope? = null
@@ -220,6 +246,9 @@ class LibraryStateHolder @Inject constructor(
 
             val yearsSortKey = userPreferencesRepository.yearsSortOptionFlow.first()
             _currentYearSortOption.value = SortOption.YEARS.find { it.storageKey == yearsSortKey } ?: SortOption.YearBucketNewest
+
+            val genresSortKey = userPreferencesRepository.genresSortOptionFlow.first()
+            _currentGenreSortOption.value = SortOption.GENRES.find { it.storageKey == genresSortKey } ?: SortOption.GenreNameAZ
 
             _currentStorageFilter.value = userPreferencesRepository.lastStorageFilterFlow.first()
         }
@@ -409,6 +438,18 @@ class LibraryStateHolder @Inject constructor(
                 userPreferencesRepository.setYearsSortOption(sortOption.storageKey)
             }
             _currentYearSortOption.value = sortOption
+        }
+    }
+
+    fun sortGenres(sortOption: SortOption, persist: Boolean = true) {
+        scope?.launch {
+            if (persist && _currentGenreSortOption.value.storageKey == sortOption.storageKey) {
+                return@launch
+            }
+            if (persist) {
+                userPreferencesRepository.setGenresSortOption(sortOption.storageKey)
+            }
+            _currentGenreSortOption.value = sortOption
         }
     }
 

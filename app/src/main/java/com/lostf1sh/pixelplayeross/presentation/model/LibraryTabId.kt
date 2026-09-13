@@ -97,6 +97,14 @@ enum class LibraryTabId(
             SortOption.LikedSongDateLiked,
             SortOption.LikedSongDateLikedAsc
         )
+    ),
+    Genres(
+        stableKey = "GENRES",
+        labelRes = R.string.library_tab_genres,
+        sortOptions = listOf(
+            SortOption.GenreNameAZ,
+            SortOption.GenreNameZA
+        )
     );
 
     companion object {
