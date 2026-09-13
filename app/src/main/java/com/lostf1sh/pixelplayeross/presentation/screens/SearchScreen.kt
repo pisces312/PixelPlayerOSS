@@ -13,7 +13,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ColorScheme
@@ -63,10 +64,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.lostf1sh.pixelplayeross.data.model.Album
@@ -114,7 +115,6 @@ import com.lostf1sh.pixelplayeross.presentation.components.PlaylistCover
 import com.lostf1sh.pixelplayeross.presentation.components.resolveMainScreenBottomGradientHeight
 import com.lostf1sh.pixelplayeross.presentation.components.resolveNavBarOccupiedHeight
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
-import com.lostf1sh.pixelplayeross.presentation.screens.search.components.GenreCategoriesGrid
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
 import com.lostf1sh.pixelplayeross.utils.formatSongCount
 import kotlinx.collections.immutable.ImmutableList
@@ -133,7 +133,8 @@ import androidx.compose.ui.res.stringResource
 
 private data class SearchUiSlice(
     val selectedSearchFilter: SearchFilterType = SearchFilterType.ALL,
-    val searchResults: ImmutableList<SearchResultItem> = persistentListOf()
+    val searchResults: ImmutableList<SearchResultItem> = persistentListOf(),
+    val searchHistory: ImmutableList<SearchHistoryItem> = persistentListOf()
 )
 
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -154,12 +155,14 @@ fun SearchScreen(
     val bottomBarHeightDp = resolveNavBarOccupiedHeight(systemNavBarInset, navBarCompactMode)
     val bottomGradientHeight = resolveMainScreenBottomGradientHeight(navBarCompactMode)
     var showPlaylistBottomSheet by remember { mutableStateOf(false) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
     val searchUiState by remember(playerViewModel) {
         playerViewModel.playerUiState
             .map { uiState ->
                 SearchUiSlice(
                     selectedSearchFilter = uiState.selectedSearchFilter,
-                    searchResults = uiState.searchResults
+                    searchResults = uiState.searchResults,
+                    searchHistory = uiState.searchHistory
                 )
             }
             .distinctUntilChanged()
@@ -361,35 +364,40 @@ fun SearchScreen(
                 }
             }
 
-            val showGenreBrowse by remember(searchQuery) { derivedStateOf { searchQuery.isBlank() } }
+            val showSearchIdle by remember(searchQuery) { derivedStateOf { searchQuery.isBlank() } }
             AnimatedContent(
-                targetState = showGenreBrowse,
+                targetState = showSearchIdle,
                 transitionSpec = {
-                    val switchingToGenre = targetState
+                    val switchingToHistory = targetState
                     val enter = fadeIn(animationSpec = tween(durationMillis = 320, delayMillis = 70)) +
                         slideInVertically(animationSpec = tween(durationMillis = 320)) { fullHeight ->
-                            if (switchingToGenre) -fullHeight / 10 else fullHeight / 10
+                            if (switchingToHistory) -fullHeight / 10 else fullHeight / 10
                         }
                     val exit = fadeOut(animationSpec = tween(durationMillis = 220)) +
                         slideOutVertically(animationSpec = tween(durationMillis = 220)) { fullHeight ->
-                            if (switchingToGenre) fullHeight / 12 else -fullHeight / 12
+                            if (switchingToHistory) fullHeight / 12 else -fullHeight / 12
                         }
                     (enter togetherWith exit).using(SizeTransform(clip = false))
                 },
                 label = "search_mode_transition"
-            ) { isGenreMode ->
-                if (isGenreMode) {
-                    GenreCategoriesGrid(
-                        genres = genres,
-                        onGenreClick = { genre ->
-                            Timber.tag("SearchScreen")
-                                .d("Genre clicked: ${genre.name} (ID: ${genre.id})")
-                            val encodedGenreId = java.net.URLEncoder.encode(genre.id, "UTF-8")
-                            navController.navigateSafely(Screen.GenreDetail.createRoute(encodedGenreId))
-                        },
-                        playerViewModel = playerViewModel,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
+            ) { isSearchIdle ->
+                if (isSearchIdle) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        SearchHistoryList(
+                            historyItems = searchUiState.searchHistory,
+                            onHistoryClick = { query ->
+                                searchQuery = query
+                                playerViewModel.updateSearchQuery(query)
+                            },
+                            onHistoryDelete = { query -> playerViewModel.deleteSearchHistoryItem(query) },
+                            onClearAllHistory = { showClearHistoryDialog = true },
+                            bottomPadding = bottomBarHeightDp + MiniPlayerHeight + 16.dp
+                        )
+                    }
                 } else {
                     Column(
                         modifier = Modifier
@@ -447,6 +455,29 @@ fun SearchScreen(
                 .align(Alignment.BottomCenter)
                 .height(bottomGradientHeight)
                 .background(brush = bottomGradientBrush)
+        )
+    }
+
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = { Text(stringResource(R.string.search_history_clear_title)) },
+            text = { Text(stringResource(R.string.search_history_clear_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        playerViewModel.clearSearchHistory()
+                        showClearHistoryDialog = false
+                    }
+                ) {
+                    Text(stringResource(R.string.clear_all), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) {
+                    Text(stringResource(R.string.cancel), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         )
     }
 
@@ -569,9 +600,9 @@ fun SearchHistoryList(
     historyItems: ImmutableList<SearchHistoryItem>,
     onHistoryClick: (String) -> Unit,
     onHistoryDelete: (String) -> Unit,
-    onClearAllHistory: () -> Unit
+    onClearAllHistory: () -> Unit,
+    bottomPadding: Dp = 0.dp
 ) {
-    val localDensity = LocalDensity.current
     Column {
         Row(
             modifier = Modifier
@@ -591,19 +622,48 @@ fun SearchHistoryList(
                 }
             }
         }
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(
-                top = 8.dp,
-            )
-        ) {
-            items(historyItems, key = { "history_${it.id ?: it.query}" }, contentType = { "search_history" }) { item ->
-                SearchHistoryListItem(
-                    item = item,
-                    onHistoryClick = onHistoryClick,
-                    onHistoryDelete = onHistoryDelete
+        if (historyItems.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = bottomPadding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.History,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .padding(bottom = 12.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                 )
+                Text(
+                    text = stringResource(R.string.search_history_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(
+                    top = 8.dp,
+                    bottom = bottomPadding
+                )
+            ) {
+                items(
+                    historyItems,
+                    key = { "history_${it.id ?: it.query}" },
+                    contentType = { "search_history" }
+                ) { item ->
+                    SearchHistoryListItem(
+                        item = item,
+                        onHistoryClick = onHistoryClick,
+                        onHistoryDelete = onHistoryDelete
+                    )
+                }
             }
         }
     }
@@ -618,7 +678,7 @@ fun SearchHistoryListItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .pointerInput(Unit) { detectTapGestures(onTap = { onHistoryClick(item.query) }) }
+            .clickable { onHistoryClick(item.query) }
             .padding(horizontal = 8.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween

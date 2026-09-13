@@ -165,6 +165,9 @@
     <string name="cd_search_icon">搜索</string>
     <string name="cd_clear_search_query">清空搜索</string>
     <string name="recent_searches">最近搜索</string>
+    <string name="search_history_empty">暂无搜索记录</string>
+    <string name="search_history_clear_title">清空搜索历史？</string>
+    <string name="search_history_clear_body">将删除全部已保存的搜索关键字，此操作无法撤销。</string>
     <string name="clear_all">全部清空</string>
     <string name="cd_search_history_icon">历史记录</string>
     <string name="cd_delete_search_history_item">删除该项搜索记录</string>

@@ -167,6 +167,9 @@
     <string name="cd_search_icon">Search</string>
     <string name="cd_clear_search_query">Clear search</string>
     <string name="recent_searches">Recent searches</string>
+    <string name="search_history_empty">No recent searches yet</string>
+    <string name="search_history_clear_title">Clear search history?</string>
+    <string name="search_history_clear_body">This removes every saved search keyword. This cannot be undone.</string>
     <string name="clear_all">Clear all</string>
     <string name="cd_search_history_icon">History</string>
     <string name="cd_delete_search_history_item">Delete search history item</string>
