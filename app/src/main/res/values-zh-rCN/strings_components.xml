@@ -185,4 +185,5 @@
     <string name="player_rating_value_cd">已评 %1$d 星</string>
     <string name="player_rating_cd_unrated">为歌曲评分</string>
     <string name="player_rating_tap_hint">点击可修改</string>
+    <string name="player_rating_collapse_cd">收起评分</string>
 </resources>

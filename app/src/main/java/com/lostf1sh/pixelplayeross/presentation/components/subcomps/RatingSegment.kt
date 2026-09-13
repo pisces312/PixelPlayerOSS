@@ -9,12 +9,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.StarBorder
 import androidx.compose.material3.Icon
@@ -37,8 +40,9 @@ import com.lostf1sh.pixelplayeross.R
  *
  * - Collapsed: an outlined star, or a filled star with the current score inside once the song is
  *   rated. Tapping expands the slot in place.
- * - Expanded: five stars. Tapping star N rates the song N and collapses again (tapping the star that
- *   already holds the rating clears it); tapping the empty space only collapses.
+ * - Expanded: five stars plus a collapse affordance on the right. Tapping star N rates the song N
+ *   and collapses again (tapping the star that already holds the rating clears it); only the
+ *   collapse control dismisses without changing the rating.
  */
 @Composable
 fun RatingSegment(
@@ -88,24 +92,40 @@ fun RatingSegment(
             .fillMaxSize()
             .clip(RoundedCornerShape(cornerRadius))
             .background(bgColor)
-            .clickable { if (expanded) onCollapse() else onExpand() },
+            .clickable(enabled = !expanded) { onExpand() },
         contentAlignment = Alignment.Center
     ) {
         if (expanded) {
-            RatingStars(
-                rating = rating,
-                onRatingChange = { stars ->
-                    onRatingSelected(stars)
-                    onCollapse()
-                },
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                starSize = 28.dp,
-                selectedTint = activeContentColor,
-                unselectedTint = activeContentColor.copy(alpha = 0.45f)
-            )
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                // Pack stars + collapse control as one group so the chevron sits next to the last star.
+                RatingStars(
+                    rating = rating,
+                    onRatingChange = { stars ->
+                        onRatingSelected(stars)
+                        onCollapse()
+                    },
+                    horizontalArrangement = Arrangement.Start,
+                    starSize = 28.dp,
+                    selectedTint = activeContentColor,
+                    unselectedTint = activeContentColor.copy(alpha = 0.45f)
+                )
+                Icon(
+                    imageVector = Icons.Rounded.ChevronRight,
+                    contentDescription = stringResource(R.string.player_rating_collapse_cd),
+                    tint = activeContentColor,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable { onCollapse() }
+                        .padding(6.dp)
+                )
+            }
         } else {
             val contentDescription = if (rating > 0) {
                 stringResource(R.string.player_rating_value_cd, rating) +

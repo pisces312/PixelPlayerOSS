@@ -2423,22 +2423,22 @@ private fun BottomToggleRow(
     val inactiveBg = LocalMaterialTheme.current.onSurface.copy(alpha = 0.07f)
     val inactiveContentColor = LocalMaterialTheme.current.onSurface
 
-    // Tapping the rating slot expands the stars in place: it widens, the other three shrink.
+    // Tapping the rating slot expands the stars in place: the pill grows toward the screen edges
+    // so five 28dp stars plus the collapse control fit without crushing the other three slots.
     var ratingExpanded by remember { mutableStateOf(false) }
     val collapseRating: () -> Unit = { ratingExpanded = false }
     val sideWeight by animateFloatAsState(
-        targetValue = if (ratingExpanded) 0.6f else 1f,
+        targetValue = if (ratingExpanded) 0.7f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "sideSegmentWeight"
     )
     val ratingWeight by animateFloatAsState(
-        targetValue = if (ratingExpanded) 3.2f else 1f,
+        targetValue = if (ratingExpanded) 3.6f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "ratingSegmentWeight"
     )
-    // The pill grows towards the screen edges so five stars fit without hiding the other slots.
     val outerPadding by animateDpAsState(
-        targetValue = if (ratingExpanded) 12.dp else 26.dp,
+        targetValue = if (ratingExpanded) 8.dp else 26.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "toggleRowOuterPadding"
     )
