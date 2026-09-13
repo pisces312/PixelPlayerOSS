@@ -280,7 +280,7 @@ fun SetupScreen(
                 pagerState = pagerState,
                 animated = (pagerState.currentPage != 0),
                 isNextButtonEnabled = isNextButtonEnabled,
-                isFinishButtonEnabled = uiState.allPermissionsGranted,
+                isFinishButtonEnabled = uiState.requiredPermissionsGranted,
                 onNextClicked = {
                     val page = pages[pagerState.currentPage]
                     if (isPermissionGateSatisfied(context, page, uiState)) {
@@ -590,27 +590,14 @@ private fun isPermissionGateSatisfied(
         SetupPage.MediaPermission -> {
             uiState.mediaPermissionGranted || hasMediaPermissionNow(context)
         }
-        SetupPage.NotificationsPermission -> {
-            uiState.notificationsPermissionGranted ||
-                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-        }
+        // Notifications are optional: allow advancing without the grant.
+        SetupPage.NotificationsPermission -> true
         else -> true
     }
 }
 
 private fun allRequiredPermissionsGrantedNow(context: Context): Boolean {
-    val mediaGranted = hasMediaPermissionNow(context)
-    val notificationsGranted =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-    return mediaGranted && notificationsGranted
+    return hasMediaPermissionNow(context)
 }
 
 private fun hasMediaPermissionNow(context: Context): Boolean {

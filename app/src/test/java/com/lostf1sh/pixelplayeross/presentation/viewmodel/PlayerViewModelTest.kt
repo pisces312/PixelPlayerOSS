@@ -40,6 +40,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -723,6 +724,137 @@ class PlayerViewModelTest {
                 assertEquals(newFilter, emittedItem.selectedSearchFilter)
                 cancelAndConsumeRemainingEvents()
             }
+        }
+    }
+
+    @Nested
+    @DisplayName("removeSong sheet visibility (P0-1)")
+    inner class RemoveSongSheetVisibilityTests {
+
+        private fun song(id: String) = Song(
+            id = id,
+            title = "Song $id",
+            artist = "Artist",
+            genre = "Rock",
+            albumArtUriString = "",
+            artistId = 1L,
+            albumId = 1L,
+            contentUriString = "content://dummy/$id",
+            duration = 180000L,
+            bitrate = null,
+            sampleRate = null,
+            album = "Album",
+            path = "path/$id",
+            mimeType = "audio/mpeg"
+        )
+
+        private fun forceSheetVisible(visible: Boolean) {
+            val field = PlayerViewModel::class.java.getDeclaredField("_isSheetVisible")
+            field.isAccessible = true
+            @Suppress("UNCHECKED_CAST")
+            (field.get(playerViewModel) as MutableStateFlow<Boolean>).value = visible
+        }
+
+        @Test
+        fun `removing non-current song keeps sheet open and does not reset position`() = runTest {
+            val current = song("1")
+            val other = song("2")
+            stablePlayerStateFlow.value = StablePlayerState(currentSong = current)
+            forceSheetVisible(true)
+            coEvery { mockSongRemovalStateHolder.removeSongFromLibrary(any()) } just runs
+
+            playerViewModel.removeSong(other)
+            advanceUntilIdle()
+
+            assertTrue(playerViewModel.isSheetVisible.value)
+            verify(exactly = 0) { mockPlaybackStateHolder.setCurrentPosition(any()) }
+            coVerify { mockSongRemovalStateHolder.removeSongFromLibrary(other) }
+        }
+
+        @Test
+        fun `removing current song collapses sheet and resets position`() = runTest {
+            val current = song("1")
+            stablePlayerStateFlow.value = StablePlayerState(currentSong = current)
+            forceSheetVisible(true)
+            coEvery { mockSongRemovalStateHolder.removeSongFromLibrary(any()) } just runs
+
+            playerViewModel.removeSong(current)
+            advanceUntilIdle()
+
+            assertFalse(playerViewModel.isSheetVisible.value)
+            verify { mockPlaybackStateHolder.setCurrentPosition(0L) }
+            coVerify { mockSongRemovalStateHolder.removeSongFromLibrary(current) }
+        }
+    }
+
+    @Nested
+    @DisplayName("deleteSelectedFromDevice early-out (P0-3)")
+    inner class DeleteSelectedEarlyOutTests {
+
+        private fun song(id: String) = Song(
+            id = id,
+            title = "Song $id",
+            artist = "Artist",
+            genre = "Rock",
+            albumArtUriString = "",
+            artistId = 1L,
+            albumId = 1L,
+            contentUriString = "content://dummy/$id",
+            duration = 180000L,
+            bitrate = null,
+            sampleRate = null,
+            album = "Album",
+            path = "path/$id",
+            mimeType = "audio/mpeg"
+        )
+
+        @Test
+        fun `all songs currently playing invokes onComplete, clears selection, emits toast`() = runTest {
+            val current = song("1")
+            stablePlayerStateFlow.value = StablePlayerState(currentSong = current)
+            coEvery { mockUserPreferencesRepository.songDeletionEnabledFlow } returns flowOf(true)
+            every { mockContext.getString(any()) } returns "cannot delete current"
+
+            var completed = false
+            playerViewModel.toastEvents.test {
+                playerViewModel.deleteSelectedFromDevice(
+                    activity = mockk(relaxed = true),
+                    songs = listOf(current)
+                ) {
+                    completed = true
+                }
+                advanceUntilIdle()
+
+                assertTrue(awaitItem().isNotBlank())
+                cancelAndConsumeRemainingEvents()
+            }
+
+            assertTrue(completed)
+            verify { mockMultiSelectionStateHolder.clearSelection() }
+            coVerify(exactly = 0) { mockMetadataEditStateHolder.deleteSong(any()) }
+        }
+
+        @Test
+        fun `deletion protection blocked still invokes onComplete`() = runTest {
+            val song = song("1")
+            stablePlayerStateFlow.value = StablePlayerState(currentSong = null)
+            coEvery { mockUserPreferencesRepository.songDeletionEnabledFlow } returns flowOf(false)
+            every { mockContext.getString(any()) } returns "protection blocked"
+
+            var completed = false
+            playerViewModel.toastEvents.test {
+                playerViewModel.deleteSelectedFromDevice(
+                    activity = mockk(relaxed = true),
+                    songs = listOf(song)
+                ) {
+                    completed = true
+                }
+                advanceUntilIdle()
+                cancelAndConsumeRemainingEvents()
+            }
+
+            assertTrue(completed)
+            coVerify(exactly = 0) { mockMetadataEditStateHolder.deleteSong(any()) }
         }
     }
 

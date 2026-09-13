@@ -308,19 +308,21 @@ class MainActivity : ComponentActivity() {
             var showCrashReportDialog by remember { mutableStateOf(false) }
             var crashLogData by remember { mutableStateOf<CrashLogData?>(null) }
             
-            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                listOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
+            // Only media permission gates the main app. Notification permission is
+            // requested during setup but must not force re-entry after setup completes.
+            val mediaPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                listOf(Manifest.permission.READ_MEDIA_AUDIO)
             } else {
                 listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
             }
             @OptIn(ExperimentalPermissionsApi::class)
-            val permissionState = rememberMultiplePermissionsState(permissions = permissions)
-            val permissionsValid = permissionState.allPermissionsGranted
-            val showSetupScreen = remember(isSetupComplete, permissionsValid, isBenchmarkMode) {
+            val mediaPermissionState = rememberMultiplePermissionsState(permissions = mediaPermissions)
+            val mediaPermissionsValid = mediaPermissionState.allPermissionsGranted
+            val showSetupScreen = remember(isSetupComplete, mediaPermissionsValid, isBenchmarkMode) {
                 when {
                     isBenchmarkMode -> false
                     isSetupComplete == null -> null
-                    else -> !isSetupComplete!! || !permissionsValid
+                    else -> !isSetupComplete!! || !mediaPermissionsValid
                 }
             }
 

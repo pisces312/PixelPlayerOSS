@@ -542,6 +542,8 @@ fun LibraryScreen(
     var showPlaylistMultiSelectionSheet by remember { mutableStateOf(false) }
     var showMergePlaylistDialog by remember { mutableStateOf(false) }
     var pendingMergePlaylistIds by remember { mutableStateOf(emptyList<String>()) }
+    var showDeletePlaylistsConfirmDialog by remember { mutableStateOf(false) }
+    var pendingDeletePlaylistIds by remember { mutableStateOf(emptyList<String>()) }
 
     val onPlaylistLongPress: (com.lostf1sh.pixelplayeross.data.model.Playlist) -> Unit = remember(playlistMultiSelectionState, haptic) {
         { playlist ->
@@ -1794,9 +1796,9 @@ fun LibraryScreen(
                 showPlaylistMultiSelectionSheet = false
             },
             onDeleteAll = {
-                playlistViewModel.deletePlaylistsInBatch(selectedPlaylistIds.toList())
+                pendingDeletePlaylistIds = selectedPlaylistIds.toList()
+                showDeletePlaylistsConfirmDialog = true
                 showPlaylistMultiSelectionSheet = false
-                playlistMultiSelectionState.clearSelection()
             },
             onExportAll = {
                 playlistViewModel.exportPlaylistsAsM3u(selectedPlaylistIds.toList())
@@ -1853,6 +1855,62 @@ fun LibraryScreen(
                 playerViewModel.resetLibraryTabsOrder()
             },
             onDismiss = { showReorderTabsSheet = false }
+        )
+    }
+
+    if (showDeletePlaylistsConfirmDialog && pendingDeletePlaylistIds.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeletePlaylistsConfirmDialog = false
+                pendingDeletePlaylistIds = emptyList()
+            },
+            title = {
+                Text(
+                    stringResource(
+                        R.plurals.presentation_batch_b_delete_playlists_confirm_title,
+                        pendingDeletePlaylistIds.size,
+                        pendingDeletePlaylistIds.size
+                    )
+                )
+            },
+            text = {
+                Text(stringResource(R.string.presentation_batch_b_delete_playlists_confirm_body))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val count = pendingDeletePlaylistIds.size
+                        playlistViewModel.deletePlaylistsInBatch(pendingDeletePlaylistIds)
+                        playlistMultiSelectionState.clearSelection()
+                        Toast.makeText(
+                            context,
+                            context.resources.getQuantityString(
+                                R.plurals.presentation_batch_b_playlists_deleted,
+                                count,
+                                count
+                            ),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        showDeletePlaylistsConfirmDialog = false
+                        pendingDeletePlaylistIds = emptyList()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.delete_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeletePlaylistsConfirmDialog = false
+                        pendingDeletePlaylistIds = emptyList()
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         )
     }
 

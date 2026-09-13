@@ -385,6 +385,7 @@ class PlayerViewModel @Inject constructor(
     private val _sheetState = MutableStateFlow(PlayerSheetState.COLLAPSED)
     val sheetState: StateFlow<PlayerSheetState> = _sheetState.asStateFlow()
     private val _isSheetVisible = MutableStateFlow(false)
+    val isSheetVisible: StateFlow<Boolean> = _isSheetVisible.asStateFlow()
     private val _bottomBarHeight = MutableStateFlow(0)
     val bottomBarHeight: StateFlow<Int> = _bottomBarHeight.asStateFlow()
     private val _predictiveBackCollapseFraction = MutableStateFlow(0f)
@@ -3568,6 +3569,8 @@ class PlayerViewModel @Inject constructor(
 
             if (deletableSongs.isEmpty()) {
                 _toastEvents.emit(context.getString(R.string.player_cannot_delete_currently_playing))
+                multiSelectionStateHolder.clearSelection()
+                onComplete()
                 return@launch
             }
 
@@ -3799,15 +3802,20 @@ class PlayerViewModel @Inject constructor(
     }
 
     suspend fun removeSong(song: Song) {
-        toggleFavoriteSpecificSong(song, true)
-        playbackStateHolder.setCurrentPosition(0L)
+        val isCurrentSong =
+            playbackStateHolder.stablePlayerState.value.currentSong?.id == song.id
+        // Drop favorite flag so a deleted song doesn't linger in favorites.
+        toggleFavoriteSpecificSong(song, removing = true)
+        if (isCurrentSong) {
+            playbackStateHolder.setCurrentPosition(0L)
+            _isSheetVisible.value = false
+        }
         _playerUiState.update { currentState ->
             currentState.copy(
                 currentPlaybackQueue = currentState.currentPlaybackQueue.removeSongById(song.id),
                 currentQueueSourceName = ""
             )
         }
-        _isSheetVisible.value = false
         songRemovalStateHolder.removeSongFromLibrary(song)
     }
 

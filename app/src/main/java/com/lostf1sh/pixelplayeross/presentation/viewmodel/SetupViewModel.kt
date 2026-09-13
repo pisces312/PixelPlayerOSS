@@ -51,12 +51,12 @@ data class SetupUiState(
     val restorePlan: RestorePlan? = null,
     val backupTransferProgress: BackupTransferProgressUpdate? = null
 ) {
-    val allPermissionsGranted: Boolean
-        get() {
-            val mediaOk = mediaPermissionGranted
-            val notificationsOk = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationsPermissionGranted else true
-            return mediaOk && notificationsOk
-        }
+    /**
+     * Permissions required to leave setup. Notifications are optional and must not
+     * block finish or force re-entering setup after the user has completed it.
+     */
+    val requiredPermissionsGranted: Boolean
+        get() = mediaPermissionGranted
 }
 
 sealed interface SetupEvent {

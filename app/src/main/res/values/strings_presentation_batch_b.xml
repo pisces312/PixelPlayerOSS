@@ -66,4 +66,14 @@
         <item quantity="one">%1$d song • %2$s</item>
         <item quantity="other">%1$d songs • %2$s</item>
     </plurals>
+
+    <plurals name="presentation_batch_b_delete_playlists_confirm_title">
+        <item quantity="one">Delete %1$d playlist?</item>
+        <item quantity="other">Delete %1$d playlists?</item>
+    </plurals>
+    <string name="presentation_batch_b_delete_playlists_confirm_body">Only the playlists will be removed. Songs on this device stay intact.</string>
+    <plurals name="presentation_batch_b_playlists_deleted">
+        <item quantity="one">Deleted %1$d playlist</item>
+        <item quantity="other">Deleted %1$d playlists</item>
+    </plurals>
 </resources>

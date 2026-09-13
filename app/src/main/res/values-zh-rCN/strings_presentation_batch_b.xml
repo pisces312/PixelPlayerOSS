@@ -65,4 +65,12 @@
     <plurals name="presentation_batch_b_songs_dot_duration">
         <item quantity="other">%1$d 首歌曲 · %2$s</item>
     </plurals>
+
+    <plurals name="presentation_batch_b_delete_playlists_confirm_title">
+        <item quantity="other">确定删除 %1$d 个歌单？</item>
+    </plurals>
+    <string name="presentation_batch_b_delete_playlists_confirm_body">仅删除歌单本身，设备上的歌曲文件会保留。</string>
+    <plurals name="presentation_batch_b_playlists_deleted">
+        <item quantity="other">已删除 %1$d 个歌单</item>
+    </plurals>
 </resources>
