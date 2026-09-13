@@ -13,6 +13,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -37,17 +38,22 @@ internal enum class MiniPlayerGestureOutcome {
 }
 
 private const val MINI_PLAYER_SKIP_DISTANCE_DP = 56f
-private const val MINI_PLAYER_SKIP_MAX_DISTANCE_DP = 120f
 private const val MINI_PLAYER_FLING_MIN_DISTANCE_DP = 24f
 private const val MINI_PLAYER_FLING_VELOCITY_DP_PER_SECOND = 900f
-private const val MINI_PLAYER_DISMISS_SCREEN_FRACTION = 0.4f
+private const val MINI_PLAYER_DISMISS_SCREEN_FRACTION = 0.30f
+private const val MINI_PLAYER_TENSION_THRESHOLD_DP = 48f
+private const val MINI_PLAYER_TENSION_MAX_OFFSET_DP = 20f
+/** Horizontal drag is abandoned once vertical travel clearly dominates. */
+private const val MINI_PLAYER_AXIS_LOCK_RATIO = 1.15f
 
 /**
  * Classifies a completed mini-player gesture without depending on pointer input state.
  *
  * Previous/next use physical directions on purpose: right is previous and left is next in
- * both LTR and RTL, matching transport gestures in other music players. A deliberate drag
- * past 40% of the screen keeps the existing queue-dismiss interaction.
+ * both LTR and RTL, matching transport gestures in other music players.
+ *
+ * There is no dead zone: any drag past the skip distance that has not reached the
+ * dismiss fraction skips the track; longer drags dismiss the playlist.
  */
 internal fun resolveMiniPlayerGestureOutcome(
     displacementX: Float,
@@ -69,9 +75,6 @@ internal fun resolveMiniPlayerGestureOutcome(
     }
 
     val safeDensity = density.coerceAtLeast(0.1f)
-    if (absoluteDistance > MINI_PLAYER_SKIP_MAX_DISTANCE_DP * safeDensity) {
-        return MiniPlayerGestureOutcome.None
-    }
     val crossedDistanceThreshold = absoluteDistance >= MINI_PLAYER_SKIP_DISTANCE_DP * safeDensity
     val crossedFlingThreshold =
         absoluteDistance >= MINI_PLAYER_FLING_MIN_DISTANCE_DP * safeDensity &&
@@ -126,9 +129,9 @@ internal class MiniPlayerDismissGestureHandler(
 
         when (dragPhase) {
             MiniDismissDragPhase.TENSION -> {
-                val snapThresholdPx = 100f * density.density
+                val snapThresholdPx = MINI_PLAYER_TENSION_THRESHOLD_DP * density.density
                 if (abs(accumulatedDragX) < snapThresholdPx) {
-                    val maxTensionOffsetPx = 30f * density.density
+                    val maxTensionOffsetPx = MINI_PLAYER_TENSION_MAX_OFFSET_DP * density.density
                     val dragFraction = (abs(accumulatedDragX) / snapThresholdPx).coerceIn(0f, 1f)
                     val tensionOffset = lerp(0f, maxTensionOffsetPx, dragFraction)
                     offsetJob?.cancel()
@@ -290,18 +293,41 @@ internal fun Modifier.miniPlayerDismissHorizontalGesture(
     if (!enabled) return this
     return this.pointerInput(enabled, handler) {
         val velocityTracker = VelocityTracker()
+        var startPosition = Offset.Zero
+        var axisLockAbandoned = false
+
         detectHorizontalDragGestures(
-            onDragStart = {
+            onDragStart = { start ->
+                startPosition = start
+                axisLockAbandoned = false
                 velocityTracker.resetTracking()
                 handler.onDragStart()
             },
             onHorizontalDrag = { change, dragAmount ->
+                val totalDx = change.position.x - startPosition.x
+                val totalDy = change.position.y - startPosition.y
+                if (
+                    !axisLockAbandoned &&
+                    abs(totalDy) > abs(totalDx) * MINI_PLAYER_AXIS_LOCK_RATIO &&
+                    abs(totalDy) > viewConfiguration.touchSlop
+                ) {
+                    // Vertical-dominant swipe (e.g. one-handed down drag): abandon transport.
+                    axisLockAbandoned = true
+                    handler.onDragCancel()
+                    return@detectHorizontalDragGestures
+                }
+                if (axisLockAbandoned) return@detectHorizontalDragGestures
                 velocityTracker.addPosition(change.uptimeMillis, change.position)
                 change.consume()
                 handler.onHorizontalDrag(dragAmount)
             },
-            onDragEnd = { handler.onDragEnd(velocityTracker.calculateVelocity().x) },
-            onDragCancel = { handler.onDragCancel() }
+            onDragEnd = {
+                if (axisLockAbandoned) return@detectHorizontalDragGestures
+                handler.onDragEnd(velocityTracker.calculateVelocity().x)
+            },
+            onDragCancel = {
+                handler.onDragCancel()
+            }
         )
     }
 }

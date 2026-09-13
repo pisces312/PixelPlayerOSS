@@ -59,9 +59,9 @@ class MiniPlayerGestureOutcomeTest {
     }
 
     @Test
-    fun `long drag keeps playlist dismiss behavior`() {
+    fun `long drag past dismiss fraction keeps playlist dismiss behavior`() {
         val outcome = resolveMiniPlayerGestureOutcome(
-            displacementX = 450f,
+            displacementX = 320f,
             velocityX = 0f,
             screenWidthPx = 1_000f,
             density = 1f,
@@ -72,7 +72,7 @@ class MiniPlayerGestureOutcomeTest {
     }
 
     @Test
-    fun `cancelled long drag below dismiss threshold does not skip`() {
+    fun `medium drag past skip distance is not a dead zone`() {
         val outcome = resolveMiniPlayerGestureOutcome(
             displacementX = 180f,
             velocityX = 0f,
@@ -81,7 +81,20 @@ class MiniPlayerGestureOutcomeTest {
             layoutDirection = LayoutDirection.Ltr
         )
 
-        assertThat(outcome).isEqualTo(MiniPlayerGestureOutcome.None)
+        assertThat(outcome).isEqualTo(MiniPlayerGestureOutcome.Previous)
+    }
+
+    @Test
+    fun `medium left drag past skip distance plays next`() {
+        val outcome = resolveMiniPlayerGestureOutcome(
+            displacementX = -180f,
+            velocityX = 0f,
+            screenWidthPx = 1_000f,
+            density = 1f,
+            layoutDirection = LayoutDirection.Ltr
+        )
+
+        assertThat(outcome).isEqualTo(MiniPlayerGestureOutcome.Next)
     }
 
     @Test

@@ -76,7 +76,6 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.animation.core.Animatable
@@ -446,7 +445,6 @@ fun LyricsSheet(
     val hapticFeedback = LocalHapticFeedback.current
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var isSwipeActive by remember { mutableStateOf(false) }
-    var hasTriggeredAction by remember { mutableStateOf(false) }
     val swipeThresholdPx = with(LocalDensity.current) { swipeThreshold.toPx() }
     val overlayTranslation = remember { Animatable(0f) }
     val swipeProgress = remember { Animatable(0f) }
@@ -595,10 +593,10 @@ fun LyricsSheet(
             }
             .clip(RoundedCornerShape(32.dp))
             .pointerInput(Unit) {
-                detectDragGestures(
+                // Horizontal-only detector so vertical lyric scrolling stays with LazyColumn.
+                detectHorizontalDragGestures(
                     onDragStart = {
                         isSwipeActive = true
-                        hasTriggeredAction = false
                         dragOffset = 0f
                         resetImmersiveTimer()
                         coroutineScope.launch {
@@ -607,16 +605,15 @@ fun LyricsSheet(
                     },
                     onDragEnd = {
                         isSwipeActive = false
-                        val committed = abs(dragOffset) > swipeThresholdPx && !hasTriggeredAction 
-                        
+                        val committed = abs(dragOffset) > swipeThresholdPx
                         if (committed) {
                             if (dragOffset > 0) onPrev() else onNext()
                             hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                         }
 
                         coroutineScope.launch {
-                             swipeProgress.animateTo(0f, tween(200))
-                             dragOffset = 0f
+                            swipeProgress.animateTo(0f, tween(200))
+                            dragOffset = 0f
                         }
                     },
                     onDragCancel = {
@@ -626,17 +623,13 @@ fun LyricsSheet(
                             swipeProgress.animateTo(0f, tween(200))
                         }
                     },
-                    onDrag = { change, dragAmount ->
+                    onHorizontalDrag = { change, dragAmount ->
                         change.consume()
                         resetImmersiveTimer()
-                        
-                        if (!hasTriggeredAction) {
-                            dragOffset += dragAmount.x
-                            val progress = (abs(dragOffset) / swipeThresholdPx).coerceIn(0f, 1f)
-                            
-                            coroutineScope.launch {
-                                swipeProgress.snapTo(progress)
-                            }
+                        dragOffset += dragAmount
+                        val progress = (abs(dragOffset) / swipeThresholdPx).coerceIn(0f, 1f)
+                        coroutineScope.launch {
+                            swipeProgress.snapTo(progress)
                         }
                     }
                 )
