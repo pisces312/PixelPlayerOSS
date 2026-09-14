@@ -3,6 +3,7 @@ package com.lostf1sh.pixelplayeross.presentation.components
 import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.data.model.SyncedLine
 import com.lostf1sh.pixelplayeross.data.model.SyncedWord
+import com.lostf1sh.pixelplayeross.utils.resolveLineEndTimeMs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

@@ -115,6 +115,8 @@ import com.lostf1sh.pixelplayeross.presentation.components.snapping.SnapperLayou
 import com.lostf1sh.pixelplayeross.presentation.components.snapping.rememberLazyListSnapperLayoutInfo
 import com.lostf1sh.pixelplayeross.presentation.components.snapping.rememberSnapperFlingBehavior
 import com.lostf1sh.pixelplayeross.utils.LyricsUtils
+import com.lostf1sh.pixelplayeross.utils.resolveCurrentLineIndex
+import com.lostf1sh.pixelplayeross.utils.resolveLineEndTimeMs
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.LyricsMoreBottomSheet
 import android.content.BroadcastReceiver
 import android.content.Intent
@@ -1873,12 +1875,6 @@ private fun rememberInterpolatedPlaybackPosition(
     return interpolatedPositionMs
 }
 
-internal fun resolveLineEndTimeMs(line: SyncedLine, nextLineStartMs: Int): Long {
-    val baseEnd = nextLineStartMs.toLong()
-    val lastWordStart = line.words?.maxOfOrNull { it.time.toLong() } ?: line.time.toLong()
-    return maxOf(baseEnd, lastWordStart + 1L)
-}
-
 internal fun resolveHighlightedWordIndex(
     words: List<SyncedWord>,
     positionMs: Long,
@@ -1972,19 +1968,6 @@ internal suspend fun snapToSnapIndex(
     listState.scroll {
         scrollBy(distance.toFloat())
     }
-}
-
-internal fun resolveCurrentLineIndex(
-    lines: List<SyncedLine>,
-    position: Long
-): Int {
-    if (lines.isEmpty()) return -1
-
-    return lines.withIndex().lastOrNull { (index, line) ->
-        val nextTime = lines.getOrNull(index + 1)?.time ?: Int.MAX_VALUE
-        val lineEndTime = resolveLineEndTimeMs(line, nextTime)
-        position in line.time.toLong()..<lineEndTime
-    }?.index ?: -1
 }
 
 @Composable

@@ -49,6 +49,7 @@ import com.lostf1sh.pixelplayeross.data.preferences.EqualizerPreferencesReposito
 import com.lostf1sh.pixelplayeross.data.preferences.ThemePreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
+import com.lostf1sh.pixelplayeross.data.service.player.CarLyricTitleController
 import com.lostf1sh.pixelplayeross.data.service.player.DualPlayerEngine
 import com.lostf1sh.pixelplayeross.data.service.player.TransitionController
 import com.lostf1sh.pixelplayeross.data.service.player.selectCanonicalCloudPlaybackUri
@@ -199,10 +200,8 @@ class MusicService : MediaSessionService() {
     // Outermost session-facing wrapper. The service pushes metadata overrides (car lyric title)
     // through this instance; see LyricTitlePlayer for why the inner player must stay untouched.
     private var lyricTitlePlayer: com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer? = null
-    // Mirrors PreferencesKeys.CAR_LYRIC_TITLE_ENABLED. Read on every publish tick, so it stays a
-    // plain volatile flag instead of re-reading DataStore in the hot path.
-    @Volatile
-    private var carLyricTitleEnabled = false
+    // Drives the car lyric title feature; see CarLyricTitleController for the gating rules.
+    private var carLyricTitleController: com.lostf1sh.pixelplayeross.data.service.player.CarLyricTitleController? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var keepPlayingInBackground = true
     private var isManualShuffleEnabled = false
@@ -232,7 +231,9 @@ class MusicService : MediaSessionService() {
 
     companion object {
         private const val TAG = "MusicService_PixelPlayer"
-        private const val CAR_LYRIC_TITLE_SPIKE_INTERVAL_MS = 1_000L
+        /** Debug-only escape hatch: `adb shell settings put global <name> 1` pretends a Bluetooth
+         *  A2DP sink is connected, which an emulator can never have. Ignored on release builds. */
+        private const val CAR_LYRIC_TITLE_FORCE_A2DP_SETTING = "pixelplayer_car_lyric_title_force_a2dp"
         const val NOTIFICATION_ID = 101
         const val ACTION_SLEEP_TIMER_EXPIRED = "com.lostf1sh.pixelplayeross.ACTION_SLEEP_TIMER_EXPIRED"
         const val EXTRA_FORCE_FOREGROUND_ON_START =
@@ -744,7 +745,7 @@ class MusicService : MediaSessionService() {
             requestWidgetFullUpdate(force = true)
         }
 
-        startCarLyricTitleSpike()
+        startCarLyricTitle()
 
         serviceScope.launch {
             musicRepository.getFavoriteSongIdsFlow().collect { ids ->
@@ -767,56 +768,43 @@ class MusicService : MediaSessionService() {
         }
     }
 
+    private fun startCarLyricTitle() {
+        if (carLyricTitleController != null) return
+        carLyricTitleController = CarLyricTitleController(
+            scope = serviceScope,
+            musicRepository = musicRepository,
+            userPreferencesRepository = userPreferencesRepository,
+            playerProvider = { lyricTitlePlayer },
+            isBluetoothOutputActive = ::isCarLyricTitleOutputActive
+        ).also { it.start() }
+    }
+
     /**
-     * TEMPORARY spike for the car-lyric-title feature. Proves that a metadata override pushed
-     * through [com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer] reaches external
-     * session consumers (Bluetooth AVRCP stack / notification / SMTC) without mutating the inner
-     * player's playlist.
+     * Whether the car lyric title may replace the session title: true only while Bluetooth is the
+     * active output, so wired headphones or the phone speaker keep showing the real track title.
      *
-     * Gated by [UserPreferencesRepository.carLyricTitleEnabledFlow] (off by default). While the
-     * preference is off the override is cleared, so the title stays the real track title.
-     * Debug builds only, and the title is a placeholder clock so the effect is unambiguous in
-     * `adb shell dumpsys media_session`.
+     * Note that Android exposes no API for the peer's AVRCP version, and none is needed: a head
+     * unit that cannot render metadata simply never asks for it. The condition here is about *our*
+     * routing, not the remote's capability.
      *
-     * Remove this once the real lyric pipeline replaces the placeholder title.
+     * Debug builds additionally honour [CAR_LYRIC_TITLE_FORCE_A2DP_SETTING], because an emulator has
+     * no A2DP sink and the feature would otherwise be impossible to exercise locally.
      */
-    private fun startCarLyricTitleSpike() {
-        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
-
-        serviceScope.launch {
-            userPreferencesRepository.carLyricTitleEnabledFlow.collect { enabled ->
-                // publishMetadataOverride must run on the application thread (Media3 verifies it
-                // inside the listener callback).
-                withContext(Dispatchers.Main.immediate) {
-                    carLyricTitleEnabled = enabled
-                    if (!enabled) {
-                        // Opting out must restore the real track title right away, not on the next
-                        // tick, so the car never shows a stale lyric line.
-                        lyricTitlePlayer?.publishMetadataOverride(null)
-                    }
-                }
-            }
+    private fun isCarLyricTitleOutputActive(): Boolean {
+        if (hasBluetoothA2dpOutput()) return true
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) {
+            return false
         }
+        return android.provider.Settings.Global.getInt(
+            contentResolver,
+            CAR_LYRIC_TITLE_FORCE_A2DP_SETTING,
+            0
+        ) == 1
+    }
 
-        var tick = 0L
-        serviceScope.launch {
-            while (true) {
-                delay(CAR_LYRIC_TITLE_SPIKE_INTERVAL_MS)
-                val wrapper = lyricTitlePlayer ?: continue
-                if (!carLyricTitleEnabled) continue
-                tick++
-                val title = if (wrapper.isPlaying) {
-                    val positionMs = wrapper.currentPosition.coerceAtLeast(0L)
-                    "[SPIKE] %d:%02d".format(positionMs / 60_000, (positionMs / 1000) % 60)
-                } else {
-                    "[SPIKE] idle #%d".format(tick)
-                }
-                wrapper.publishMetadataOverride(
-                    wrapper.innerPlayer.mediaMetadata.buildUpon().setTitle(title).build()
-                )
-                Timber.tag(TAG).d("car lyric title spike: %s", title)
-            }
-        }
+    private fun hasBluetoothA2dpOutput(): Boolean {
+        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
     }
 
     private fun startTemporaryForegroundForCommand() {

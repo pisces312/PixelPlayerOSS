@@ -1,7 +1,7 @@
 # 车机歌词标题（蓝牙 AVRCP）
 
-> 状态：**已实现并接入设置开关（默认关闭）**；核心机制已在模拟器验证通过（见 §9）。
-> 相关代码：`data/service/player/LyricTitlePlayer.kt`、`data/service/MusicService.kt`（含临时占位载荷）
+> 状态：**已完整实现**（真实歌词 + 蓝牙 A2DP 门控 + 设置开关，默认关闭），已在模拟器上端到端验证（见 §9）。
+> 相关代码：`data/service/player/LyricTitlePlayer.kt`、`data/service/player/CarLyricTitleController.kt`、`data/service/MusicService.kt`、`utils/LyricsTimelineUtils.kt`
 
 ## 1. 需求与来源
 
@@ -161,41 +161,60 @@ player.replaceMediaItem(index, item.buildUpon()
 
 ### 6.2 Service 接入
 
-- 新增字段 `lyricTitlePlayer: LyricTitlePlayer?` 与 `@Volatile carLyricTitleEnabled: Boolean`
+- 新增字段 `lyricTitlePlayer: LyricTitlePlayer?`（最外层包装实例）与 `carLyricTitleController: CarLyricTitleController?`
 - `wrapFadingPlayer()` 在最外层再包一层并记录实例
 - 新增 `Player.unwrapLyricTitlePlayer()`，并把 `publishMediaSessionPlayer()` 里的解包链改为 `unwrapLyricTitlePlayer().unwrapMappingPlayer().unwrapFadingPlayer()`
-- 新增 `startCarLyricTitleSpike()`，在 `onCreate` 的 `serviceScope` 里启动
+- `onCreate` 的 `serviceScope` 里调用 `startCarLyricTitle()`
+- `isCarLyricTitleOutputActive()` / `hasBluetoothA2dpOutput()`：输出路由判定（见 §6.4）
 
-### 6.3 开关门控（本次新增）
+### 6.3 运行期驱动：`CarLyricTitleController`
 
-`startCarLyricTitleSpike()` **仅在 debuggable 构建生效**（检查 `ApplicationInfo.FLAG_DEBUGGABLE`），并且受设置开关 `carLyricTitleEnabledFlow` 控制：
+`data/service/player/CarLyricTitleController.kt`。单独成类而不是塞进 `MusicService`，是因为它有自己的跨歌状态（当前歌曲、歌词行、上次推送的行、路由缓存），放进 Service 字段会继续膨胀那个已有 30+ 播放状态字段的类。
 
-```kotlin
-serviceScope.launch {
-    userPreferencesRepository.carLyricTitleEnabledFlow.collect { enabled ->
-        withContext(Dispatchers.Main.immediate) {   // 必须在应用线程
-            carLyricTitleEnabled = enabled
-            if (!enabled) lyricTitlePlayer?.publishMetadataOverride(null)  // 立即恢复原标题
-        }
-    }
-}
-```
+两个协程：
 
-- 开关**关闭时立即**清掉覆盖值，而不是等下一个 tick——车机不会残留上一行歌词。
-- 发布循环每次 tick 检查 `carLyricTitleEnabled`，关闭时直接跳过，不做任何多余工作。
-- `withContext(Dispatchers.Main.immediate)` 是必需的：DataStore 的 flow 不保证在主线程序列上发射，而 `publishMetadataOverride` 必须在应用线程调用。
+1. **订阅开关**（`carLyricTitleEnabledFlow`）：值变化时更新 `enabled`；**关闭时立即** `publishMetadataOverride(null)`，不等下一个 tick——否则车机会残留上一行歌词直到换歌。
+2. **轮询**（`POLL_INTERVAL_MS = 500ms`）：每 tick 依次判定，任一不满足就回收覆盖值并记录原因：
 
-### 6.4 占位载荷（临时）
+| 判定 | 不满足时 |
+|---|---|
+| 开关已打开 | 恢复原标题 |
+| 当前输出是蓝牙 A2DP | 恢复原标题 |
+| 已加载歌曲（`mediaId` 能查到 Song） | 恢复原标题 |
+| 该歌有**同步**歌词（`synced` 非空） | 恢复原标题 |
 
-当前 tick 推送的是 `[SPIKE] m:ss`（播放中）或 `[SPIKE] idle #n`（未播放），同时打日志：
+全部通过后取 `resolveCurrentLineIndex(lines, position + syncOffsetMs)`，**仅当行文本变化时**才推送。
 
-```
-MusicService_PixelPlayer  car lyric title spike: [SPIKE] 0:42
-```
+其他设计点：
 
-用播放进度而不是真实歌词，是为了让"标题是否真的被推送到下游"可被客观观察，并把变量降到最少。
+- **换歌处理**：`mediaId` 变化时立刻清覆盖值 + 取消上一个歌词加载任务，再异步加载新歌歌词，避免上一首的行短暂盖在新歌标题上。
+- **歌词来源**：`musicRepository.getLyrics(song)`，默认 `EMBEDDED_FIRST`（内嵌标签 → 远程 API → 本地 `.lrc`）。冷缓存时可能走网络，与打开歌词页行为一致；结果会持久化，之后离线可命中。
+- **同步偏移**：叠加用户为这首歌设置的 `lyricsSyncOffset`，保证车机与 App 内歌词页显示同一行。
+- **线程**：tick 全程在 `Dispatchers.Main.immediate`（`publishMetadataOverride` 必须在应用线程）；歌词加载在 IO 上，不阻塞轮询。
+- **去抖**：`LyricTitlePlayer` 内部的 `metadataOverride == override` 比较**不可靠**——`MediaMetadata` 内嵌 `Bundle`，新构造的 `Bundle` 不保证相等。所以 `lastPublishedLine` 是必需的。
+- **路由判定缓存**：每 2s 重算一次（`AudioManager.getDevices` 是 binder 调用，不必每 500ms 问一次）。
+- **异常隔离**：tick 外层 `runCatching`，单次失败不至于杀死循环——否则功能会静默失效，用户侧毫无提示。
 
-**正式实现时把这段替换成"当前歌词行"即可，推送通路完全一致**（见 §11）。
+### 6.4 门控规则：什么时候才真的启用
+
+三个条件同时满足才改写标题：
+
+1. **设置开关打开**（默认关）；
+2. **当前输出是蓝牙 A2DP 设备**（`AudioManager.getDevices(GET_DEVICES_OUTPUTS)` 含 `TYPE_BLUETOOTH_A2DP`）；
+3. **当前歌曲有同步歌词**。
+
+第 2 条为什么必要：覆盖值对**所有** `MediaSession` 消费者可见，不只是车机——通知栏、锁屏、Windows SMTC 读的是同一份 `MediaMetadata`。没有这条，插着有线耳机看手机时，歌曲标题的位置也会变成歌词。
+
+关于「**车机是否支持**」：Android 没有公开 API 查询对端的 AVRCP 版本，而且**不需要**——不支持元数据的车机根本不会发 `GetElementAttributes`，覆盖值对它没有任何影响。所以"设备是否支持"在手机侧既无法探测、也不必探测；能探测且必须探测的是"我们自己是否在走蓝牙输出"。
+
+> 调试便利：debug 构建额外识别全局设置 `pixelplayer_car_lyric_title_force_a2dp`
+> （`adb shell settings put global pixelplayer_car_lyric_title_force_a2dp 1`），用于在没有 A2DP 消费端的模拟器上验证。release 构建忽略它。
+
+### 6.5 行解析工具提取
+
+`resolveCurrentLineIndex` / `resolveLineEndTimeMs` 原本是 `LyricsSheet.kt` 里的 `internal` 顶层函数，只有 Composable 侧能用。因为 `data` 层也需要，移到 `utils/LyricsTimelineUtils.kt`（`data` 反向依赖 `presentation` 是架构坏味道），逻辑一字未改；`LyricsSheet.kt` 与既有 `LyricsSheetLogicTest` 改为 import。新增 `LyricsTimelineUtilsTest` 覆盖边界：空时间轴、首行之前、行区间映射、末行之后、seek 回跳、逐字时间晚于下一行起点。
+
+> 早期版本曾用 `[SPIKE] m:ss` 占位载荷来验证推送通路（§9.1 记录的就是那一版），现已替换为真实歌词行，占位代码已删除。
 
 ## 7. 设置开关（已落地）
 
@@ -251,7 +270,7 @@ L2 最值得先做——**它直接观察的就是车机将要读到的那一份
 |---|---|---|
 | 车机视角的数据 | `dumpsys media_session` 的 `metadata: size=…, description=<title>, …` | 与开关状态一致 |
 | 队列是否被动过 | 同一份 dump 的 `active item id=` / `queueTitle=null, size=` | 全程不变 |
-| 推送频率 | `adb logcat -d -s MusicService_PixelPlayer \| grep "car lyric title spike"` | 开关关闭时为 0 条 |
+| 推送频率 | `adb logcat -d -s MusicService_PixelPlayer \| grep "car lyric title"` | 开关关闭时无推送行 |
 
 > `dumpsys media_session` 之所以能代表车机：蓝牙 AVRCP 的 `GetElementAttributes` 由 AOSP 蓝牙栈从 `MediaSession` 的 legacy stub 读**同一份** `MediaMetadata`（§3.1）。
 
@@ -261,6 +280,8 @@ L2 最值得先做——**它直接观察的就是车机将要读到的那一份
 | 2 | 开关默认关闭时标题保持原样、打开后才改写 | 同上，切换设置开关并对比 `dumpsys` | **通过**（见 §9.2） |
 | 3 | `replaceMediaItem` 是否真的触发 `onMediaItemTransition`（路线 A 的守卫范围） | 打日志 + 播放观察统计是否被重复记录 | 未验证（走 B 则不需要） |
 | 4 | 蓝牙栈在 mediaId 不变、仅 metadata 变化时发的是 `Now playing changed` 还是 `Track changed` | 真机 + 蓝牙设备抓 btsnoop | 未验证（模拟器无蓝牙音频链路） |
+| 5 | 真实歌词行按时间轴推进（端到端） | 45s 曲目 + 8 行 LRC（每 3s 一行），连续采样 `dumpsys` 对照 `position` | **通过**（见 §9.3） |
+| 6 | 三者同时满足才启用：开关开 **且** 蓝牙输出 **且** 有同步歌词 | 增删 debug 路由标志 / 切换开关 / 有歌词与无歌词曲目对照 | **通过**（见 §9.3） |
 
 ### 9.1 假设 1：通过
 
@@ -306,59 +327,142 @@ logcat（`MusicService_PixelPlayer`）同步显示埋点每秒推送，且运行
 
 三条结论：
 
-1. **默认关闭是真的**：全新安装（未触碰开关）时标题是真实曲名，埋点日志一条都没有——发布循环在 `carLyricTitleEnabled == false` 时整轮跳过，不产生任何推送。
-2. **开启后标题被改写**：`metadata.description` 变成 `[SPIKE] ...`，说明开关 → 偏好项 → `@Volatile` 标志 → 发布循环 → `publishMetadataOverride()` 全链路连通。
+1. **默认关闭是真的**：全新安装（未触碰开关）时标题是真实曲名，埋点日志一条都没有——发布循环在 `enabled == false` 时整轮跳过，不产生任何推送。
+2. **开启后标题被改写**：`metadata.description` 变成 `[SPIKE] ...`，说明开关 → 偏好项 → 控制器标志 → 轮询 → `publishMetadataOverride()` 全链路连通。
 3. **关闭立即恢复**：T+3s 时（早于"等下一个 tick 才清理"的做法）标题已恢复为真实曲名，且有日志停在 `#16` 佐证推送已停止。这验证了 §6.3 里"关闭时立刻 `publishMetadataOverride(null)`"的必要性——否则车机会残留上一行歌词直到换歌。
 
 **队列仍然零改动**：整个过程 `active item id=88` 保持不变，与假设 1 的结论一致。
 
 **设置搜索**：在设置搜索框输入 `avrcp`（只在 `SettingsRegistry` 的 `keywordsStatic` 里出现），返回结果为「播放 › 标题显示歌词」+ 其副标题，确认第 4 步注册生效。
 
+### 9.3 真实歌词 + 蓝牙门控：通过
+
+这一轮把占位载荷换成真实歌词行，并补上"A2DP 输出"门控。模拟器**没有 A2DP 消费端**，因此用 debug 专用标志 `pixelplayer_car_lyric_title_force_a2dp` 伪造路由（见 §6.4）。
+
+**准备一首带同步歌词的曲目**。模拟器曲库里的本地文件，歌词有三个可能来源，最终选了最稳的一条：
+
+| 方案 | 结果 |
+|---|---|
+| 同目录同名 `.lrc` | ✗ App 未声明 `MANAGE_EXTERNAL_STORAGE`，targetSdk 37 的分区存储下读不到非媒体文件（`appops set` 也补不上：未声明的权限无法授予） |
+| 内嵌标签 | ✓ ffmpeg 写 ID3v2 `USLT`（`-metadata lyrics="[mm:ss.xx]..."`），TagLib 读出 `LYRICS` 键，`LyricsUtils.parseLyrics` 解析成逐行时间轴 |
+| Room `songs.lyrics` 字段 | ✓ 直接 `UPDATE`，不动文件、不改 id（最终采用） |
+
+**踩坑：MediaStore 的 id 不稳定。** 用内嵌标签方案覆盖 mp3 后，MediaStore 把它当成"删除 + 新增"，id 随之变化；而播放队列里的项仍持有旧 id（如 `1000001209`），于是 `getSong(mediaId)` 查不到 → 走"无歌曲"降级。这不是缺陷，而是"恢复历史队列快照 + 曲库重扫"的正常组合，且降级行为正确（保持原标题）。为了把"有歌词"这一环验证稳，最终改为写 Room 字段，避免触碰文件：
+
+```bash
+# 给 id=1000001891 的曲目写入 8 行 LRC（每 3 秒一行）
+# char(10) 拼换行，绕开 adb shell 的转义问题
+adb shell "run-as com.lostf1sh.pixelplayeross.debug sqlite3 databases/pixelplayer_database \
+  \"update songs set lyrics = '[00:00.00]CARLYRIC alpha' || char(10) || '[00:03.00]CARLYRIC bravo' ... where id = 1000001891\""
+```
+
+**正路径**（开关开 + 路由标志开 + 有同步歌词）：从搜索结果点播该曲目，采样 `position` 与 `metadata.description`：
+
+| `position` | `metadata.description` |
+|---|---|
+| 3241 | `CARLYRIC bravo` |
+| 6162 | `CARLYRIC charlie` |
+| 9090 | `CARLYRIC delta` |
+| 12241 | `CARLYRIC echo` |
+| 15136 | `CARLYRIC foxtrot` |
+| 18033 | `CARLYRIC golf` |
+| 21225 | `CARLYRIC hotel` |
+
+日志时间戳间隔恰好 ~3.0s，与 LRC 时间轴一致：
+
+```
+01:34:55.300  car lyric title: CARLYRIC alpha
+01:34:57.819  car lyric title: CARLYRIC bravo
+01:35:00.838  car lyric title: CARLYRIC charlie
+01:35:03.853  car lyric title: CARLYRIC delta
+```
+
+**路由门控实时生效**（播放中直接增删标志，无需重启 App）：
+
+| 操作 | 日志 | `metadata.description` |
+|---|---|---|
+| `settings delete`（≈蓝牙断开） | `bluetooth output inactive` → `idle: bluetooth output not active` | 恢复为 `Night Tone` |
+| `settings put ... 1`（≈蓝牙连上） | `bluetooth output active` → `active: 8 synced lines` | 回到 `CARLYRIC hotel`（当前行） |
+
+重新连上时**没有重新加载歌词**（复用已加载的 8 行），缓存路径也正确。
+
+**开关门控**（在正在播放有歌词曲目的状态下切换）：
+
+| 开关 | 日志 | `metadata.description` |
+|---|---|---|
+| 关 | `toggle off` → `idle: toggle off` | `Night Tone`（真实曲名） |
+| 开 | `toggle on` → `active: 8 synced lines` | `CARLYRIC hotel` |
+
+**无歌词曲目**：切到没有歌词的曲目，日志 `loaded 0 synced lines` → `idle: no synced lyrics`，标题保持真实曲名。
+
+**全程队列零改动**：`active item id` 与队列长度始终不变，与 §9.1 结论一致。
+
+**排查记录（一个值得留下的失败）**：第一版实现把路由缓存哨兵写成 `lastRoutingCheckUptimeMs = Long.MIN_VALUE`，判定式为 `now - lastRoutingCheckUptimeMs < INTERVAL` —— `now - Long.MIN_VALUE` **溢出**成负数，判定恒为真，"缓存值 false"被永久返回，**路由检查一次都没执行过**。表象极具迷惑性：门控"看起来正常工作"（标题确实没被改），实际机制根本没跑。改成 `0L` 初值、并把缓存变量改为可空类型（使首次结果必定打日志）之后才暴露。教训：拿极值当哨兵并参与减法之前，先想溢出。
+
 ### 复现步骤
 
 ```bash
-# 1. 模拟器是 x86_64，arm64-only 的 APK 装不上，必须构 universal（会覆盖同目录 arm64 产物，先备份）
+# 1. 模拟器是 x86_64，arm64-only 的 APK 装不上，必须构 universal
+#    （会清掉同目录的 arm64 产物，验证完记得重建 arm64）
 ./gradlew :app:assembleDebug -Ppixelplayer.enableAbiSplits=false
 
-# 2. 装 & 启动
+# 2. 装 & 授权 & 启动
 adb install -r -d app/build/outputs/apk/debug/pixelplayeross-universal-*.apk
+adb shell pm grant com.lostf1sh.pixelplayeross.debug android.permission.READ_MEDIA_AUDIO
 adb shell monkey -p com.lostf1sh.pixelplayeross.debug -c android.intent.category.LAUNCHER 1
 
-# 3. 看车机视角的数据（默认关闭应为真实曲名，且无 spike 日志）
-adb shell dumpsys media_session | grep -A 28 com.lostf1sh | grep -E "metadata|controllers|active item"
-adb logcat -d -s MusicService_PixelPlayer | grep -c "car lyric title spike"   # 期望 0
-
-# 4. 打开开关：设置 → 播放 → 车载蓝牙 → 标题显示歌词
-#    手动点即可；无头环境下用 uiautomator 定位开关（该页三个 Switch 中的第二个）
-adb shell input tap 970 213        # 右上角齿轮
-adb shell input tap 500 1234       # 「播放」分类
-adb shell input swipe 540 1600 540 500 300; adb shell input swipe 540 1600 540 500 300
-adb shell input swipe 540 700 540 1100 300
+# 3. 打开开关：设置 → 播放 → 车载蓝牙 → 标题显示歌词
+#    无头环境下先 dump 拿到标题的 bounds，switch 与标题同一垂直位置
+adb shell input tap 970 213                   # 右上角齿轮
+adb shell input tap 500 1234                  # 「播放」分类
+adb shell input swipe 540 1600 540 500 300    # 向下滚 ×3
+adb shell input swipe 540 700 540 1300 300    # 回滚一点，让该行进入可视区
+adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | tr '<' '\n<' \
+  | grep -oE 'text="标题显示歌词"[^/]*bounds="[^"]+"'
 adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | tr '<' '\n<' \
   | grep 'checkable="true"' | grep -oE 'checked="[^"]+"[^/]*bounds="[^"]+"'
-adb shell input tap 927 430        # 车载蓝牙那一行的开关
+adb shell input tap 927 789                   # 与标题同一垂直位置的 switch
+
+# 4. 伪造蓝牙 A2DP 路由（仅 debug 构建识别；模拟器没有 A2DP 消费端，见 §6.4）
+adb shell settings put global pixelplayer_car_lyric_title_force_a2dp 1
+
+# 5. 观察车机视角的数据 + 门控日志
+adb shell dumpsys media_session | grep -A 12 com.lostf1sh | grep -E "metadata:|active item"
+adb logcat -s MusicService_PixelPlayer | grep "car lyric title"
+
+# 6. 给某首歌注入同步歌词（不动文件，id 稳定），再播放它
+#    char(10) 拼换行以避开 adb shell 的转义问题
+adb shell "run-as com.lostf1sh.pixelplayeross.debug sqlite3 databases/pixelplayer_database \
+  \"update songs set lyrics = '[00:00.00]L0' || char(10) || '[00:03.00]L1' || char(10) || '[00:06.00]L2' \
+     where id = <songId>\""
+
+# 7. 反向验证：删掉门控标志应立刻恢复真实曲名
+adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 ```
 
 ## 10. 改动文件清单（截至本文档）
 
 | 文件 | 状态 |
 |---|---|
-| `data/service/player/LyricTitlePlayer.kt` | 新增 |
-| `data/service/MusicService.kt` | 改（包装链 + 门控 + 占位载荷） |
+| `data/service/player/LyricTitlePlayer.kt` | 新增（出站 metadata 覆盖层） |
+| `data/service/player/CarLyricTitleController.kt` | 新增（门控 + 歌词行 → 标题） |
+| `utils/LyricsTimelineUtils.kt` | 新增（`resolveCurrentLineIndex` / `resolveLineEndTimeMs` 从 `LyricsSheet.kt` 移入） |
+| `data/service/MusicService.kt` | 改（包装链 + 解包链 + 启动控制器 + A2DP 路由判定 + debug 逃生标志） |
 | `data/preferences/UserPreferencesRepository.kt` | 改（偏好项） |
 | `presentation/viewmodel/SettingsViewModel.kt` | 改（UiState / Group2 / 开关方法） |
 | `presentation/screens/SettingsCategoryScreen.kt` | 改（PLAYBACK 子节 + 开关 UI） |
 | `presentation/settings/search/SettingsRegistry.kt` | 改（设置搜索注册） |
+| `presentation/components/LyricsSheet.kt` | 改（行解析改为 import utils） |
 | `res/values/strings_settings.xml`、`res/values-zh-rCN/strings_settings.xml` | 改（中英成对） |
 | `res/drawable/rounded_directions_car_24.xml` | 新增 |
+| `test/.../utils/LyricsTimelineUtilsTest.kt` | 新增（行解析边界） |
+| `test/.../presentation/components/LyricsSheetLogicTest.kt` | 改（改 import） |
 
-## 11. 尚未完成 / 后续
+## 11. 未完成 / 后续
 
-1. **接入真实歌词**：把 §6.4 的占位载荷换成
-   `resolveCurrentLineIndex(lyrics.synced, position)` 的结果。同时把 `resolveCurrentLineIndex` 从 `LyricsSheet.kt:1977` 提到 `utils/` 并补单测（L1）。
-2. **仅 A2DP 输出时启用**：`AudioManager.getDevices(GET_DEVICES_OUTPUTS)` 出现 `TYPE_BLUETOOTH_A2DP` 才改写，避免插耳机/外放时标题也被改。
-3. **文案策略**：`TITLE` = 当前歌词行，`ARTIST` 保留原曲名（车机通常两行，用户还能知道在放什么歌）。
-4. **降级**：无 synced 歌词 / 加载失败 / 云端曲目 → 保持原标题不动。
-5. **换歌清空**：`onMediaItemTransition` 里清 `metadataOverride`，避免上一首的歌词盖到下一首。
-6. **移除调试限制**：`startCarLyricTitleSpike()` 的 `FLAG_DEBUGGABLE` 早退与占位前缀一起删掉。
-7. **真机验证**：假设 4（是否被误判换曲）必须真机 + 蓝牙设备抓 btsnoop 才能定论。
+1. **真机验证（唯一剩下的风险）**：`mediaId` 不变、仅 metadata 变化时，蓝牙栈发的是 `Now playing changed`(0x09) 还是 `Track changed`(0x02)。若是后者，部分车机会重置进度条或误判换曲。方法：开发者选项开启「蓝牙 HCI 信息收集日志」→ `adb pull /sdcard/btsnoop_hci.log` → Wireshark 过滤 `btavrcp`。**顺带一提**：验证正路径不必等车机——任何蓝牙音频设备（耳机/音箱）都走同一条 A2DP 路径，标题同样会被改写。
+2. **通知栏文案**：只改 `TITLE`，`ARTIST` 保持歌手名。曾考虑把 ARTIST 换成原曲名（车机两行都能用上），但通知栏与锁屏读的是同一份 metadata，会显示成「歌名 / 歌名」，得不偿失，故不采用。
+3. **播放结束后**：实测标题停在最后一行歌词（歌曲播完 `state=STOPPED` 时仍是 `CARLYRIC hotel`）。若希望播完恢复曲名，在 `STATE_ENDED` 时清一次覆盖值即可。
+4. **调试逃生口**：`pixelplayer_car_lyric_title_force_a2dp` 只在 debuggable 构建读取，release 忽略。不建议放开给 release。
+5. **云端曲目的歌词**：Navidrome 有 `getLyrics` 但未接入 `LyricsRepository`，Jellyfin 无该接口 → 云端曲目基本拿不到歌词，会走"保持原标题"的降级路径。想支持的话要先把服务端歌词接进 `LyricsRepository`。
+6. **无同步歌词的歌**：只有 `plain` 歌词不会启用（没有时间轴就无法定位当前行）。若将来想做"整段歌词滚动"，那是另一套切片机制。
