@@ -532,18 +532,46 @@ class PlaylistViewModel @Inject constructor(
     fun openSerendipity() {
         _serendipityState.value = SerendipityUiState()
         viewModelScope.launch {
-            val context = runCatching { serendipityContextCollector.collect() }.getOrNull()
-            // The sheet may have been dismissed while the weather call was in flight.
-            if (_serendipityState.value == null) return@launch
-            val variant = Random.nextInt(SerendipityPromptComposer.VARIANT_COUNT)
-            _serendipityState.value =
-                    SerendipityUiState(
-                            context = context,
-                            prompt = context?.let { SerendipityPromptComposer.compose(it, variant) }.orEmpty(),
-                            variant = variant,
-                            isCollecting = false
-                    )
+            val composed = collectAndComposeSerendipity() ?: return@launch
+            _serendipityState.value = composed
         }
+    }
+
+    /**
+     * Long-press shortcut: gather the signals and immediately start generation with defaults,
+     * skipping the manual confirm step. The same sheet observes the collecting/generating states,
+     * so the UI needs no separate "quick" flow.
+     */
+    fun quickGenerateSerendipity() {
+        _serendipityState.value = SerendipityUiState()
+        viewModelScope.launch {
+            val composed = collectAndComposeSerendipity() ?: return@launch
+            _serendipityState.value = composed
+            // No signal could be composed: leave the sheet on the manual input phase as a fallback
+            // instead of pretending generation started.
+            if (composed.prompt.isBlank()) return@launch
+            startPreview(composed.prompt) {
+                aiPlaylistGenerator.generateSerendipity(composed.prompt, DEFAULT_AI_MIX_LENGTH)
+            }
+        }
+    }
+
+    /**
+     * Collects the moment's signals and turns them into a local prompt sentence.
+     *
+     * Returns null when Serendipity was closed while collection (which may include a weather
+     * network call) was still in flight.
+     */
+    private suspend fun collectAndComposeSerendipity(): SerendipityUiState? {
+        val context = runCatching { serendipityContextCollector.collect() }.getOrNull()
+        if (_serendipityState.value == null) return null
+        val variant = Random.nextInt(SerendipityPromptComposer.VARIANT_COUNT)
+        return SerendipityUiState(
+                context = context,
+                prompt = context?.let { SerendipityPromptComposer.compose(it, variant) }.orEmpty(),
+                variant = variant,
+                isCollecting = false
+        )
     }
 
     /** Another wording from the same signals: no re-collection, no network, no cost. */

@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.presentation.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,9 +23,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -55,7 +59,10 @@ fun AiGenerateEntryCard(
         configured: Boolean,
         onClick: () -> Unit,
         modifier: Modifier = Modifier,
-        onSerendipityClick: (() -> Unit)? = null
+        onSerendipityClick: (() -> Unit)? = null,
+        // Long press on Serendipity: collect the signals and generate without opening the input
+        // step first. Null keeps the pill click-only (and the describe card never sets it).
+        onSerendipityLongClick: (() -> Unit)? = null
 ) {
     val shape =
             AbsoluteSmoothCornerShape(
@@ -140,7 +147,8 @@ fun AiGenerateEntryCard(
                                 // A touch brighter than the plain pill so the special action reads
                                 // as the more prominent of the two.
                                 color = onCard.copy(alpha = 0.24f),
-                                onClick = onSerendipityClick
+                                onClick = onSerendipityClick,
+                                onLongClick = onSerendipityLongClick
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         // Not clickable on its own: the whole card already opens the describe sheet.
@@ -156,14 +164,20 @@ fun AiGenerateEntryCard(
     }
 }
 
-/** Capsule used for the card actions; a null [onClick] renders a plain label pill. */
+/**
+ * Capsule used for the card actions; a null [onClick] renders a plain label pill.
+ *
+ * [onLongClick] carries the standard long-press haptic; combinedClickable does not fire one itself.
+ */
 @Composable
 private fun ActionPill(
         text: String,
         color: Color,
         icon: ImageVector? = null,
-        onClick: (() -> Unit)? = null
+        onClick: (() -> Unit)? = null,
+        onLongClick: (() -> Unit)? = null
 ) {
+    val haptic = LocalHapticFeedback.current
     val content: @Composable () -> Unit = {
         Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
@@ -186,8 +200,26 @@ private fun ActionPill(
         }
     }
 
-    if (onClick != null) {
-        Surface(onClick = onClick, shape = CircleShape, color = color) { content() }
+    if (onClick != null || onLongClick != null) {
+        Surface(
+                shape = CircleShape,
+                color = color,
+                modifier =
+                        Modifier.clip(CircleShape).combinedClickable(
+                                onClick = { onClick?.invoke() },
+                                onLongClick =
+                                        onLongClick?.let { action ->
+                                            {
+                                                haptic.performHapticFeedback(
+                                                        HapticFeedbackType.LongPress
+                                                )
+                                                action()
+                                            }
+                                        }
+                        )
+        ) {
+            content()
+        }
     } else {
         Surface(shape = CircleShape, color = color) { content() }
     }

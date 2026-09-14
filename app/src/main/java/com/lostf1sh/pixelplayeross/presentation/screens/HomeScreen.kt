@@ -165,9 +165,14 @@ fun HomeScreen(
     // Which button opened the sheet: both share it, only the input phase differs.
     var aiEntryIsSerendipity by remember { mutableStateOf(false) }
 
-    val openSerendipitySheet: () -> Unit = {
+    // The permission result arrives after the system dialog, so the long-press intent is
+    // remembered here: a long press starts generation automatically once the callback fires.
+    var pendingQuickSerendipity by remember { mutableStateOf(false) }
+
+    val openSerendipitySheet: (Boolean) -> Unit = { quick ->
         aiEntryIsSerendipity = true
-        playlistViewModel.openSerendipity()
+        if (quick) playlistViewModel.quickGenerateSerendipity()
+        else playlistViewModel.openSerendipity()
         showAiMixSheet = true
     }
 
@@ -176,12 +181,14 @@ fun HomeScreen(
     val serendipityPermissionLauncher =
             rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions()
-            ) { openSerendipitySheet() }
+            ) { openSerendipitySheet(pendingQuickSerendipity) }
 
     // Both AI card actions share this guard: with no provider configured they route to AI settings.
-    val openAiEntry: (Boolean) -> Unit = { serendipity ->
+    // "quick" is the Serendipity long press: collect signals and generate without another tap.
+    val openAiEntry: (Boolean, Boolean) -> Unit = { serendipity, quick ->
         if (isAiConfigured) {
             if (serendipity) {
+                pendingQuickSerendipity = quick
                 serendipityPermissionLauncher.launch(
                         if (serendipityWantsLocation) SerendipityLocationPermissions
                         else SerendipityStepPermissions
@@ -343,10 +350,12 @@ fun HomeScreen(
                     AiGenerateEntryCard(
                         configured = isAiConfigured,
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        onClick = { openAiEntry(false) },
+                        onClick = { openAiEntry(false, false) },
                         // Serendipity asks for the location and step permissions before it opens,
                         // because the collected context is what its sheet explains.
-                        onSerendipityClick = { openAiEntry(true) }
+                        onSerendipityClick = { openAiEntry(true, false) },
+                        // Long press skips the confirm step and generates straight away.
+                        onSerendipityLongClick = { openAiEntry(true, true) }
                     )
                 }
                 if (recentAiMixes.isNotEmpty()) {
