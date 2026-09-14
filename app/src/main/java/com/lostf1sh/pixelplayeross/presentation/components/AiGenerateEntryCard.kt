@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.presentation.components
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,18 +22,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.view.HapticFeedbackConstantsCompat
 import com.lostf1sh.pixelplayeross.R
+import com.lostf1sh.pixelplayeross.presentation.utils.LocalAppHapticsConfig
+import com.lostf1sh.pixelplayeross.presentation.utils.NoOpHapticFeedback
+import com.lostf1sh.pixelplayeross.presentation.utils.performAppCompatHapticFeedback
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 
 /**
@@ -167,7 +173,11 @@ fun AiGenerateEntryCard(
 /**
  * Capsule used for the card actions; a null [onClick] renders a plain label pill.
  *
- * [onLongClick] carries the standard long-press haptic; combinedClickable does not fire one itself.
+ * The long-press haptic needs a detour: combinedClickable fires its own Compose haptic on long
+ * press, but the platform implementation is silently dropped when the system-wide "haptic
+ * feedback" setting is off (common on Chinese ROMs). Inside this pill we no-op that built-in
+ * feedback and fire the project-standard ViewCompat one with FLAG_IGNORE_GLOBAL_SETTING, so only
+ * the app's own haptics switch gates it — and it never fires twice.
  */
 @Composable
 private fun ActionPill(
@@ -177,7 +187,8 @@ private fun ActionPill(
         onClick: (() -> Unit)? = null,
         onLongClick: (() -> Unit)? = null
 ) {
-    val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
+    val appHapticsConfig = LocalAppHapticsConfig.current
     val content: @Composable () -> Unit = {
         Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
@@ -201,24 +212,29 @@ private fun ActionPill(
     }
 
     if (onClick != null || onLongClick != null) {
-        Surface(
-                shape = CircleShape,
-                color = color,
-                modifier =
-                        Modifier.clip(CircleShape).combinedClickable(
-                                onClick = { onClick?.invoke() },
-                                onLongClick =
-                                        onLongClick?.let { action ->
-                                            {
-                                                haptic.performHapticFeedback(
-                                                        HapticFeedbackType.LongPress
-                                                )
-                                                action()
+        CompositionLocalProvider(LocalHapticFeedback provides NoOpHapticFeedback) {
+            Surface(
+                    shape = CircleShape,
+                    color = color,
+                    modifier =
+                            Modifier.clip(CircleShape).combinedClickable(
+                                    onClick = { onClick?.invoke() },
+                                    onLongClick =
+                                            onLongClick?.let { action ->
+                                                {
+                                                    performAppCompatHapticFeedback(
+                                                            view,
+                                                            appHapticsConfig,
+                                                            HapticFeedbackConstantsCompat.LONG_PRESS,
+                                                            HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING
+                                                    )
+                                                    action()
+                                                }
                                             }
-                                        }
-                        )
-        ) {
-            content()
+                            )
+            ) {
+                content()
+            }
         }
     } else {
         Surface(shape = CircleShape, color = color) { content() }

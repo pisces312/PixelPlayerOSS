@@ -1,7 +1,7 @@
 # 不期而遇「长按快速生成」方案
 
 > 状态：已按审阅结论实现（方案 A；保留长按触感；长按区域限「不期而遇！」胶囊），
-> assembleDebug + testDebugUnitTest 通过，待真机走查。
+> assembleDebug + testDebugUnitTest 通过；真机首测触感不生效，已按 3.4.1 修复，待复测。
 > 涉及代码：`presentation/components/AiGenerateEntryCard.kt`、
 > `presentation/screens/HomeScreen.kt`、`presentation/viewmodel/PlaylistViewModel.kt`。
 > 前置改动：默认 15 首、sheet 打开即全展开（已合入 main）。
@@ -143,10 +143,43 @@ val openAiEntry: (Boolean, Boolean) -> Unit = { serendipity, quick ->
   `ActionPill`；普通描述入口（整张卡片的 Surface）**不加**长按，避免手势冲突。
 - `ActionPill` 把 `Surface(onClick=…)` 改为无点击重载 Surface +
   `Modifier.clip(CircleShape).combinedClickable(onClick = onClick, onLongClick = onLongClick)`，
-  形状/水波纹/颜色不变；长按回调内先执行
-  `haptic.performHapticFeedback(HapticFeedbackType.LongPress)` 再调业务回调
-  （`combinedClickable` 不自动触发触感，项目惯例手动调）。
+  形状/水波纹/颜色不变。
 - 长按区域仅限「不期而遇！」胶囊本身。
+
+#### 3.4.1 长按触感的实现（真机不震的修复，2026-09-14 补）
+
+真机首版触感不生效，反编译 `foundation 1.11.x` 的 `CombinedClickableNode` 后确认两条事实：
+
+1. `combinedClickable` 长按时**框架会自动**经 `LocalHapticFeedback` 触发一次 `LongPress`
+   （在 onLongClick 回调之前），不需要、也不应该再手动调第二次；
+2. Compose 平台触感实现等价于 `View.performHapticFeedback(LONG_PRESS)`，**不带
+   `FLAG_IGNORE_GLOBAL_SETTING`**，系统「设置 → 声音和振动 → 触感反馈」总开关关闭时
+   （国产 ROM 常默认关）会被静默丢弃——这正是不震的根因。项目其余触感统一走
+   `performAppCompatHapticFeedback`（ViewCompat）正是为绕开它。
+
+最终做法（只作用于该胶囊，不改动全局触感基座）：
+
+```kotlin
+CompositionLocalProvider(LocalHapticFeedback provides NoOpHapticFeedback) {
+    Surface(Modifier.clip(CircleShape).combinedClickable(
+        onClick = { onClick?.invoke() },
+        onLongClick = {
+            performAppCompatHapticFeedback(
+                view, appHapticsConfig,
+                HapticFeedbackConstantsCompat.LONG_PRESS,
+                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING   // 只受 app 内触感开关控制
+            )
+            action()
+        }
+    )) { content() }
+}
+```
+
+- 局部 `NoOpHapticFeedback` 吞掉框架自带那次（仅这棵子树），ViewCompat 手动触发可靠的一次，
+  因此系统开关关闭也能震、且**不会双震**；
+- app 内「触感反馈」开关关闭时 `performAppCompatHapticFeedback` 内部直接返回，仍然不震，符合设置；
+- 未改 MainActivity 的全局 `LocalHapticFeedback` 基座，避免牵动全 app 其余 27 处触感行为
+  （全局统一到 ViewCompat 可作为后续独立优化，届时需清理 combinedClickable 链上的重复手动触感）。
 
 ### 3.5 边界处理
 
