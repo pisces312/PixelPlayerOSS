@@ -246,7 +246,9 @@ fun HomeScreen(
     var showStreamingProviderSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalSheetState()
     val betaSheetState = rememberModalSheetState()
-    val aiMixSheetState = rememberModalSheetState()
+    // Content (signals, multi-line prompt, length chips, generate button) is taller than the
+    // half-screen anchor, so expand straight away instead of clipping the action button.
+    val aiMixSheetState = rememberModalSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     LocalContext.current
 

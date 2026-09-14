@@ -2,6 +2,7 @@ package com.lostf1sh.pixelplayeross.presentation.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -220,7 +221,13 @@ private fun InputPhase(
     onReshuffle: (() -> Unit)?,
     onRephrase: (() -> Unit)?
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // Only the input phase scrolls: the result phase hosts its own LazyColumn, so wrapping the
+    // shared outer Column would nest two vertical scrollers with infinite-height constraints.
+    // This keeps the generate button reachable on small screens, large fonts or with the IME up.
+    Column(
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         if (serendipity != null) {
             SerendipitySignals(
                 state = serendipity,
