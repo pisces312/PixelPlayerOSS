@@ -203,8 +203,12 @@ class PlaylistViewModel @Inject constructor(
         private const val MANUAL_ORDER_MODE = "manual"
         private const val SMART_PLAYLIST_MAX_ITEMS = 100
 
-        /** How many tracks a generated mix asks for when the user has not picked a length. */
-        const val DEFAULT_AI_MIX_LENGTH = 25
+        /**
+         * How many tracks a generated mix asks for when the user has not picked a length.
+         *
+         * Shared by the describe flow and Serendipity; it is the first chip in AI_MIX_LENGTHS.
+         */
+        const val DEFAULT_AI_MIX_LENGTH = 15
         /** Marks a playlist produced by the AI mix flow. */
         const val AI_MIX_SOURCE = "AI"
 
