@@ -90,6 +90,33 @@ LyricTitlePlayer(  ← MediaSession 持有这一层，必须是它
 - **`LyricTitlePlayer` 必须在最外层**。MediaSession 注册的 listener 落在它上面，伪造的事件也发给这些 listener；如果它被包在里面，事件到不了 MediaSession。
 - **包装链会被重建**。`publishMediaSessionPlayer()` 在交叉淡入淡出切换 display player 时会重新调用 `wrapFadingPlayer()`，所以实例引用要存在字段（`lyricTitlePlayer`）里，不能假设只创建一次。同时 `unwrap*()` 解包链要补上新的一层，否则 `publishMediaSessionPlayer` 里"解包后是否是同一个 player"的判断会失效。
 
+### 3.5 附带结论：发的是 `Now Playing Content Changed`(0x09)，不是 `Track Changed`(0x02)
+
+车主视角的常见顾虑是"改标题会不会被车机当成换曲、把进度条清零"。用 AOSP 源码判定：**不会**——因为我们只换 metadata、从不碰队列项 id。
+
+证据链（`LineageOS/android_packages_modules_Bluetooth`，分支 `lineage-23.2`，即 Android 16 的蓝牙模块；该模块已从 `packages/apps/Bluetooth` 迁出）：
+
+1. `avrcp/AvrcpTargetService.java` L175 `ListCallback implements MediaPlayerList.MediaUpdateCallback` —— Java 层**只有一个**出站入口，没有独立的 track / now-playing 方法：
+
+   ```java
+   public void run(MediaData data) {
+       boolean metadata = !Objects.equals(mCurrentData.metadata, data.metadata);
+       boolean state = !MediaPlayerWrapper.playstateEquals(mCurrentData.state, data.state);
+       boolean queue = isQueueUpdated(mCurrentData.queue, data.queue);
+       Log.d(TAG, "onMediaUpdated: track_changed=" + metadata + " state=" + state + " queue=" + queue);
+       mCurrentData = data;
+       mNativeInterface.sendMediaUpdate(metadata, state, queue);
+   }
+   ```
+
+2. 三个标志位**互相独立**：`metadata` 由 metadata 内容差异驱动，`queue` 由 `isQueueUpdated()` 单独判定。我们的改写只让 `metadata=true`，`queue` 恒为 `false`。
+3. `avrcp/AvrcpNativeInterface.java` L143 `sendMediaUpdate(boolean metadata, boolean playStatus, boolean queue)` 把三个布尔转交原生层，由原生层依 `queue` 决定是否发 `TRACK_CHANGED` 并轮换 UID。
+
+两点补充：
+
+- AOSP 自己的日志把 metadata 差异打印成 `track_changed=`，命名有误导性；真正决定"换曲"语义的是 `queue` 这一路。**这正是必须保持 `mediaId` 不变的原因**——一旦走 `replaceMediaItem`（路线 A），`queue` 随之变化，就会真的触发 `Track Changed`。
+- **残余风险（无法离线判定）**：对端是否注册了 `EVENT_NOW_PLAYING_CONTENT_CHANGED`(0x09)。没注册的设备收不到这次刷新，标题会停在旧值直到真正换曲。这属于车机侧行为，真机 `btsnoop` 可复核（见 §11.1）。
+
 ## 4. AVRCP 到底能不能携带歌词
 
 **不能。**
@@ -460,7 +487,7 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 
 ## 11. 未完成 / 后续
 
-1. **真机验证（唯一剩下的风险）**：`mediaId` 不变、仅 metadata 变化时，蓝牙栈发的是 `Now playing changed`(0x09) 还是 `Track changed`(0x02)。若是后者，部分车机会重置进度条或误判换曲。方法：开发者选项开启「蓝牙 HCI 信息收集日志」→ `adb pull /sdcard/btsnoop_hci.log` → Wireshark 过滤 `btavrcp`。**顺带一提**：验证正路径不必等车机——任何蓝牙音频设备（耳机/音箱）都走同一条 A2DP 路径，标题同样会被改写。
+1. **真机复核（已降级为可选）**：「改标题会不会被当成换曲」已由 AOSP 源码判定——只改 metadata 时 `queue=false`，不会触发 `Track Changed`(0x02)，故不会重置进度条，见 §3.5。**仍无法离线确认的只有对端行为**：车机是否注册了 `0x09`；没注册则收不到本次刷新。复核方法：开发者选项开启「蓝牙 HCI 信息收集日志」→ `adb pull /sdcard/btsnoop_hci.log` → Wireshark 过滤 `btavrcp`，看是否出现 `Now Playing Content Changed`。**顺带一提**：验证正路径不必等车机——任何蓝牙音频设备（耳机/音箱）都走同一条 A2DP 路径，标题同样会被改写。
 2. **通知栏文案**：只改 `TITLE`，`ARTIST` 保持歌手名。曾考虑把 ARTIST 换成原曲名（车机两行都能用上），但通知栏与锁屏读的是同一份 metadata，会显示成「歌名 / 歌名」，得不偿失，故不采用。
 3. **播放结束后**：实测标题停在最后一行歌词（歌曲播完 `state=STOPPED` 时仍是 `CARLYRIC hotel`）。若希望播完恢复曲名，在 `STATE_ENDED` 时清一次覆盖值即可。
 4. **调试逃生口**：`pixelplayer_car_lyric_title_force_a2dp` 只在 debuggable 构建读取，release 忽略。不建议放开给 release。
