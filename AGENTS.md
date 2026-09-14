@@ -45,6 +45,10 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 - **debug 也过 R8**：`isMinifyEnabled` + `isShrinkResources` 与 release 一致（产物更接近 release），
   仍可调试（proguard 保留 `SourceFile,LineNumberTable`，mapping 在 `app/build/outputs/mapping/debug/`）。
 - **ABI 只构建 `arm64-v8a`**（`pixelplayer.enableAbiSplits` 默认 true）；关掉该 property 时文件名中的 abi 段为 `universal`。
+- **模拟器可直接运行 `arm64-v8a` 产物（已实测确认，2026-09-14）**：本机 AVD 安装默认构建的
+  `pixelplayeross-arm64-v8a-*.apk` 即可运行，**不要**为了"让模拟器装得上"去构建 universal ——
+  `-Ppixelplayer.enableAbiSplits=false` 会覆盖并清掉同目录的 arm64 产物。
+  真机/模拟器验证统一用 `.\gradlew.bat :app:assembleDebug`。
 - **APK 命名**：`pixelplayeross-<abi>-<APP_VERSION_NAME>-<buildtype>.apk`（`androidComponents.onVariants` 设置 `outputFileName`），
   例 `pixelplayeross-arm64-v8a-0.3.0-debug.apk`。改命名规则改 `app/build.gradle.kts`。
 - 签名走 `keystore.properties`（或 `pixelplayer.disableReleaseSigning=true` 跳过），勿提交密钥。详见下方「签名与发布」。
