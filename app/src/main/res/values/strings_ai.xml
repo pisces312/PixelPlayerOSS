@@ -51,6 +51,11 @@
     <string name="ai_playlist_entry_action">Describe</string>
     <string name="ai_serendipity_button">Serendipity!</string>
     <string name="playlist_ai_prompt_label">AI prompt</string>
+    <string name="playlist_ai_prompt_details_title">Prompt details</string>
+    <string name="playlist_ai_prompt_expand_cd">View full prompt</string>
+    <string name="playlist_ai_original_title">Originally generated (%1$d)</string>
+    <string name="playlist_ai_song_removed">Removed</string>
+    <string name="playlist_ai_song_unavailable">No longer in library</string>
     <string name="ai_playlist_dialog_title">AI Playlist</string>
     <string name="ai_playlist_dialog_subtitle">Describe a mood or moment — songs are matched from your library</string>
     <string name="ai_playlist_sample_mode_label">Library slice</string>

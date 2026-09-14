@@ -30,6 +30,7 @@ import com.lostf1sh.pixelplayeross.data.playlist.SmartPlaylistBuilder
 import com.lostf1sh.pixelplayeross.data.preferences.PlaylistPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -103,7 +104,7 @@ data class NlpPlaylistPreviewState(
     val hasResult: Boolean = false,
     /** User-facing failure text; offline NLP generation never sets it. */
     val errorMessage: String? = null,
-    /** Sampling that was in effect for this generation, captured so it can be saved with it. */
+    /** Sampling actually used for this generation, captured so saving persists the right metadata. */
     val sampleMode: AiLibrarySampleMode? = null,
     val sampleSize: Int? = null,
 )
@@ -684,8 +685,7 @@ class PlaylistViewModel @Inject constructor(
         viewModelScope.launch { aiPreferences.setLibrarySampleMode(mode) }
     }
 
-    // Serendipity keeps its own sampling preference, independent of the regular describe entry:
-    // it defaults to RANDOM so it surfaces songs the user does not usually hear.
+    /** Serendipity's own context size; independent of the describe flow. */
     val aiSerendipitySampleSize: StateFlow<Int> =
             aiPreferences
                     .getSerendipitySampleSize()
@@ -699,6 +699,7 @@ class PlaylistViewModel @Inject constructor(
         viewModelScope.launch { aiPreferences.setSerendipitySampleSize(size) }
     }
 
+    /** Serendipity defaults to RANDOM so a "right now" mix can still reach rarely played songs. */
     val aiSerendipitySampleMode: StateFlow<AiLibrarySampleMode> =
             aiPreferences
                     .getSerendipitySampleMode()
@@ -711,6 +712,9 @@ class PlaylistViewModel @Inject constructor(
     fun setAiSerendipitySampleMode(mode: AiLibrarySampleMode) {
         viewModelScope.launch { aiPreferences.setSerendipitySampleMode(mode) }
     }
+
+    /** Resolves songs by id, used to list the originally generated songs of an AI playlist. */
+    fun songsByIds(ids: List<String>): Flow<List<Song>> = musicRepository.getSongsByIds(ids)
 
     /** Clears the AI preview when its dialog closes. */
     fun resetAiPlaylistPreview() {

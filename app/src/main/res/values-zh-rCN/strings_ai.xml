@@ -52,6 +52,11 @@
     <string name="ai_playlist_entry_action">说一句</string>
     <string name="ai_serendipity_button">不期而遇！</string>
     <string name="playlist_ai_prompt_label">AI 描述</string>
+    <string name="playlist_ai_prompt_details_title">提示词详情</string>
+    <string name="playlist_ai_prompt_expand_cd">查看完整提示词</string>
+    <string name="playlist_ai_original_title">原始生成（%1$d 首）</string>
+    <string name="playlist_ai_song_removed">已移除</string>
+    <string name="playlist_ai_song_unavailable">已不在曲库</string>
     <string name="ai_playlist_dialog_title">AI 歌单</string>
     <string name="ai_playlist_dialog_subtitle">描述一种心情或一个时刻——歌曲将从你的曲库中匹配</string>
     <string name="ai_playlist_sample_mode_label">曲库切片</string>

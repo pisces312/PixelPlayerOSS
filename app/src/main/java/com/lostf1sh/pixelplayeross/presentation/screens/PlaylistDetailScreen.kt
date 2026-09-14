@@ -14,6 +14,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -53,7 +56,9 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DragIndicator
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -116,6 +121,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import coil.size.Size
 import com.lostf1sh.pixelplayeross.R
+import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
+import com.lostf1sh.pixelplayeross.data.model.Playlist
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.presentation.components.AutoScrollingTextOnDemand
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
@@ -146,7 +153,9 @@ import com.lostf1sh.pixelplayeross.presentation.components.LibrarySortBottomShee
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.data.model.PlaylistShapeType
 import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylist
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import com.lostf1sh.pixelplayeross.presentation.components.rememberModalSheetState
@@ -220,6 +229,7 @@ fun PlaylistDetailScreen(
     var showPlaylistOptionsSheet by remember { mutableStateOf(false) }
     var showEditPlaylistDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showAiPromptDetails by remember { mutableStateOf(false) }
 
     val m3uExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("audio/x-mpegurl")
@@ -735,9 +745,12 @@ fun PlaylistDetailScreen(
                                 )
                             }
                         ) {
-                            currentPlaylist?.aiPrompt?.takeIf { it.isNotBlank() }?.let { prompt ->
+                            currentPlaylist.aiPrompt?.takeIf { it.isNotBlank() }?.let { prompt ->
                                 item(key = "ai_prompt", contentType = "ai_prompt") {
-                                    AiPromptBanner(prompt = prompt)
+                                    AiPromptBanner(
+                                        prompt = prompt,
+                                        onClick = { showAiPromptDetails = true }
+                                    )
                                 }
                             }
                             items(
@@ -986,6 +999,13 @@ fun PlaylistDetailScreen(
             }
         )
     }
+    if (showAiPromptDetails && currentPlaylist != null) {
+        AiPromptDetailsDialog(
+            playlist = currentPlaylist,
+            resolveSongs = { ids -> playlistViewModel.songsByIds(ids) },
+            onDismiss = { showAiPromptDetails = false }
+        )
+    }
     if (showDeleteConfirmation && currentPlaylist != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
@@ -1183,14 +1203,22 @@ fun PlaylistDetailScreen(
  * Shows what an AI playlist was asked for, above its songs.
  *
  * The prompt is long free text, so it scrolls on overflow instead of being truncated — the name
- * itself stays a short identifier (it is searched, exported and used as the queue name).
+ * itself stays a short identifier (it is searched, exported and used as the queue name). The whole
+ * banner is tappable: waiting for the marquee is slow, so [AiPromptDetailsDialog] shows the full
+ * prompt plus the generation metadata.
  */
 @Composable
-private fun AiPromptBanner(prompt: String, modifier: Modifier = Modifier) {
+private fun AiPromptBanner(
+    prompt: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 10.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
@@ -1209,7 +1237,15 @@ private fun AiPromptBanner(prompt: String, modifier: Modifier = Modifier) {
                 Text(
                     text = stringResource(R.string.playlist_ai_prompt_label),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.Rounded.UnfoldMore,
+                    contentDescription =
+                            stringResource(R.string.playlist_ai_prompt_expand_cd),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
                 )
             }
             AutoScrollingTextOnDemand(
@@ -1219,6 +1255,152 @@ private fun AiPromptBanner(prompt: String, modifier: Modifier = Modifier) {
                 expansionFractionProvider = { 1f },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+/**
+ * Full read-out for an AI playlist: the complete prompt (selectable), the sampling used at
+ * generation, and the originally generated songs in order with their current status.
+ */
+@Composable
+private fun AiPromptDetailsDialog(
+    playlist: Playlist,
+    resolveSongs: (List<String>) -> Flow<List<Song>>,
+    onDismiss: () -> Unit
+) {
+    val originalIds = playlist.aiOriginalSongIds
+    val originalSongs by
+            remember(playlist.id) {
+                if (originalIds.isEmpty()) flowOf(emptyList()) else resolveSongs(originalIds)
+            }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val songsById = remember(originalSongs) { originalSongs.associateBy { it.id } }
+    val currentIds = remember(playlist) { playlist.songIds.toSet() }
+
+    val modeLabelRes =
+            playlist.aiSampleMode?.let { name ->
+                runCatching { AiLibrarySampleMode.valueOf(name) }.getOrNull()?.let { mode ->
+                    when (mode) {
+                        AiLibrarySampleMode.MOST_PLAYED -> R.string.ai_sample_mode_most_played
+                        AiLibrarySampleMode.RANDOM -> R.string.ai_sample_mode_random
+                    }
+                }
+            }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.playlist_ai_prompt_details_title)) },
+        text = {
+            Column(
+                modifier =
+                        Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = playlist.aiPrompt.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                if (modeLabelRes != null || playlist.aiSampleSize != null) {
+                    HorizontalDivider()
+                    modeLabelRes?.let { res ->
+                        DetailMetaRow(
+                            label = stringResource(R.string.ai_playlist_sample_mode_label),
+                            value = stringResource(res)
+                        )
+                    }
+                    playlist.aiSampleSize?.let { size ->
+                        DetailMetaRow(
+                            label = stringResource(R.string.ai_playlist_sample_size_label),
+                            value = stringResource(R.string.ai_playlist_sample_size_value, size)
+                        )
+                    }
+                }
+
+                if (originalIds.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text(
+                        text = stringResource(R.string.playlist_ai_original_title, originalIds.size),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    originalIds.forEachIndexed { index, id ->
+                        val song = songsById[id]
+                        val removed = id !in currentIds
+                        OriginalSongRow(
+                            position = index + 1,
+                            title = song?.title,
+                            artist = song?.displayArtist,
+                            removed = removed
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.dismiss)) }
+        }
+    )
+}
+
+@Composable
+private fun DetailMetaRow(label: String, value: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(text = value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun OriginalSongRow(
+    position: Int,
+    title: String?,
+    artist: String?,
+    removed: Boolean
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "$position.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(28.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title ?: stringResource(R.string.playlist_ai_song_unavailable),
+                style = MaterialTheme.typography.bodyMedium,
+                color =
+                        if (removed) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurface
+            )
+            if (!artist.isNullOrBlank()) {
+                Text(
+                    text = artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (removed) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest
+            ) {
+                Text(
+                    text = stringResource(R.string.playlist_ai_song_removed),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
         }
     }
 }
