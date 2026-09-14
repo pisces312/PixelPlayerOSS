@@ -654,6 +654,34 @@ class PlaylistViewModel @Inject constructor(
         viewModelScope.launch { aiPreferences.setLibrarySampleMode(mode) }
     }
 
+    // Serendipity keeps its own sampling preference, independent of the regular describe entry:
+    // it defaults to RANDOM so it surfaces songs the user does not usually hear.
+    val aiSerendipitySampleSize: StateFlow<Int> =
+            aiPreferences
+                    .getSerendipitySampleSize()
+                    .stateIn(
+                            viewModelScope,
+                            SharingStarted.WhileSubscribed(5_000),
+                            AiPreferencesRepository.DEFAULT_SERENDIPITY_SAMPLE_SIZE
+                    )
+
+    fun setAiSerendipitySampleSize(size: Int) {
+        viewModelScope.launch { aiPreferences.setSerendipitySampleSize(size) }
+    }
+
+    val aiSerendipitySampleMode: StateFlow<AiLibrarySampleMode> =
+            aiPreferences
+                    .getSerendipitySampleMode()
+                    .stateIn(
+                            viewModelScope,
+                            SharingStarted.WhileSubscribed(5_000),
+                            AiLibrarySampleMode.RANDOM
+                    )
+
+    fun setAiSerendipitySampleMode(mode: AiLibrarySampleMode) {
+        viewModelScope.launch { aiPreferences.setSerendipitySampleMode(mode) }
+    }
+
     /** Clears the AI preview when its dialog closes. */
     fun resetAiPlaylistPreview() {
         _aiPlaylistPreviewState.value = NlpPlaylistPreviewState()

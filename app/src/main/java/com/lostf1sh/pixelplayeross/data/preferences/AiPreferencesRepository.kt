@@ -44,6 +44,13 @@ constructor(private val dataStore: DataStore<Preferences>) {
         /** How many song titles are sent to the model as context for a generation request. */
         const val DEFAULT_LIBRARY_SAMPLE_SIZE = 300
 
+        /**
+         * Default context size for Serendipity. It defaults to random sampling (see
+         * [getSerendipitySampleMode]): a wide-but-not-maximal slice keeps rarely played songs
+         * reachable without the token cost of the largest option.
+         */
+        const val DEFAULT_SERENDIPITY_SAMPLE_SIZE = 200
+
         private const val TYPE_STRING = "string"
         private const val TYPE_INT = "int"
         private const val TYPE_BOOLEAN = "boolean"
@@ -60,6 +67,8 @@ constructor(private val dataStore: DataStore<Preferences>) {
                 Keys.AI_PROVIDER.name,
                 Keys.LIBRARY_SAMPLE_SIZE.name,
                 Keys.LIBRARY_SAMPLE_MODE.name,
+                Keys.SERENDIPITY_SAMPLE_SIZE.name,
+                Keys.SERENDIPITY_SAMPLE_MODE.name,
                 // The weather source and the chosen city are user choices, not device data: worth
                 // restoring on a new phone, where the name resolves again through the bundled list.
                 Keys.SERENDIPITY_WEATHER_SOURCE.name,
@@ -81,6 +90,12 @@ constructor(private val dataStore: DataStore<Preferences>) {
         val LIBRARY_SAMPLE_SIZE = intPreferencesKey("ai_library_sample_size")
 
         val LIBRARY_SAMPLE_MODE = stringPreferencesKey("ai_library_sample_mode")
+
+        // Serendipity keeps its own sampling settings so its "random by default" policy does not
+        // fight the describe flow's "most played by default" preference.
+        val SERENDIPITY_SAMPLE_SIZE = intPreferencesKey("ai_serendipity_sample_size")
+
+        val SERENDIPITY_SAMPLE_MODE = stringPreferencesKey("ai_serendipity_sample_mode")
 
         /** Where Serendipity reads the weather from; see [SerendipityWeatherSource]. */
         val SERENDIPITY_WEATHER_SOURCE = stringPreferencesKey("ai_serendipity_weather_source")
@@ -190,6 +205,34 @@ constructor(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setLibrarySampleMode(mode: AiLibrarySampleMode) {
         dataStore.edit { preferences -> preferences[Keys.LIBRARY_SAMPLE_MODE] = mode.name }
+    }
+
+    /**
+     * Sampling size for Serendipity, independent of [getLibrarySampleSize]; random by spirit and
+     * [DEFAULT_SERENDIPITY_SAMPLE_SIZE] wide until the user changes it.
+     */
+    fun getSerendipitySampleSize(): Flow<Int> =
+            dataStore.data.map { preferences ->
+                preferences[Keys.SERENDIPITY_SAMPLE_SIZE] ?: DEFAULT_SERENDIPITY_SAMPLE_SIZE
+            }
+
+    suspend fun setSerendipitySampleSize(size: Int) {
+        dataStore.edit { preferences -> preferences[Keys.SERENDIPITY_SAMPLE_SIZE] = size }
+    }
+
+    /**
+     * Sampling mode for Serendipity. Unlike the describe flow it defaults to RANDOM: a "for right
+     * now" mix should be able to surface songs the user rarely plays, not just the familiar ones.
+     */
+    fun getSerendipitySampleMode(): Flow<AiLibrarySampleMode> =
+            dataStore.data.map { preferences ->
+                // Absent key means "never customized": Serendipity starts on RANDOM.
+                preferences[Keys.SERENDIPITY_SAMPLE_MODE]?.let { AiLibrarySampleMode.fromName(it) }
+                        ?: AiLibrarySampleMode.RANDOM
+            }
+
+    suspend fun setSerendipitySampleMode(mode: AiLibrarySampleMode) {
+        dataStore.edit { preferences -> preferences[Keys.SERENDIPITY_SAMPLE_MODE] = mode.name }
     }
 
     /**

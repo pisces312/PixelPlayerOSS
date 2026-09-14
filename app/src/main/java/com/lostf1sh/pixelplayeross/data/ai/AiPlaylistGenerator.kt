@@ -33,11 +33,9 @@ constructor(
     /**
      * Asks the model for songs matching [description] and keeps only the ones in the library.
      *
-     * [sampleMode] / [sampleSize] override the saved sampling settings when non-null. Serendipity
-     * uses that to force RANDOM over a wider slice: a stable ordering permanently excludes every
-     * song past the cut-off, and a mix that claims to be "for right now" should be able to surface
-     * anything the user owns. [promptType] / [useCache] are forwarded to [AiHandler] so the
-     * Serendipity path can opt out of the response cache and label its own usage rows.
+     * [sampleMode] / [sampleSize] override the saved sampling settings when non-null; otherwise the
+     * caller's saved preference is used. [promptType] / [useCache] are forwarded to [AiHandler] so
+     * the Serendipity path can opt out of the response cache and label its own usage rows.
      */
     suspend fun generate(
         description: String,
@@ -64,8 +62,9 @@ constructor(
             }
 
     /**
-     * Serendipity's generation policy, kept here so the view model cannot get it half right:
-     * random sampling over a wide slice, its own usage label, and no response cache.
+     * Serendipity's generation policy: its own sampling preferences (random / a wide slice by
+     * default, but user-overridable in the sheet's advanced section), its own usage label, and no
+     * response cache.
      *
      * The prompt is rebuilt from scratch on every tap ("Friday 19:20, evening. Rain, 14°C ..."),
      * so a cache entry could never be read back — writing one would only grow the table.
@@ -77,8 +76,8 @@ constructor(
             generate(
                     description = description,
                     maxLength = maxLength,
-                    sampleMode = AiLibrarySampleMode.RANDOM,
-                    sampleSize = SERENDIPITY_SAMPLE_SIZE,
+                    sampleMode = preferences.getSerendipitySampleMode().first(),
+                    sampleSize = preferences.getSerendipitySampleSize().first(),
                     promptType = AiHandler.PROMPT_TYPE_SERENDIPITY_PLAYLIST,
                     useCache = false
             )
@@ -195,9 +194,6 @@ constructor(
 
     private companion object {
         const val DEFAULT_MAX_LENGTH = 25
-
-        /** How many titles Serendipity sends as context; wider than the user setting on purpose. */
-        const val SERENDIPITY_SAMPLE_SIZE = 100
 
         const val TITLE_THRESHOLD = 0.5f
         const val ARTIST_WEIGHT = 0.25f

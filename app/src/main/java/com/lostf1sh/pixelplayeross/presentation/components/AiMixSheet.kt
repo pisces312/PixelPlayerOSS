@@ -285,25 +285,24 @@ private fun InputPhase(
             }
         }
 
-        // Sampling is forced on the Serendipity path, so offering the controls there would lie.
-        if (serendipity == null) {
-            TextButton(onClick = { onAdvancedToggle(!advancedExpanded) }) {
-                Text(stringResource(R.string.ai_mix_advanced))
-            }
-            if (advancedExpanded) {
-                SampleModeDropdown(
-                    modes = sampleConfig.modes,
-                    selected = sampleConfig.mode,
-                    enabled = true,
-                    onSelect = sampleConfig.onModeChange
-                )
-                SampleSizeDropdown(
-                    options = sampleConfig.sizes,
-                    selected = sampleConfig.size,
-                    enabled = true,
-                    onSelect = sampleConfig.onSizeChange
-                )
-            }
+        // Both flows expose sampling controls; HomeScreen injects the matching SampleConfig
+        // (Serendipity has its own random-by-default settings, the describe flow its own).
+        TextButton(onClick = { onAdvancedToggle(!advancedExpanded) }) {
+            Text(stringResource(R.string.ai_mix_advanced))
+        }
+        if (advancedExpanded) {
+            SampleModeDropdown(
+                modes = sampleConfig.modes,
+                selected = sampleConfig.mode,
+                enabled = true,
+                onSelect = sampleConfig.onModeChange
+            )
+            SampleSizeDropdown(
+                options = sampleConfig.sizes,
+                selected = sampleConfig.size,
+                enabled = true,
+                onSelect = sampleConfig.onSizeChange
+            )
         }
 
         Button(

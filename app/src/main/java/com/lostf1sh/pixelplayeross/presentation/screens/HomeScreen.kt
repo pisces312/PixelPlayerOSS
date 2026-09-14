@@ -157,6 +157,8 @@ fun HomeScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
     val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
+    val aiSerendipitySampleMode by
+            playlistViewModel.aiSerendipitySampleMode.collectAsStateWithLifecycle()
     val recentAiMixes by playlistViewModel.recentAiMixes.collectAsStateWithLifecycle()
     val serendipityState by playlistViewModel.serendipityState.collectAsStateWithLifecycle()
     val serendipityWantsLocation by
@@ -554,6 +556,8 @@ fun HomeScreen(
     }
     val aiPlaylistPreviewState by playlistViewModel.aiPlaylistPreviewState.collectAsStateWithLifecycle()
     val aiLibrarySampleSize by playlistViewModel.aiLibrarySampleSize.collectAsStateWithLifecycle()
+    val aiSerendipitySampleSize by
+            playlistViewModel.aiSerendipitySampleSize.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         playlistViewModel.aiMixSaved.collect { mix ->
@@ -621,14 +625,27 @@ fun HomeScreen(
         ) {
             AiMixSheet(
                 state = aiPlaylistPreviewState,
-                sampleConfig = SampleConfig(
-                    modes = AiLibrarySampleMode.entries,
-                    mode = aiLibrarySampleMode,
-                    sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
-                    size = aiLibrarySampleSize,
-                    onModeChange = playlistViewModel::setAiLibrarySampleMode,
-                    onSizeChange = playlistViewModel::setAiLibrarySampleSize
-                ),
+                sampleConfig =
+                        if (aiEntryIsSerendipity) {
+                            // Serendipity keeps its own sampling settings (random / 200 by default).
+                            SampleConfig(
+                                modes = AiLibrarySampleMode.entries,
+                                mode = aiSerendipitySampleMode,
+                                sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
+                                size = aiSerendipitySampleSize,
+                                onModeChange = playlistViewModel::setAiSerendipitySampleMode,
+                                onSizeChange = playlistViewModel::setAiSerendipitySampleSize
+                            )
+                        } else {
+                            SampleConfig(
+                                modes = AiLibrarySampleMode.entries,
+                                mode = aiLibrarySampleMode,
+                                sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
+                                size = aiLibrarySampleSize,
+                                onModeChange = playlistViewModel::setAiLibrarySampleMode,
+                                onSizeChange = playlistViewModel::setAiLibrarySampleSize
+                            )
+                        },
                 serendipity = if (aiEntryIsSerendipity) serendipityState else null,
                 serendipityChips = serendipityChips,
                 serendipityDefaultName = serendipityDefaultName,
