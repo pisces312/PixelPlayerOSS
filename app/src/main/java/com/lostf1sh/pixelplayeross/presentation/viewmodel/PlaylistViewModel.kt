@@ -103,6 +103,9 @@ data class NlpPlaylistPreviewState(
     val hasResult: Boolean = false,
     /** User-facing failure text; offline NLP generation never sets it. */
     val errorMessage: String? = null,
+    /** Sampling that was in effect for this generation, captured so it can be saved with it. */
+    val sampleMode: AiLibrarySampleMode? = null,
+    val sampleSize: Int? = null,
 )
 
 /**
@@ -481,7 +484,13 @@ class PlaylistViewModel @Inject constructor(
      * nothing.
      */
     fun generateAiPlaylistPreview(description: String, maxLength: Int = DEFAULT_AI_MIX_LENGTH) {
-        startPreview(description) { aiPlaylistGenerator.generate(description, maxLength) }
+        startPreview(
+            description,
+            resolveSample = {
+                aiPreferences.getLibrarySampleMode().first() to
+                        aiPreferences.getLibrarySampleSize().first()
+            }
+        ) { aiPlaylistGenerator.generate(description, maxLength) }
     }
 
     /**
@@ -492,15 +501,28 @@ class PlaylistViewModel @Inject constructor(
      * "play / save only" actions and the error handling are shared rather than duplicated.
      */
     fun generateSerendipityPreview(description: String, maxLength: Int = DEFAULT_AI_MIX_LENGTH) {
-        startPreview(description) { aiPlaylistGenerator.generateSerendipity(description, maxLength) }
+        startPreview(
+            description,
+            resolveSample = {
+                aiPreferences.getSerendipitySampleMode().first() to
+                        aiPreferences.getSerendipitySampleSize().first()
+            }
+        ) { aiPlaylistGenerator.generateSerendipity(description, maxLength) }
     }
 
-    private fun startPreview(description: String, generate: suspend () -> List<Song>) {
+    private fun startPreview(
+        description: String,
+        resolveSample: (suspend () -> Pair<AiLibrarySampleMode, Int>)? = null,
+        generate: suspend () -> List<Song>
+    ) {
         if (description.isBlank()) return
         viewModelScope.launch {
             _aiPlaylistPreviewState.update {
                 it.copy(isGenerating = true, errorMessage = null, hasResult = false)
             }
+            // Captured before the call so the saved metadata reflects this generation even if the
+            // user changes the advanced controls while the request is in flight.
+            val sample = resolveSample?.invoke()
             val result = runCatching { generate() }
             _aiPlaylistPreviewState.value =
                     result.fold(
@@ -508,7 +530,9 @@ class PlaylistViewModel @Inject constructor(
                                 NlpPlaylistPreviewState(
                                         isGenerating = false,
                                         songs = songs.toImmutableList(),
-                                        hasResult = true
+                                        hasResult = true,
+                                        sampleMode = sample?.first,
+                                        sampleSize = sample?.second
                                 )
                             },
                             onFailure = { error ->
@@ -550,7 +574,13 @@ class PlaylistViewModel @Inject constructor(
             // No signal could be composed: leave the sheet on the manual input phase as a fallback
             // instead of pretending generation started.
             if (composed.prompt.isBlank()) return@launch
-            startPreview(composed.prompt) {
+            startPreview(
+                composed.prompt,
+                resolveSample = {
+                    aiPreferences.getSerendipitySampleMode().first() to
+                            aiPreferences.getSerendipitySampleSize().first()
+                }
+            ) {
                 aiPlaylistGenerator.generateSerendipity(composed.prompt, DEFAULT_AI_MIX_LENGTH)
             }
         }
@@ -702,12 +732,18 @@ class PlaylistViewModel @Inject constructor(
     ) {
         if (songs.isEmpty()) return
         viewModelScope.launch {
+            // The preview state still holds the unedited generation: its songs are the "original"
+            // snapshot, while [songs] is the user's possibly trimmed result being saved.
+            val preview = _aiPlaylistPreviewState.value
             val playlist = playlistPreferencesRepository.createPlaylist(
                 name = name,
                 songIds = songs.map { it.id },
                 source = source,
                 // Kept so the playlist screen can show what the mix was asked for.
-                aiPrompt = prompt.ifBlank { null }
+                aiPrompt = prompt.ifBlank { null },
+                aiSampleMode = preview.sampleMode?.name,
+                aiSampleSize = preview.sampleSize,
+                aiOriginalSongIds = preview.songs.map { it.id }
             )
             _aiMixSaved.emit(
                 AiMixSaved(

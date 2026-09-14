@@ -263,3 +263,26 @@ val MIGRATION_8_9 = object : Migration(8, 9) {
         db.addColumnIfMissing("playlists", "ai_prompt", "`ai_prompt` TEXT")
     }
 }
+
+/**
+ * v9 -> v10: remember how an AI playlist was generated.
+ *
+ * - `ai_sample_mode` / `ai_sample_size`: the sampling mode name and context size actually used, so
+ *   the detail screen shows what this mix was built from rather than the current preference.
+ * - `ai_original_song_ids`: JSON array of the songs originally returned (in generation order),
+ *   kept separately from `playlist_songs` because that table reflects the user's later edits.
+ *
+ * All three are nullable with no default: existing rows and every manually built playlist simply
+ * carry no generation metadata.
+ */
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.addColumnIfMissing("playlists", "ai_sample_mode", "`ai_sample_mode` TEXT")
+        db.addColumnIfMissing("playlists", "ai_sample_size", "`ai_sample_size` INTEGER")
+        db.addColumnIfMissing(
+            "playlists",
+            "ai_original_song_ids",
+            "`ai_original_song_ids` TEXT"
+        )
+    }
+}

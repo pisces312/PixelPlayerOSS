@@ -27,7 +27,17 @@ data class Playlist(
      * Null for manually built playlists. Kept out of [name] on purpose: names are identifiers
      * that get searched, exported as file names and shown as queue names, while this is content.
      */
-    val aiPrompt: String? = null
+    val aiPrompt: String? = null,
+    /** Name of the [com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode] used at generation. */
+    val aiSampleMode: String? = null,
+    /** How many library titles were sent to the model as context at generation. */
+    val aiSampleSize: Int? = null,
+    /**
+     * Ordered snapshot of the songs the model returned before the user edited the result. The live
+     * [songIds] can be added to, removed from or reordered; this keeps what was *originally*
+     * generated, so the detail screen can show it. Empty for manual and pre-v10 playlists.
+     */
+    val aiOriginalSongIds: List<String> = emptyList()
 )
 
 enum class PlaylistShapeType {

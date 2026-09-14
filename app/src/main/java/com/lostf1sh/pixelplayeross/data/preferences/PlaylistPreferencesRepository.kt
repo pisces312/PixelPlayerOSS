@@ -54,7 +54,13 @@ class PlaylistPreferencesRepository @Inject constructor(
         customId: String? = null,
         source: String = "LOCAL",
         /** Prompt/context this playlist was generated from; null for manual playlists. */
-        aiPrompt: String? = null
+        aiPrompt: String? = null,
+        /** Sampling mode name used at generation; null for manual playlists. */
+        aiSampleMode: String? = null,
+        /** Context size used at generation; null for manual playlists. */
+        aiSampleSize: Int? = null,
+        /** Ordered snapshot of the songs originally generated; empty for manual playlists. */
+        aiOriginalSongIds: List<String> = emptyList()
     ): Playlist {
         ensureMigratedIfNeeded()
         val now = System.currentTimeMillis()
@@ -75,6 +81,9 @@ class PlaylistPreferencesRepository @Inject constructor(
             coverShapeDetail4 = coverShapeDetail4,
             source = source,
             aiPrompt = aiPrompt,
+            aiSampleMode = aiSampleMode,
+            aiSampleSize = aiSampleSize,
+            aiOriginalSongIds = aiOriginalSongIds,
         )
         localPlaylistDao.upsertPlaylist(newPlaylist.toEntity())
         localPlaylistDao.replacePlaylistSongs(newPlaylist.id, newPlaylist.songIds)

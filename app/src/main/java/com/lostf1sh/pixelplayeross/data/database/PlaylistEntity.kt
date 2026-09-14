@@ -5,6 +5,23 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.lostf1sh.pixelplayeross.data.model.Playlist
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val playlistJson = Json { ignoreUnknownKeys = true }
+private val songIdListSerializer = ListSerializer(String.serializer())
+
+/** Encodes the ordered original-song snapshot for the `ai_original_song_ids` TEXT column. */
+private fun encodeSongIds(ids: List<String>): String? =
+        ids.takeIf { it.isNotEmpty() }?.let { playlistJson.encodeToString(songIdListSerializer, it) }
+
+/** Decodes it back; anything unreadable (manual/legacy rows) degrades to an empty list. */
+private fun decodeSongIds(raw: String?): List<String> =
+        raw?.let { runCatching { playlistJson.decodeFromString(songIdListSerializer, it) }.getOrNull() }
+                ?: emptyList()
 
 @Entity(
     tableName = "playlists",
@@ -45,6 +62,15 @@ data class PlaylistEntity(
     /** Generation prompt for AI playlists; null for everything else. Added in schema v9. */
     @ColumnInfo(name = "ai_prompt")
     val aiPrompt: String? = null,
+    /** Sampling mode name used at generation; null for manual/legacy rows. Added in schema v10. */
+    @ColumnInfo(name = "ai_sample_mode")
+    val aiSampleMode: String? = null,
+    /** Context size used at generation; null for manual/legacy rows. Added in schema v10. */
+    @ColumnInfo(name = "ai_sample_size")
+    val aiSampleSize: Int? = null,
+    /** JSON array of the originally generated song ids, in generation order. Schema v10. */
+    @ColumnInfo(name = "ai_original_song_ids")
+    val aiOriginalSongIds: String? = null,
 )
 
 fun PlaylistEntity.toPlaylist(songIds: List<String>): Playlist {
@@ -65,6 +91,9 @@ fun PlaylistEntity.toPlaylist(songIds: List<String>): Playlist {
         coverShapeDetail4 = coverShapeDetail4,
         source = source,
         aiPrompt = aiPrompt,
+        aiSampleMode = aiSampleMode,
+        aiSampleSize = aiSampleSize,
+        aiOriginalSongIds = decodeSongIds(aiOriginalSongIds),
     )
 }
 
@@ -85,5 +114,8 @@ fun Playlist.toEntity(): PlaylistEntity {
         coverShapeDetail4 = coverShapeDetail4,
         source = source,
         aiPrompt = aiPrompt,
+        aiSampleMode = aiSampleMode,
+        aiSampleSize = aiSampleSize,
+        aiOriginalSongIds = encodeSongIds(aiOriginalSongIds),
     )
 }
