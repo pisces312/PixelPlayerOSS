@@ -115,6 +115,30 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 4. `presentation/settings/search/SettingsRegistry.kt`：注册 `SettingSpec`（`type = SettingType.SWITCH`，带 `getValue` / `onToggle` 与关键词），`itemKey` 与第 3 步的 highlight key 一致。
 5. `res/values/strings_settings.xml` 加 title/subtitle，同时加 `values-zh-rCN/` 中文版；其他语言留给翻译流程，不要手写。
 
+## 共享 PlayerViewModel（必读：别加回 `= hiltViewModel()` 默认值）
+
+全应用**只有一个** `PlayerViewModel`：`MainActivity` 以 `by viewModels()` 持有（activity 级），传给
+`AppNavigation`，再经 `ScreenWrapper` 与显式参数逐层下传。**screen / component 的参数上不要写
+`playerViewModel: PlayerViewModel = hiltViewModel()`** —— 这不是"方便的默认值"，是 bug：
+
+- 在 `composable(route) { }` 内部，`hiltViewModel()` 解析的是**该路由自己的 `NavBackStackEntry`** → 新建**第二个**实例；
+- 该实例随路由出栈销毁，其 `onCleared()` 会连带清理 `SearchStateHolder`、`PlaybackStateHolder` 等 `@Singleton` →
+  **全局状态被静默拆掉**（不崩溃、无异常日志）。实测：进一次 AI 混音页再返回，搜索从此永远返回空列表，只能重启应用恢复。
+
+三条约束，缺一即回归：
+
+1. `PlayerViewModel` 型参数**一律不写默认值**（现在全仓 `grep 'PlayerViewModel = hiltViewModel()'` 为 0），
+   调用点显式传入，让编译器强制接线。
+   `PlaylistViewModel` / `SettingsViewModel` / `EqualizerViewModel` 等的默认值**保留** —— 它们没有清理单例状态的行为。
+2. **新增屏幕 / 覆盖层要接进传递链**：`AppNavigation` 的 `composable(route)` → `ScreenWrapper` → 目标 composable；
+   播放器覆盖层走 `UnifiedPlayerOverlaysLayer.kt` 的 host → `UnifiedPlayerQueueLayer` → `QueueBottomSheet`。
+3. **新增 `@Singleton` StateHolder 照抄 `SearchStateHolder` 的所有权校验**：`initialize(owner, scope)` /
+   `onCleared(owner)`，**首个 owner 胜出**（"接管"语义无效：第二个 VM 会拿到所有权，销毁时照样清空），
+   非 owner 的调用忽略并打 `Timber.w`，调用点传 `this@PlayerViewModel`。回归测试见 `SearchStateHolderTest`。
+
+**探针**：`logcat` / `files/logs/pixelplayeross.log` 里 grep `SearchStateHolder` 的 `Timber.w` 告警 ——
+有告警就说明又有第二个 VM 在调 `initialize`/`onCleared`，即传递链又漏了一处。
+
 ## 关键架构速查
 
 - **删除歌曲**：所有 UI 的 `onDeleteFromDevice` 最终都走 `PlayerViewModel.deleteSelectedFromDevice`（批量）/ `deleteFromDevice`（单曲）—— 拦截删除只需改这两处。`removeSongFromLibrary` 是"仅移出曲库、不删文件"。
