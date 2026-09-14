@@ -1701,7 +1701,7 @@ class PlayerViewModel @Inject constructor(
                 songTitleResolver = { songId -> libraryStateHolder.allSongsById.value[songId]?.title ?: "Unknown" }
             )
 
-            searchStateHolder.initialize(viewModelScope)
+            searchStateHolder.initialize(this@PlayerViewModel, viewModelScope)
             // Must stay after initialize(): the holder binds its scope there, and
             // loadSearchHistory() silently no-ops while that scope is still null.
             loadSearchHistory()
@@ -4102,7 +4102,7 @@ class PlayerViewModel @Inject constructor(
         dailyMixStateHolder.onCleared()
         lyricsStateHolder.onCleared()
         themeStateHolder.onCleared()
-        searchStateHolder.onCleared()
+        searchStateHolder.onCleared(this@PlayerViewModel)
         libraryStateHolder.onCleared()
         sleepTimerStateHolder.onCleared()
         connectivityStateHolder.onCleared()

@@ -155,7 +155,7 @@ class PlayerViewModelTest {
         every { mockSearchStateHolder.clearSearchHistory() } just runs
         every { mockSearchStateHolder.deleteSearchHistoryItem(any()) } just runs
         every { mockSearchStateHolder.updateSearchFilter(any()) } just runs
-        every { mockSearchStateHolder.initialize(any()) } just runs
+        every { mockSearchStateHolder.initialize(any(), any()) } just runs
 
         every { mockConnectivityStateHolder.initialize() } just runs
 

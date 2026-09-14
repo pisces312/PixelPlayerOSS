@@ -66,9 +66,29 @@ class SearchStateHolder @Inject constructor(
     private var searchJob: Job? = null
 
     /**
-     * Initialize with ViewModel scope.
+     * The ViewModel that owns this holder's scope. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the scope of the
+     * first one: only the owner may [onCleared] it.
      */
-    fun initialize(scope: CoroutineScope) {
+    private var owner: Any? = null
+
+    /**
+     * Initialize with the owning ViewModel and its scope.
+     *
+     * Called once per process in practice (the root `PlayerViewModel` is activity-scoped).
+     * A repeated call from a *different* owner is ignored so that a stray second
+     * ViewModel cannot steal — or later kill — the scope of the real owner.
+     */
+    fun initialize(owner: Any, scope: CoroutineScope) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "SearchStateHolder.initialize ignored: already owned by %s",
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = owner
         this.scope = scope
         observeSearchRequests()
     }
@@ -195,8 +215,19 @@ class SearchStateHolder @Inject constructor(
         }
     }
 
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "SearchStateHolder.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
         searchJob?.cancel()
+        searchJob = null
         scope = null
+        this.owner = null
     }
 }
