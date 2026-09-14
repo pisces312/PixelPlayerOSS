@@ -1,7 +1,7 @@
 # 不期而遇「长按快速生成」方案
 
-> 状态：已按审阅结论实现（方案 A；保留长按触感；长按区域限「不期而遇！」胶囊），
-> assembleDebug + testDebugUnitTest 通过；真机首测触感不生效，已按 3.4.1 修复，待复测。
+> 状态：已按审阅结论实现（方案 A；长按区域限「不期而遇！」胶囊），assembleDebug +
+> testDebugUnitTest 通过；触感最终简化为框架自带（见 3.4.1），待真机复测。
 > 涉及代码：`presentation/components/AiGenerateEntryCard.kt`、
 > `presentation/screens/HomeScreen.kt`、`presentation/viewmodel/PlaylistViewModel.kt`。
 > 前置改动：默认 15 首、sheet 打开即全展开（已合入 main）。
@@ -146,40 +146,19 @@ val openAiEntry: (Boolean, Boolean) -> Unit = { serendipity, quick ->
   形状/水波纹/颜色不变。
 - 长按区域仅限「不期而遇！」胶囊本身。
 
-#### 3.4.1 长按触感的实现（真机不震的修复，2026-09-14 补）
+#### 3.4.1 长按触感：直接用框架自带（2026-09-14 定稿）
 
-真机首版触感不生效，反编译 `foundation 1.11.x` 的 `CombinedClickableNode` 后确认两条事实：
+反编译 `foundation 1.11.x` 的 `CombinedClickableNode` 确认：`combinedClickable` 长按时
+**框架会自动**经 `LocalHapticFeedback` 触发一次 `LongPress`（在 onLongClick 回调之前），
+因此代码里不需要任何手动触感调用。
 
-1. `combinedClickable` 长按时**框架会自动**经 `LocalHapticFeedback` 触发一次 `LongPress`
-   （在 onLongClick 回调之前），不需要、也不应该再手动调第二次；
-2. Compose 平台触感实现等价于 `View.performHapticFeedback(LONG_PRESS)`，**不带
-   `FLAG_IGNORE_GLOBAL_SETTING`**，系统「设置 → 声音和振动 → 触感反馈」总开关关闭时
-   （国产 ROM 常默认关）会被静默丢弃——这正是不震的根因。项目其余触感统一走
-   `performAppCompatHapticFeedback`（ViewCompat）正是为绕开它。
-
-最终做法（只作用于该胶囊，不改动全局触感基座）：
-
-```kotlin
-CompositionLocalProvider(LocalHapticFeedback provides NoOpHapticFeedback) {
-    Surface(Modifier.clip(CircleShape).combinedClickable(
-        onClick = { onClick?.invoke() },
-        onLongClick = {
-            performAppCompatHapticFeedback(
-                view, appHapticsConfig,
-                HapticFeedbackConstantsCompat.LONG_PRESS,
-                HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING   // 只受 app 内触感开关控制
-            )
-            action()
-        }
-    )) { content() }
-}
-```
-
-- 局部 `NoOpHapticFeedback` 吞掉框架自带那次（仅这棵子树），ViewCompat 手动触发可靠的一次，
-  因此系统开关关闭也能震、且**不会双震**；
-- app 内「触感反馈」开关关闭时 `performAppCompatHapticFeedback` 内部直接返回，仍然不震，符合设置；
-- 未改 MainActivity 的全局 `LocalHapticFeedback` 基座，避免牵动全 app 其余 27 处触感行为
-  （全局统一到 ViewCompat 可作为后续独立优化，届时需清理 combinedClickable 链上的重复手动触感）。
+- 首版曾在 onLongClick 里再手动调一次，系统触感开关打开时会与框架那次叠加成"双震"；
+- 一度尝试用 ViewCompat + `FLAG_IGNORE_GLOBAL_SETTING` 绕过系统总开关（commit e4452807），
+  但真机确认不震只是因为**系统触感总开关当时被手动关闭**，打开后即正常。绕系统开关会让这一个
+  按钮与全 app 其余 27 处 Compose 触感行为不一致，故放弃；
+- 最终实现：`combinedClickable(onClick, onLongClick = onLongClick)`，零手动触感。
+  控制链为「系统触感总开关 + app 内触感开关」串联——MainActivity 根部在 app 开关关闭时
+  provide 的是 `NoOpHapticFeedback`，框架自带触感同样被吞，两级开关都生效，且只震一次。
 
 ### 3.5 边界处理
 
