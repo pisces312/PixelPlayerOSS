@@ -427,6 +427,18 @@ object SettingsRegistry {
                 onToggle = { viewModel, checked -> viewModel.setResumeOnHeadsetReconnect(checked) }
             ),
             SettingSpec(
+                id = "playback_car_lyrics",
+                itemKey = "item_playback_car_lyrics",
+                titleRes = R.string.setcat_car_lyrics_title,
+                subtitleRes = R.string.setcat_car_lyrics_subtitle,
+                category = SettingsCategory.PLAYBACK,
+                subscreenRoute = Screen.SettingsCategory.createRoute("playback"),
+                type = SettingType.SWITCH,
+                keywordsStatic = listOf("car", "bluetooth", "avrcp", "lyrics", "title", "head unit", "scroll"),
+                getValue = { it.carLyricTitleEnabled },
+                onToggle = { viewModel, checked -> viewModel.setCarLyricTitleEnabled(checked) }
+            ),
+            SettingSpec(
                 id = "playback_crossfade",
                 itemKey = "item_playback_crossfade",
                 titleRes = R.string.setcat_crossfade_label,

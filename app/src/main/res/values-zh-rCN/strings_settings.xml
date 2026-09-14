@@ -136,6 +136,9 @@
     <string name="setcat_headphones">耳机</string>
     <string name="setcat_headphones_resume_title">耳机重连后继续播放</string>
     <string name="setcat_headphones_resume_subtitle">耳机拔出暂停后，重新插入自动恢复播放</string>
+    <string name="setcat_car_lyrics_section">车载蓝牙</string>
+    <string name="setcat_car_lyrics_title">标题显示歌词</string>
+    <string name="setcat_car_lyrics_subtitle">通过蓝牙把当前歌词行作为媒体标题发送，支持滚动标题的车机会显示歌词。需要同步歌词。</string>
     <string name="setcat_queue_transitions">播放队列与过渡效果</string>
     <string name="setcat_crossfade_label">歌曲淡入淡出</string>
     <string name="setcat_crossfade_desc">开启歌曲之间平滑过渡</string>

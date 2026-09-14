@@ -227,6 +227,7 @@ constructor(
             longPreferencesKey("advanced_performance_diagnostics_expires_at_epoch_ms")
         val IMMERSIVE_LYRICS_ENABLED = booleanPreferencesKey("immersive_lyrics_enabled")
         val IMMERSIVE_LYRICS_TIMEOUT = longPreferencesKey("immersive_lyrics_timeout")
+        val CAR_LYRIC_TITLE_ENABLED = booleanPreferencesKey("car_lyric_title_enabled")
         val USE_ANIMATED_LYRICS = booleanPreferencesKey("use_animated_lyrics")
         val ANIMATED_LYRICS_BLUR_ENABLED = booleanPreferencesKey("animated_lyrics_blur_enabled")
         val ANIMATED_LYRICS_BLUR_STRENGTH = androidx.datastore.preferences.core.floatPreferencesKey("animated_lyrics_blur_strength")
@@ -676,6 +677,22 @@ constructor(
     suspend fun setImmersiveLyricsTimeout(timeout: Long) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.IMMERSIVE_LYRICS_TIMEOUT] = timeout
+        }
+    }
+
+    /**
+     * Replaces the media title exposed to external consumers (car head unit over Bluetooth AVRCP)
+     * with the current synced lyric line. Off by default: the title is a user-visible field on
+     * every paired device, so opting in is explicit.
+     */
+    val carLyricTitleEnabledFlow: Flow<Boolean> =
+            dataStore.data.map { preferences ->
+                preferences[PreferencesKeys.CAR_LYRIC_TITLE_ENABLED] ?: false
+            }
+
+    suspend fun setCarLyricTitleEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CAR_LYRIC_TITLE_ENABLED] = enabled
         }
     }
 

@@ -196,6 +196,13 @@ class MusicService : MediaSessionService() {
 
     private var favoriteSongIds = emptySet<String>()
     private var mediaSession: MediaSession? = null
+    // Outermost session-facing wrapper. The service pushes metadata overrides (car lyric title)
+    // through this instance; see LyricTitlePlayer for why the inner player must stay untouched.
+    private var lyricTitlePlayer: com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer? = null
+    // Mirrors PreferencesKeys.CAR_LYRIC_TITLE_ENABLED. Read on every publish tick, so it stays a
+    // plain volatile flag instead of re-reading DataStore in the hot path.
+    @Volatile
+    private var carLyricTitleEnabled = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var keepPlayingInBackground = true
     private var isManualShuffleEnabled = false
@@ -225,6 +232,7 @@ class MusicService : MediaSessionService() {
 
     companion object {
         private const val TAG = "MusicService_PixelPlayer"
+        private const val CAR_LYRIC_TITLE_SPIKE_INTERVAL_MS = 1_000L
         const val NOTIFICATION_ID = 101
         const val ACTION_SLEEP_TIMER_EXPIRED = "com.lostf1sh.pixelplayeross.ACTION_SLEEP_TIMER_EXPIRED"
         const val EXTRA_FORCE_FOREGROUND_ON_START =
@@ -286,6 +294,10 @@ class MusicService : MediaSessionService() {
         replayGainProcessor.onTransitionFinished()
     }
 
+    private fun Player.unwrapLyricTitlePlayer(): Player {
+        return (this as? com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer)?.innerPlayer ?: this
+    }
+
     private fun Player.unwrapMappingPlayer(): Player {
         return (this as? com.lostf1sh.pixelplayeross.data.service.player.MappingPlayer)?.innerPlayer ?: this
     }
@@ -299,16 +311,23 @@ class MusicService : MediaSessionService() {
             innerPlayer = player,
             scope = appScope
         )
-        return com.lostf1sh.pixelplayeross.data.service.player.MappingPlayer(
+        val mappingPlayer = com.lostf1sh.pixelplayeross.data.service.player.MappingPlayer(
             innerPlayer = fadingPlayer,
             context = this
         )
+        // LyricTitlePlayer must stay outermost: MediaSession is handed this instance and its
+        // registered listeners are the ones that need the synthetic metadata updates.
+        val lyricTitlePlayer = com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer(
+            innerPlayer = mappingPlayer
+        )
+        this.lyricTitlePlayer = lyricTitlePlayer
+        return lyricTitlePlayer
     }
 
     private fun publishMediaSessionPlayer(player: Player, logMessage: String) {
         val session = mediaSession ?: return
         val oldPlayer = session.player
-        val unwrappedOld = oldPlayer.unwrapMappingPlayer().unwrapFadingPlayer()
+        val unwrappedOld = oldPlayer.unwrapLyricTitlePlayer().unwrapMappingPlayer().unwrapFadingPlayer()
         if (unwrappedOld !== player) {
             oldPlayer.removeListener(playerListener)
             val wrappedPlayer = wrapFadingPlayer(player)
@@ -725,6 +744,8 @@ class MusicService : MediaSessionService() {
             requestWidgetFullUpdate(force = true)
         }
 
+        startCarLyricTitleSpike()
+
         serviceScope.launch {
             musicRepository.getFavoriteSongIdsFlow().collect { ids ->
                 Timber.tag("MusicService")
@@ -742,6 +763,58 @@ class MusicService : MediaSessionService() {
                         requestWidgetFullUpdate(force = true)
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * TEMPORARY spike for the car-lyric-title feature. Proves that a metadata override pushed
+     * through [com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer] reaches external
+     * session consumers (Bluetooth AVRCP stack / notification / SMTC) without mutating the inner
+     * player's playlist.
+     *
+     * Gated by [UserPreferencesRepository.carLyricTitleEnabledFlow] (off by default). While the
+     * preference is off the override is cleared, so the title stays the real track title.
+     * Debug builds only, and the title is a placeholder clock so the effect is unambiguous in
+     * `adb shell dumpsys media_session`.
+     *
+     * Remove this once the real lyric pipeline replaces the placeholder title.
+     */
+    private fun startCarLyricTitleSpike() {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+
+        serviceScope.launch {
+            userPreferencesRepository.carLyricTitleEnabledFlow.collect { enabled ->
+                // publishMetadataOverride must run on the application thread (Media3 verifies it
+                // inside the listener callback).
+                withContext(Dispatchers.Main.immediate) {
+                    carLyricTitleEnabled = enabled
+                    if (!enabled) {
+                        // Opting out must restore the real track title right away, not on the next
+                        // tick, so the car never shows a stale lyric line.
+                        lyricTitlePlayer?.publishMetadataOverride(null)
+                    }
+                }
+            }
+        }
+
+        var tick = 0L
+        serviceScope.launch {
+            while (true) {
+                delay(CAR_LYRIC_TITLE_SPIKE_INTERVAL_MS)
+                val wrapper = lyricTitlePlayer ?: continue
+                if (!carLyricTitleEnabled) continue
+                tick++
+                val title = if (wrapper.isPlaying) {
+                    val positionMs = wrapper.currentPosition.coerceAtLeast(0L)
+                    "[SPIKE] %d:%02d".format(positionMs / 60_000, (positionMs / 1000) % 60)
+                } else {
+                    "[SPIKE] idle #%d".format(tick)
+                }
+                wrapper.publishMetadataOverride(
+                    wrapper.innerPlayer.mediaMetadata.buildUpon().setTitle(title).build()
+                )
+                Timber.tag(TAG).d("car lyric title spike: %s", title)
             }
         }
     }

@@ -98,6 +98,7 @@ data class SettingsUiState(
     val useAnimatedLyrics: Boolean = false,
     val animatedLyricsBlurEnabled: Boolean = true,
     val animatedLyricsBlurStrength: Float = 2.5f,
+    val carLyricTitleEnabled: Boolean = false,
     val backupInfoDismissed: Boolean = false,
     val isDataTransferInProgress: Boolean = false,
     val restorePlan: RestorePlan? = null,
@@ -171,7 +172,8 @@ private sealed interface SettingsUiUpdate {
         val immersiveLyricsTimeout: Long,
         val animatedLyricsBlurEnabled: Boolean,
         val animatedLyricsBlurStrength: Float,
-        val songDeletionEnabled: Boolean
+        val songDeletionEnabled: Boolean,
+        val carLyricTitleEnabled: Boolean
     ) : SettingsUiUpdate
 }
 
@@ -327,7 +329,8 @@ class SettingsViewModel @Inject constructor(
                 userPreferencesRepository.immersiveLyricsTimeoutFlow,
                 userPreferencesRepository.animatedLyricsBlurEnabledFlow,
                 userPreferencesRepository.animatedLyricsBlurStrengthFlow,
-                userPreferencesRepository.songDeletionEnabledFlow
+                userPreferencesRepository.songDeletionEnabledFlow,
+                userPreferencesRepository.carLyricTitleEnabledFlow
             ) { values ->
                 val requestedAudioOutputMode = values[4] as AudioOutputMode
                 SettingsUiUpdate.Group2(
@@ -354,7 +357,8 @@ class SettingsViewModel @Inject constructor(
                     immersiveLyricsTimeout = values[13] as Long,
                     animatedLyricsBlurEnabled = values[14] as Boolean,
                     animatedLyricsBlurStrength = values[15] as Float,
-                    songDeletionEnabled = values[16] as Boolean
+                    songDeletionEnabled = values[16] as Boolean,
+                    carLyricTitleEnabled = values[17] as Boolean
                 )
             }.collect { update ->
                 _uiState.update { state ->
@@ -375,7 +379,8 @@ class SettingsViewModel @Inject constructor(
                         immersiveLyricsTimeout = update.immersiveLyricsTimeout,
                         animatedLyricsBlurEnabled = update.animatedLyricsBlurEnabled,
                         animatedLyricsBlurStrength = update.animatedLyricsBlurStrength,
-                        songDeletionEnabled = update.songDeletionEnabled
+                        songDeletionEnabled = update.songDeletionEnabled,
+                        carLyricTitleEnabled = update.carLyricTitleEnabled
                     )
                 }
             }
@@ -890,6 +895,12 @@ class SettingsViewModel @Inject constructor(
     fun setImmersiveLyricsTimeout(timeout: Long) {
         viewModelScope.launch {
             userPreferencesRepository.setImmersiveLyricsTimeout(timeout)
+        }
+    }
+
+    fun setCarLyricTitleEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setCarLyricTitleEnabled(enabled)
         }
     }
 

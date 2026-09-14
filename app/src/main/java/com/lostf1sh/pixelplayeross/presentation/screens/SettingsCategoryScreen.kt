@@ -935,6 +935,17 @@ fun SettingsCategoryScreen(
                                 )
                             }
 
+                            SettingsSubsection(title = stringResource(R.string.setcat_car_lyrics_section)) {
+                                SwitchSettingItem(
+                                    title = stringResource(R.string.setcat_car_lyrics_title),
+                                    subtitle = stringResource(R.string.setcat_car_lyrics_subtitle),
+                                    checked = uiState.carLyricTitleEnabled,
+                                    onCheckedChange = { settingsViewModel.setCarLyricTitleEnabled(it) },
+                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_directions_car_24), null, tint = MaterialTheme.colorScheme.secondary) },
+                                    modifier = Modifier.settingHighlight("item_playback_car_lyrics", highlightKey)
+                                )
+                            }
+
                             SettingsSubsection(title = stringResource(R.string.setcat_statistics_section)) {
                                 SwitchSettingItem(
                                     title = stringResource(R.string.setcat_stats_ranking_unlimited_title),
