@@ -395,7 +395,8 @@ fun AppNavigation(
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                     AiMixesScreen(
                         onBack = { navController.popBackStack() },
-                        paddingValues = paddingValues
+                        paddingValues = paddingValues,
+                        playerViewModel = playerViewModel
                     )
                 }
             }

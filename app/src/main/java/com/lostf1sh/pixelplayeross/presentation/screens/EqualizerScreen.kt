@@ -157,7 +157,7 @@ import kotlinx.collections.immutable.toImmutableList
 @Composable
 fun EqualizerScreen(
     navController: NavController,
-    playerViewModel: PlayerViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel,
     equalizerViewModel: EqualizerViewModel = hiltViewModel()
 ) {
     val uiState by equalizerViewModel.uiState.collectAsStateWithLifecycle()

@@ -867,7 +867,8 @@ fun PlaylistDetailScreen(
             onConfirm = { selectedIds ->
                 playlistViewModel.addSongsToPlaylist(currentPlaylist.id, selectedIds.toList())
                 showAddSongsSheet = false
-            }
+            },
+            playerViewModel = playerViewModel
         )
     }
     if (showPlaylistOptionsSheet && !isFolderPlaylist) {

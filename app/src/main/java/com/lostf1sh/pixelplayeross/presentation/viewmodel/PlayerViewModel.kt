@@ -1650,7 +1650,6 @@ class PlayerViewModel @Inject constructor(
             }
 
             loadPersistedDailyMix()
-            loadSearchHistory()
 
             viewModelScope.launch {
                 isSyncingStateFlow.collect { isSyncing ->
@@ -1703,6 +1702,9 @@ class PlayerViewModel @Inject constructor(
             )
 
             searchStateHolder.initialize(viewModelScope)
+            // Must stay after initialize(): the holder binds its scope there, and
+            // loadSearchHistory() silently no-ops while that scope is still null.
+            loadSearchHistory()
 
             viewModelScope.launch {
                 combine(

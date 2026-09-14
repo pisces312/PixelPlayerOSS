@@ -62,6 +62,7 @@ internal fun UnifiedPlayerQueueLayer(
     currentQueueSourceName: String,
     currentMediaItemIndex: Int,
     infrequentPlayerState: StablePlayerState,
+    playerViewModel: PlayerViewModel,
     activeTimerValueDisplay: State<String?>,
     activeTimerDurationMinutes: State<Int?>,
     playCount: State<Float>,
@@ -113,6 +114,7 @@ internal fun UnifiedPlayerQueueLayer(
                 shapes = MaterialTheme.shapes
             ) {
                 QueueBottomSheet(
+                    viewModel = playerViewModel,
                     modifier = Modifier
                         .fillMaxSize()
                         .offset { IntOffset(0, queueSheetOffset.value.roundToInt()) }
@@ -398,6 +400,7 @@ internal fun UnifiedPlayerQueueAndSongInfoHost(
                 currentQueueSourceName = currentQueueSourceName,
                 currentMediaItemIndex = infrequentPlayerState.currentMediaItemIndex,
                 infrequentPlayerState = infrequentPlayerState,
+                playerViewModel = playerViewModel,
                 activeTimerValueDisplay = activeTimerValueDisplay,
                 activeTimerDurationMinutes = activeTimerDurationMinutes,
                 playCount = playCount,

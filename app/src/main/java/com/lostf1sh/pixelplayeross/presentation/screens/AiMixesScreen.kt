@@ -54,7 +54,7 @@ fun AiMixesScreen(
     onBack: () -> Unit,
     paddingValues: PaddingValues,
     playlistViewModel: PlaylistViewModel = hiltViewModel(),
-    playerViewModel: PlayerViewModel = hiltViewModel()
+    playerViewModel: PlayerViewModel
 ) {
     val mixes by playlistViewModel.recentAiMixes.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
