@@ -191,17 +191,33 @@ player.replaceMediaItem(index, item.buildUpon()
 - 新增字段 `lyricTitlePlayer: LyricTitlePlayer?`（最外层包装实例）与 `carLyricTitleController: CarLyricTitleController?`
 - `wrapFadingPlayer()` 在最外层再包一层并记录实例
 - 新增 `Player.unwrapLyricTitlePlayer()`，并把 `publishMediaSessionPlayer()` 里的解包链改为 `unwrapLyricTitlePlayer().unwrapMappingPlayer().unwrapFadingPlayer()`
-- `onCreate` 的 `serviceScope` 里调用 `startCarLyricTitle()`
+- `publishMediaSessionPlayer()` 在换 wrapper 后调用 `carLyricTitleController?.onPlayerReplaced()`（见 §6.3「wrapper 身份」）
+- `onCreate` 的 `serviceScope` 里调用 `startCarLyricTitle()`，其中同时注册 `AudioDeviceCallback`（`registerCarLyricTitleOutputMonitor()` / `unregisterCarLyricTitleOutputMonitor()`，`onDestroy` 注销）
 - `isCarLyricTitleOutputActive()` / `hasBluetoothA2dpOutput()`：输出路由判定（见 §6.4）
+
+> `publishMediaSessionPlayer()`（MusicService L328-337 附近）是**唯一**的 wrapper 换代咽喉——`oldPlayer.removeListener(playerListener)` → `wrapFadingPlayer()` → `session.player = wrappedPlayer`。控制器的 listener 重挂与覆盖值重置都挂在这里，不需要另找位置。
 
 ### 6.3 运行期驱动：`CarLyricTitleController`
 
-`data/service/player/CarLyricTitleController.kt`。单独成类而不是塞进 `MusicService`，是因为它有自己的跨歌状态（当前歌曲、歌词行、上次推送的行、路由缓存），放进 Service 字段会继续膨胀那个已有 30+ 播放状态字段的类。
+`data/service/player/CarLyricTitleController.kt`。单独成类而不是塞进 `MusicService`，是因为它有自己的跨歌状态（当前歌曲、歌词行、上次推送的行、下一个唤醒任务），放进 Service 字段会继续膨胀那个已有 30+ 播放状态字段的类。
+
+#### 调度模型：按行边界自调度，而不是固定间隔轮询（2026-09-14 修订）
+
+Media3 **没有位置回调**，`getCurrentPosition()` 只能采样，所以"完全不采样"做不到——App 内的歌词滚动本身也是采样：`PlaybackStateHolder.startProgressUpdates()` 是 `_currentPosition.subscriptionCount` 门控的 ticker（滑块 250ms / 迷你播放器 1000ms / **息屏 1000ms**，订阅数归零即停）。**因此不能复用它的位置流**：车机场景恰好是"息屏 + 后台"，composable 到 STOPPED、订阅数归零，ticker 直接停掉。而且它属于 `presentation` 层，反向依赖就是跨层。
+
+但**采样时刻没必要均匀**。本控制器按下一行边界自调度：
+
+- 唤醒时刻 = `delay(min(下一行边界 − 当前位置, 5s) / speed)`，唤醒后用**实时** `position` 重算 → 不累积漂移。
+- 一次唤醒对应一行歌词（4 分钟 60 行的歌约 60 次），而不是每秒 2 次；**暂停 / 关闭 / 无歌词时 0 次**。
+- `WATCHDOG_INTERVAL_MS = 5s` 上限是自愈兜底：固定轮询天然"错过事件也会自愈"，事件驱动必须显式补这一层，否则漏一个事件就会让标题静默滞留。
+- `MIN_WAKE_UP_DELAY_MS = 100ms` 下限：边界已经过去时不会自旋。
+- **变速播放**：歌词时间戳是墙钟时间，`setPlaybackSpeed()` 之后必须 `/ speed`。固定轮询在这一点上天然免疫，这是切换方案唯一新增的算术风险。
+- 首行之前（前奏）唤醒目标是 `lines.first().time`；最后一行之后不再排唤醒。
 
 两个协程：
 
-1. **订阅开关**（`carLyricTitleEnabledFlow`）：值变化时更新 `enabled`；**关闭时立即** `publishMetadataOverride(null)`，不等下一个 tick——否则车机会残留上一行歌词直到换歌。
-2. **轮询**（`POLL_INTERVAL_MS = 500ms`）：每 tick 依次判定，任一不满足就回收覆盖值并记录原因：
+1. **订阅开关**（`carLyricTitleEnabledFlow`）：值变化时更新 `enabled`；**关闭时立即** `publishMetadataOverride(null)` **并取消待唤醒**，不等下一个边界——否则车机会残留上一行歌词直到换歌。
+2. **事件入队 → tick**（`Channel(CONFLATED)` 单消费者）：每 tick 依次判定，任一不满足就回收覆盖值、取消待唤醒并记录原因：
 
 | 判定 | 不满足时 |
 |---|---|
@@ -210,16 +226,27 @@ player.replaceMediaItem(index, item.buildUpon()
 | 已加载歌曲（`mediaId` 能查到 Song） | 恢复原标题 |
 | 该歌有**同步**歌词（`synced` 非空） | 恢复原标题 |
 
-全部通过后取 `resolveCurrentLineIndex(lines, position + syncOffsetMs)`，**仅当行文本变化时**才推送。
+全部通过后取 `resolveCurrentLineIndex(lines, position + syncOffsetMs)`，**仅当行文本变化时**才推送，随后排下一次唤醒。
+
+事件源（都只做一次 `signal()`，不携带语义）：
+
+| 来源 | 覆盖的场景 |
+|---|---|
+| `Player.Listener.onEvents`（挂在最外层 wrapper 上） | seek / 播放暂停 / 换曲 / 变速 / 加载完成——`onEvents` 是 Media3 的合并事件回调，一个方法就够，且非热路径 |
+| `AudioDeviceCallback`（`MusicService` 注册） | 蓝牙连接 / 断开——让路由变化**立即**生效，不必等下一行歌词 |
+| `carLyricTitleEnabledFlow` | 开关变化 |
+| `MusicService.publishMediaSessionPlayer()` → `onPlayerReplaced()` | wrapper 换代（交叉淡入淡出 / 引擎切换） |
+| 歌词加载任务收尾 | 有了行才排得出唤醒 |
 
 其他设计点：
 
-- **换歌处理**：`mediaId` 变化时立刻清覆盖值 + 取消上一个歌词加载任务，再异步加载新歌歌词，避免上一首的行短暂盖在新歌标题上。
+- **换歌处理**：`mediaId` 变化时立刻清覆盖值 + 取消上一个歌词加载任务与待唤醒，再异步加载新歌歌词，避免上一首的行短暂盖在新歌标题上。
 - **歌词来源**：`musicRepository.getLyrics(song)`，默认 `EMBEDDED_FIRST`（内嵌标签 → 远程 API → 本地 `.lrc`）。冷缓存时可能走网络，与打开歌词页行为一致；结果会持久化，之后离线可命中。
 - **同步偏移**：叠加用户为这首歌设置的 `lyricsSyncOffset`，保证车机与 App 内歌词页显示同一行。
-- **线程**：tick 全程在 `Dispatchers.Main.immediate`（`publishMetadataOverride` 必须在应用线程）；歌词加载在 IO 上，不阻塞轮询。
+- **线程**：tick 全程在 `Dispatchers.Main.immediate`（`publishMetadataOverride` 必须在应用线程）；歌词加载在 IO 上，不阻塞调度。
 - **去抖**：`LyricTitlePlayer` 内部的 `metadataOverride == override` 比较**不可靠**——`MediaMetadata` 内嵌 `Bundle`，新构造的 `Bundle` 不保证相等。所以 `lastPublishedLine` 是必需的。
-- **路由判定缓存**：每 2s 重算一次（`AudioManager.getDevices` 是 binder 调用，不必每 500ms 问一次）。
+- **路由判定不缓存**：每次 tick 直接读 `AudioManager.getDevices()`。tick 已稀有到"每行一次"，比原先"每 500ms 一次 + 2s 缓存"的实际调用频率还低。`AudioDeviceCallback` 只作为**事件源**，不作为真值来源——真值每次重读，缓存不会滞留。`SystemClock` 与 `lastRoutingCheckUptimeMs` 随之删除（那个哨兵以 `Long.MIN_VALUE` 初始化时 `now - Long.MIN_VALUE` 溢出恒为负，曾让整条路由判定变成死代码，见 §9.3）。
+- **wrapper 身份**：wrapper 每次换代都是**新实例**（`metadataOverride = null`），而 `lastPublishedLine` 会让同值不再重发。`onPlayerReplaced()` 同时清 `lastPublishedLine` 并让下次 tick 重挂 listener，避免"开启交叉淡入淡出后，换曲时约一行时长显示真实曲名"。
 - **异常隔离**：tick 外层 `runCatching`，单次失败不至于杀死循环——否则功能会静默失效，用户侧毫无提示。
 
 ### 6.4 门控规则：什么时候才真的启用
@@ -426,6 +453,28 @@ adb shell "run-as com.lostf1sh.pixelplayeross.debug sqlite3 databases/pixelplaye
 
 **排查记录（一个值得留下的失败）**：第一版实现把路由缓存哨兵写成 `lastRoutingCheckUptimeMs = Long.MIN_VALUE`，判定式为 `now - lastRoutingCheckUptimeMs < INTERVAL` —— `now - Long.MIN_VALUE` **溢出**成负数，判定恒为真，"缓存值 false"被永久返回，**路由检查一次都没执行过**。表象极具迷惑性：门控"看起来正常工作"（标题确实没被改），实际机制根本没跑。改成 `0L` 初值、并把缓存变量改为可空类型（使首次结果必定打日志）之后才暴露。教训：拿极值当哨兵并参与减法之前，先想溢出。
 
+### 9.4 调度模型改造（固定轮询 → 行边界自调度）：通过
+
+2026-09-14 把 500ms 固定轮询换成"按行边界自调度 + 事件重算"（见 §6.3）。为了让唤醒节奏**可被观察**，控制器在每次排程时打一条 verbose 日志 `car lyric title: next wake in N ms (line K)`（release 由 `ReleaseTree` 抑制）——固定轮询没有这种日志，这条埋点本身是"设计可验证"的一部分。
+
+| 场景 | 观察到的行为 | 结论 |
+|---|---|---|
+| 稳态播放 | 每条歌词恰好一条 `next wake in ~2800-3000 ms (line K)`，紧跟一次行发布；发布间隔 2.88–3.00s（与 LRC 的 3s 对齐） | 唤醒数 = 行数，不再与 500ms 挂钩 |
+| 冷启动 | 只有 **1** 条排程（改造前同场景在 900ms 内出现过 25 次重复排程） | 幂等判断生效 |
+| 暂停 9s | `car lyric title` 日志 **0 条**，无排程无发布，标题停在当前行 | 暂停 = 零唤醒 |
+| 跳转（`dispatch previous`，30.9s → 2.9s） | 跳转后**立即**发布 `alpha`（~0.3s 内），旧位置的定时器被事件取代 | 事件重算覆盖 seek / 位置跳变 |
+| 播放中删除路由标志 | 打点后 **1.88s** 出现 `bluetooth output inactive`，标题恢复 `Night Tone` | 看门狗 ≤5s 内自愈 |
+| 关闭设置开关 | 打点后 **105ms** 出现 `toggle off`，标题立即恢复真实曲名；随后 7s 内 **0 条**日志 | 关闭态零唤醒（旧实现恒 2 次/秒） |
+| 重新打开开关 | 打点后 **89ms** 内发布 `CARLYRIC hotel`，与 `position=26792`（最后一行）一致 | 开启即时生效 |
+| 全程 | `active item id=0` 不变 | 队列零改动 |
+
+单测 709 通过（本轮未新增/修改测试；控制器仍无单测，原因见 §11.6）。
+
+**模拟器特有的两个现象**（均为环境属性，不是缺陷）：
+
+1. **少数边界需要两次 tick**：定时器按墙钟到点，而模拟器的媒体时钟略微滞后，于是到点时 `position` 还没跨过边界 → 触发 `MIN_WAKE_UP_DELAY_MS`（100ms）那次短排程，100ms 后发布。表现为每行 1–2 次唤醒，仍比 500ms 轮询少 3–6 倍。真机以音频时钟为准，该现象应消失。
+2. **事件源覆盖不到的一格**：当路由变化**不产生设备增删事件**时（例如本测试用的 `settings` 标志，或"在已连接的多个输出之间切换"），若此刻**播放正在推进**，靠看门狗（≤5s）自愈；若此刻已暂停/播完（没有任何已排程的定时器），则要等下一个播放事件才会重算。真实场景的蓝牙连/断都走 `AudioDeviceCallback` → 立刻 `signal()`，不受影响。**`AudioDeviceCallback` 这条路径在本模拟器上无法验证**（没有 A2DP 设备可连），是本轮唯一未覆盖的分支。
+
 ### 复现步骤
 
 ```bash
@@ -449,6 +498,13 @@ adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | tr '
 adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | tr '<' '\n<' \
   | grep 'checkable="true"' | grep -oE 'checked="[^"]+"[^/]*bounds="[^"]+"'
 adb shell input tap 927 789                   # 与标题同一垂直位置的 switch
+
+# 3'. 更快的等价路径：设置 → 顶部搜索框输入 avrcp（ASCII 才能 input text）→ 点结果行的 Switch
+adb shell input tap 540 567                   # 搜索框
+adb shell input text "avrcp"
+adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml | tr '<' '\n<' \
+  | grep 'checkable="true"' | grep -oE 'checked="[^"]+"[^/]*bounds="[^"]+"'
+adb shell input tap 927 625                   # 1080x2400 下结果行的 Switch
 
 # 4. 伪造蓝牙 A2DP 路由（仅 debug 构建识别；模拟器没有 A2DP 消费端，见 §6.4）
 adb shell settings put global pixelplayer_car_lyric_title_force_a2dp 1
@@ -474,7 +530,7 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 | `data/service/player/LyricTitlePlayer.kt` | 新增（出站 metadata 覆盖层） |
 | `data/service/player/CarLyricTitleController.kt` | 新增（门控 + 歌词行 → 标题） |
 | `utils/LyricsTimelineUtils.kt` | 新增（`resolveCurrentLineIndex` / `resolveLineEndTimeMs` 从 `LyricsSheet.kt` 移入） |
-| `data/service/MusicService.kt` | 改（包装链 + 解包链 + 启动控制器 + A2DP 路由判定 + debug 逃生标志） |
+| `data/service/MusicService.kt` | 改（包装链 + 解包链 + 启动控制器 + A2DP 路由判定 + debug 逃生标志 + `publishMediaSessionPlayer()` 里通知 wrapper 换代 + `AudioDeviceCallback` 注册/注销） |
 | `data/preferences/UserPreferencesRepository.kt` | 改（偏好项） |
 | `presentation/viewmodel/SettingsViewModel.kt` | 改（UiState / Group2 / 开关方法） |
 | `presentation/screens/SettingsCategoryScreen.kt` | 改（PLAYBACK 子节 + 开关 UI） |
@@ -489,7 +545,9 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 
 1. **真机复核（已降级为可选）**：「改标题会不会被当成换曲」已由 AOSP 源码判定——只改 metadata 时 `queue=false`，不会触发 `Track Changed`(0x02)，故不会重置进度条，见 §3.5。**仍无法离线确认的只有对端行为**：车机是否注册了 `0x09`；没注册则收不到本次刷新。复核方法：开发者选项开启「蓝牙 HCI 信息收集日志」→ `adb pull /sdcard/btsnoop_hci.log` → Wireshark 过滤 `btavrcp`，看是否出现 `Now Playing Content Changed`。**顺带一提**：验证正路径不必等车机——任何蓝牙音频设备（耳机/音箱）都走同一条 A2DP 路径，标题同样会被改写。
 2. **通知栏文案**：只改 `TITLE`，`ARTIST` 保持歌手名。曾考虑把 ARTIST 换成原曲名（车机两行都能用上），但通知栏与锁屏读的是同一份 metadata，会显示成「歌名 / 歌名」，得不偿失，故不采用。
-3. **播放结束后**：实测标题停在最后一行歌词（歌曲播完 `state=STOPPED` 时仍是 `CARLYRIC hotel`）。若希望播完恢复曲名，在 `STATE_ENDED` 时清一次覆盖值即可。
-4. **调试逃生口**：`pixelplayer_car_lyric_title_force_a2dp` 只在 debuggable 构建读取，release 忽略。不建议放开给 release。
+3. **播放结束后**：实测标题停在最后一行歌词（歌曲播完 `state=STOPPED` 时仍是 `CARLYRIC hotel`）。若希望播完恢复曲名，在 `STATE_ENDED` 时清一次覆盖值即可。**注意**：播完后没有任何已排程的定时器，所以这时若外部条件变了（比如路由），要等下一个播放事件才会重算（§9.4 现象 2）。
+4. **调试逃生口**：`pixelplayer_car_lyric_title_force_a2dp` 只在 debuggable 构建读取，release 忽略。不建议放开给 release。**改这个标志不会触发任何事件**（它不是设备增删），所以删除标志后最多等一个看门狗周期（≤5s）才恢复真实标题；若此刻已暂停/播完，需要手动触发一次播放事件（如 `adb shell cmd media_session dispatch previous`）让它立刻重算。
 5. **云端曲目的歌词**：Navidrome 有 `getLyrics` 但未接入 `LyricsRepository`，Jellyfin 无该接口 → 云端曲目基本拿不到歌词，会走"保持原标题"的降级路径。想支持的话要先把服务端歌词接进 `LyricsRepository`。
 6. **无同步歌词的歌**：只有 `plain` 歌词不会启用（没有时间轴就无法定位当前行）。若将来想做"整段歌词滚动"，那是另一套切片机制。
+7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。若要补测，`nextBoundaryMs()` 已接近纯函数（只需注入 `lines` 与 `position`），把它挪进 `LyricsTimelineUtils` 即可直接单测"下一行边界时刻"的算术（含变速、首行前、末行后三种情况）。
+8. **`AudioDeviceCallback` 路径未在模拟器验证**：模拟器没有可供连/断的 A2DP 设备。真机或任何蓝牙音频设备（耳机/音箱）都能覆盖这条分支。

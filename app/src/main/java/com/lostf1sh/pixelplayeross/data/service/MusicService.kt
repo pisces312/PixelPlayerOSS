@@ -202,6 +202,8 @@ class MusicService : MediaSessionService() {
     private var lyricTitlePlayer: com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer? = null
     // Drives the car lyric title feature; see CarLyricTitleController for the gating rules.
     private var carLyricTitleController: com.lostf1sh.pixelplayeross.data.service.player.CarLyricTitleController? = null
+    // Pushes a recompute when the audio route changes, so the Bluetooth gate reacts immediately.
+    private var carLyricTitleOutputCallback: AudioDeviceCallback? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var keepPlayingInBackground = true
     private var isManualShuffleEnabled = false
@@ -334,6 +336,9 @@ class MusicService : MediaSessionService() {
             val wrappedPlayer = wrapFadingPlayer(player)
             session.player = wrappedPlayer
             wrappedPlayer.addListener(playerListener)
+            // The car lyric title keeps a listener and an already-published line tied to the
+            // previous wrapper; tell it to re-attach and re-publish to this one.
+            carLyricTitleController?.onPlayerReplaced()
         }
 
         Timber.tag("MusicService").d(logMessage)
@@ -777,6 +782,35 @@ class MusicService : MediaSessionService() {
             playerProvider = { lyricTitlePlayer },
             isBluetoothOutputActive = ::isCarLyricTitleOutputActive
         ).also { it.start() }
+        registerCarLyricTitleOutputMonitor()
+    }
+
+    /**
+     * The lyric title is only allowed while Bluetooth is the active output, so a route change must
+     * push a recompute: without it the phone's own speaker or a wired headset would keep showing a
+     * lyric line until the next lyric boundary. The device list is the *event*, not the answer —
+     * the controller re-reads the route on every tick, so a flag cached here could never go stale.
+     */
+    private fun registerCarLyricTitleOutputMonitor() {
+        if (carLyricTitleOutputCallback != null) return
+        val callback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+                carLyricTitleController?.signal()
+            }
+
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+                carLyricTitleController?.signal()
+            }
+        }
+        audioManager.registerAudioDeviceCallback(callback, null)
+        carLyricTitleOutputCallback = callback
+    }
+
+    private fun unregisterCarLyricTitleOutputMonitor() {
+        carLyricTitleOutputCallback?.let { callback ->
+            runCatching { audioManager.unregisterAudioDeviceCallback(callback) }
+        }
+        carLyricTitleOutputCallback = null
     }
 
     /**
@@ -1011,6 +1045,7 @@ class MusicService : MediaSessionService() {
         followUpMediaSessionUiRefreshJob?.cancel()
         debouncedWidgetUpdateJob?.cancel()
         unregisterHeadsetReconnectMonitor()
+        unregisterCarLyricTitleOutputMonitor()
         replayGainProcessor.cancel()
 
         engine.removePlayerSwapListener(playerSwapListener)

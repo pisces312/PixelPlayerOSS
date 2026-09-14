@@ -1,13 +1,15 @@
 package com.lostf1sh.pixelplayeross.data.service.player
 
-import android.os.SystemClock
+import androidx.media3.common.Player
 import com.lostf1sh.pixelplayeross.data.model.SyncedLine
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import com.lostf1sh.pixelplayeross.utils.resolveCurrentLineIndex
+import com.lostf1sh.pixelplayeross.utils.resolveLineEndTimeMs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -21,6 +23,19 @@ import timber.log.Timber
  *
  * The override is published through [LyricTitlePlayer], which fakes a metadata-changed event
  * rather than mutating the playlist; see that class for why.
+ *
+ * **Scheduling.** Media3 exposes no position callback, so the active line has to be sampled. Rather
+ * than sampling on a fixed interval, this controller sleeps until the *next lyric boundary* —
+ * `delay = min(boundary - position, WATCHDOG_INTERVAL_MS) / speed` — and recomputes from the live
+ * position after every wake-up, so inaccuracy cannot accumulate. That is roughly one wake-up per
+ * lyric line instead of two per second, and **no** wake-up at all while paused, disabled, or
+ * without synced lyrics. The watchdog cap is the self-healing fallback a fixed poll gets for free:
+ * if an event we depend on never arrives, the title still catches up within
+ * [WATCHDOG_INTERVAL_MS].
+ *
+ * Player events (seek, play/pause, track change, speed change, load completion) all just [signal] a
+ * recompute through [Player.Listener.onEvents]; the service signals too for Bluetooth device
+ * changes and for a MediaSession player replacement.
  *
  * Everything is gated — the real track title is kept unless all of these hold:
  * 1. the `car lyric title` toggle is on,
@@ -50,15 +65,31 @@ class CarLyricTitleController(
     private var lastPublishedLine: String? = null
     private var lyricsJob: Job? = null
 
-    /** Null until the first probe, so the very first result is always logged. */
-    private var bluetoothOutputActive: Boolean? = null
+    /** Pending wake-up for the next lyric boundary; null while paused or past the last line. */
+    private var boundaryJob: Job? = null
 
-    /** 0 rather than Long.MIN_VALUE: `now - Long.MIN_VALUE` overflows and stays negative, which
-     *  would make the cache check below always take the early return. */
-    private var lastRoutingCheckUptimeMs = 0L
+    /** Identifies what [boundaryJob] is waiting for, so repeated signals cannot re-arm it. */
+    private var armedLineIndex: Int? = null
+    private var armedBoundaryMs: Long? = null
+    private var armedSpeed = 1f
 
-    /** Last reported gating state; only changes are logged so the poll loop stays quiet. */
+    /** Wrapper the event listener is currently attached to; the service replaces it on swaps. */
+    private var attachedPlayer: Player? = null
+
+    /** Last reported gating state; only changes are logged so the loop stays quiet. */
     private var lastReportedState: String? = null
+
+    private var lastBluetoothOutputActive = false
+
+    /**
+     * Conflated: a burst of events (a seek emits several) collapses into one recompute, and an
+     * event arriving while a tick is already running is merged into the next one rather than lost.
+     */
+    private val wakeUps = Channel<Unit>(Channel.CONFLATED)
+
+    private val playerEventsListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) = signal()
+    }
 
     fun start() {
         scope.launch {
@@ -70,23 +101,43 @@ class CarLyricTitleController(
                     enabled = value
                     if (!value) {
                         // Opting out restores the real title immediately instead of on the next
-                        // tick, otherwise the head unit would keep the last lyric line on screen.
+                        // boundary, otherwise the head unit would keep the last lyric line on
+                        // screen.
+                        stopScheduling()
                         publish(player = playerProvider(), line = null)
                     }
                     Timber.tag(TAG).d("car lyric title: toggle %s", if (value) "on" else "off")
                 }
+                signal()
             }
         }
 
         scope.launch {
-            while (true) {
-                delay(POLL_INTERVAL_MS)
+            for (unused in wakeUps) {
                 // Never let a single bad tick kill the loop: the feature would then be silently
                 // dead for the rest of the session, with nothing surfaced to the user.
                 runCatching { tick() }
                     .onFailure { Timber.tag(TAG).w(it, "car lyric title: tick failed") }
             }
         }
+
+        signal()
+    }
+
+    /** Requests a recompute of the published title. Safe to call from any thread. */
+    fun signal() {
+        wakeUps.trySend(Unit)
+    }
+
+    /**
+     * Called when the service hands the MediaSession a new player wrapper (crossfade, engine swap).
+     * The new instance starts with no override while [lastPublishedLine] still holds the previous
+     * line, which would suppress the re-publish and leave the real track title on screen until the
+     * line changes. Forgetting it makes the next tick publish to the new wrapper.
+     */
+    fun onPlayerReplaced() {
+        lastPublishedLine = null
+        signal()
     }
 
     private suspend fun tick() = withContext(Dispatchers.Main.immediate) {
@@ -95,15 +146,18 @@ class CarLyricTitleController(
             reportState("idle: player not created yet")
             return@withContext
         }
+        ensureListenerAttached(player)
 
         if (!enabled) {
             reportState("idle: toggle off")
+            stopScheduling()
             publish(player, null)
             return@withContext
         }
 
         if (!refreshBluetoothOutput()) {
             reportState("idle: bluetooth output not active")
+            stopScheduling()
             publish(player, null)
             return@withContext
         }
@@ -111,6 +165,7 @@ class CarLyricTitleController(
         val mediaId = player.currentMediaItem?.mediaId
         if (mediaId == null) {
             reportState("idle: nothing playing")
+            stopScheduling()
             publish(player, null)
             return@withContext
         }
@@ -123,13 +178,16 @@ class CarLyricTitleController(
 
         if (lines.isEmpty()) {
             reportState("idle: no synced lyrics for song $mediaId")
+            stopScheduling()
             publish(player, null)
             return@withContext
         }
 
+        val positionMs = player.currentPosition + syncOffsetMs
+        val index = resolveCurrentLineIndex(lines, positionMs)
         reportState("active: ${lines.size} synced lines")
-        val index = resolveCurrentLineIndex(lines, player.currentPosition + syncOffsetMs)
         publish(player, lines.getOrNull(index)?.line?.trim()?.takeIf { it.isNotEmpty() })
+        scheduleNextWakeUp(player, positionMs, index)
     }
 
     /**
@@ -140,9 +198,14 @@ class CarLyricTitleController(
         currentSongId = mediaId
         lines = emptyList()
         syncOffsetMs = 0
+        stopScheduling()
         lyricsJob?.cancel()
         publish(player, null)
-        lyricsJob = scope.launch { loadLyrics(mediaId) }
+        lyricsJob = scope.launch {
+            loadLyrics(mediaId)
+            // Lyrics arriving is what makes scheduling possible again.
+            signal()
+        }
     }
 
     private suspend fun loadLyrics(mediaId: String) {
@@ -170,19 +233,88 @@ class CarLyricTitleController(
     }
 
     /**
-     * Caches the output route for [ROUTING_CHECK_INTERVAL_MS]; querying the audio service on every
-     * poll would be wasteful and the route only changes on connect/disconnect.
+     * Arms the single pending wake-up, for the moment [index] stops being the active line. Also the
+     * watchdog: capping the delay at [WATCHDOG_INTERVAL_MS] means a missed event or a very sparse
+     * lyric still gets refreshed instead of leaving the title stale forever.
+     *
+     * Idempotent for one transition: a burst of player events (startup, crossfade) asks for a
+     * recompute over and over, and re-arming each time would cancel and relaunch the timer
+     * needlessly. Skipping is safe because the deadline for a given (line, boundary, speed) is
+     * absolute — the residual is re-derived from the live position when the timer fires anyway.
      */
-    private fun refreshBluetoothOutput(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        bluetoothOutputActive?.let { cached ->
-            if (now - lastRoutingCheckUptimeMs < ROUTING_CHECK_INTERVAL_MS) return cached
+    private fun scheduleNextWakeUp(player: Player, positionMs: Long, index: Int) {
+        // Paused: nothing advances on its own, and onEvents signals us when playback resumes.
+        if (!player.isPlaying) {
+            stopScheduling()
+            return
+        }
+        val boundaryMs = nextBoundaryMs(index) ?: run {
+            stopScheduling()
+            return
+        }
+        // Lyric timestamps are wall-clock, so a time-stretched player reaches them proportionally
+        // later. The previous fixed-interval poll was immune to this by construction.
+        val speed = player.playbackParameters.speed.takeIf { it > 0f } ?: 1f
+
+        if (boundaryJob?.isActive == true &&
+            armedLineIndex == index &&
+            armedBoundaryMs == boundaryMs &&
+            armedSpeed == speed
+        ) {
+            return
         }
 
-        lastRoutingCheckUptimeMs = now
+        boundaryJob?.cancel()
+        armedLineIndex = index
+        armedBoundaryMs = boundaryMs
+        armedSpeed = speed
+
+        val remainingMs = ((boundaryMs - positionMs) / speed)
+            .toLong()
+            .coerceIn(MIN_WAKE_UP_DELAY_MS, WATCHDOG_INTERVAL_MS)
+
+        boundaryJob = scope.launch {
+            delay(remainingMs)
+            signal()
+        }
+        // Verbose on purpose: the wake-up cadence *is* the design, and this is the only way to see
+        // it (a fixed poll has no such line). Suppressed in release by ReleaseTree.
+        Timber.tag(TAG).v("car lyric title: next wake in %d ms (line %d)", remainingMs, index)
+    }
+
+    /** Position at which [index] stops being the active line, or null when there is none left. */
+    private fun nextBoundaryMs(index: Int): Long? {
+        if (lines.isEmpty()) return null
+        // Before the first line (intro): wait for it.
+        if (index < 0) return lines.first().time.toLong()
+        // On the last line: nothing left to announce.
+        if (index >= lines.lastIndex) return null
+        return resolveLineEndTimeMs(lines[index], lines[index + 1].time)
+    }
+
+    private fun stopScheduling() {
+        boundaryJob?.cancel()
+        boundaryJob = null
+        armedLineIndex = null
+        armedBoundaryMs = null
+    }
+
+    private fun ensureListenerAttached(player: LyricTitlePlayer) {
+        if (attachedPlayer === player) return
+        attachedPlayer?.removeListener(playerEventsListener)
+        player.addListener(playerEventsListener)
+        attachedPlayer = player
+    }
+
+    /**
+     * Reads the current output route. Ticks now happen once per lyric line (or per watchdog
+     * interval) instead of twice a second, so the audio service round-trip is far rarer than it
+     * was and the short-lived cache the polling version needed is gone.
+     */
+    private fun refreshBluetoothOutput(): Boolean {
         val active = isBluetoothOutputActive()
-        if (active != bluetoothOutputActive) {
-            bluetoothOutputActive = active
+        if (active != lastBluetoothOutputActive) {
+            lastBluetoothOutputActive = active
             Timber.tag(TAG).d(
                 "car lyric title: bluetooth output %s",
                 if (active) "active" else "inactive"
@@ -191,7 +323,7 @@ class CarLyricTitleController(
         return active
     }
 
-    /** Logs [state] whenever it differs from the previous tick, so the poll loop stays quiet. */
+    /** Logs [state] whenever it differs from the previous tick, so the loop stays quiet. */
     private fun reportState(state: String) {
         if (state == lastReportedState) return
         lastReportedState = state
@@ -213,7 +345,11 @@ class CarLyricTitleController(
 
     companion object {
         private const val TAG = "MusicService_PixelPlayer"
-        private const val POLL_INTERVAL_MS = 500L
-        private const val ROUTING_CHECK_INTERVAL_MS = 2_000L
+
+        /** Floor for the armed delay, so a boundary already in the past cannot spin the loop. */
+        private const val MIN_WAKE_UP_DELAY_MS = 100L
+
+        /** Ceiling for the armed delay: the fallback when no event arrives to reschedule us. */
+        private const val WATCHDOG_INTERVAL_MS = 5_000L
     }
 }
