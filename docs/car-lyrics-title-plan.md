@@ -249,6 +249,40 @@ Media3 **没有位置回调**，`getCurrentPosition()` 只能采样，所以"完
 - **wrapper 身份**：wrapper 每次换代都是**新实例**（`metadataOverride = null`），而 `lastPublishedLine` 会让同值不再重发。`onPlayerReplaced()` 同时清 `lastPublishedLine` 并让下次 tick 重挂 listener，避免"开启交叉淡入淡出后，换曲时约一行时长显示真实曲名"。
 - **异常隔离**：tick 外层 `runCatching`，单次失败不至于杀死循环——否则功能会静默失效，用户侧毫无提示。
 
+#### 为什么目标是"按行唤醒"而不是"零定时器"（2026-09-14 定案）
+
+播放期间**做不到零定时唤醒**，因为 Media3 自身就在做周期性位置刷新：`MediaSessionImpl.schedulePeriodicSessionPositionInfoChanges()` 在 `isPeriodicPositionUpdateEnabled`（Builder 默认 `true`）、`sessionPositionUpdateDelayMs > 0`（常量 `DEFAULT_SESSION_POSITION_UPDATE_DELAY_MS = 3_000`）且 `isPlaying() || isLoading()` 时 `applicationHandler.postDelayed()` 重排自身；本仓没有关它（`MusicService` 只调了 `setSessionActivity`）。核实版本：`androidx.media3:media3-session:1.11.0`。
+
+| | Media3 周期位置刷新 | 本控制器行边界唤醒 |
+|---|---|---|
+| 门控 | `isPlaying() \|\| isLoading()` | 开关 ∧ A2DP 输出 ∧ 有 synced 歌词 ∧ `isPlaying` ∧ 还有下一行 |
+| 受设置开关控制 | **否**（框架既有行为，未改动的上游同样存在） | 是 |
+| 播放中 | 每 3s 一次 | 每行一次 |
+| 打开开关但不播放 | 无 | 无 |
+| 关闭开关 | **照旧每 3s** | **0**（实测：播放中关开关后 14s 零日志） |
+
+派发目标 `dispatchOnPeriodicSessionPositionInfoChanged()` 只遍历 `getConnectedControllers()`。本 App 自身持有 `MediaController`（`MediaControllerFactory` + `SessionToken`），所以该 tick 确实会派发进本进程并落到主线程，但**不触及应用侧 `Player.Listener`**，因此不会唤醒本控制器的 tick 循环——两条定时器同时存在却互不干扰。
+
+三条"事件驱动"候选经回调表逐条核实，都不通：
+
+| 候选 | 实情 |
+|---|---|
+| `Player.Listener` | 35 个回调里位置相关**只有** `onPositionDiscontinuity`（仅 seek / period 切换 / repeat 触发） |
+| `AnalyticsListener` | 音频回调全是**一次性**的：`onAudioPositionAdvancing`（每次起播一次）、`onAudioUnderrun`、`onAudioSinkError`… 无周期性位置回调 |
+| `AudioProcessor` | 接口只有 `configure` / `queueInput` / `getOutput` / `isActive` / `isEnded` / `queueEndOfStream` / `reset`，**拿不到时间戳** |
+
+唯一能摆脱"自己的定时器"的路是**在 PCM 链上按 `AudioFormat` 数帧**（本仓有先例：`DualPlayerEngine.buildAudioSink` 用 `DefaultAudioSink.Builder(...).setAudioProcessorChain(...)` 挂了 `HiResSampleRateCapAudioProcessor` / `SurroundDownmixProcessor`）。**已否决**，一条条都是硬伤：
+
+1. 它不是"无轮询"，只是把检查挪到音频线程——`queueInput` 按 buffer 调用（约每 10–100ms），**调用次数比现在更多**。
+2. 量的是"已入队"而非"已播出"，超前一个 buffer + AudioTrack 缓冲（约 50–200ms），需要额外做延迟补偿。
+3. 双引擎下不成立：交叉淡入时有两个 ExoPlayer → 两个 processor，还得判断哪个是 display player。
+4. 部分输出模式链根本不存在：`audioOutputMode.usesUnmodifiedMedia3AudioSink` 为真时走 `super.buildAudioSink`，新 processor 不会被调用，需要回退路径。
+5. 在音频线程上跑，阻塞即 underrun / 爆音——最不可接受的一点。
+
+**结论：不做。** 收益上限是"每 3 秒省掉一次与框架 tick 同量级的主线程唤醒"，而框架那一半关不掉；`setPeriodicPositionUpdateEnabled(false)` 虽能一并关掉，但那是给 Android Auto / Wear / 系统 Media3 客户端保持进度实时的，关掉会让它们的位置显示变陈旧——属于**改变既有播放行为**，与本功能"关闭后零影响"的约束相反。
+
+> 若将来动机是**同步精度**（歌词切换偏早/偏晚）而非功耗：瓶颈不在 `delay()` 的调度抖动（ms 级），而在**对端车机何时重读标题**——只能靠真机 btsnoop 观测，见 §11.1。
+
 ### 6.4 门控规则：什么时候才真的启用
 
 三个条件同时满足才改写标题：
@@ -551,3 +585,5 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 6. **无同步歌词的歌**：只有 `plain` 歌词不会启用（没有时间轴就无法定位当前行）。若将来想做"整段歌词滚动"，那是另一套切片机制。
 7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。若要补测，`nextBoundaryMs()` 已接近纯函数（只需注入 `lines` 与 `position`），把它挪进 `LyricsTimelineUtils` 即可直接单测"下一行边界时刻"的算术（含变速、首行前、末行后三种情况）。
 8. **`AudioDeviceCallback` 路径未在模拟器验证**：模拟器没有可供连/断的 A2DP 设备。真机或任何蓝牙音频设备（耳机/音箱）都能覆盖这条分支。
+9. **Media3 自带的每 3s 周期位置刷新**（已定案，不动）：`MediaSessionImpl` 在播放/加载中会排一次位置刷新，**默认开启，且与本功能的设置开关无关**——它是框架既有行为，在未改动的上游版本里同样存在。未播放时没有，关闭开关也照旧。详见 §6.3 的定案表与"为什么不做零定时器"。
+10. **本轮调研未改动任何 Kotlin 代码**：§6.3 的定案、门控矩阵与 §11.9 均为源码核实 + 模拟器实测的结论，无对应代码变更。
