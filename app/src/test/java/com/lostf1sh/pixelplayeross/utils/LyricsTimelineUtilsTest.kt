@@ -62,4 +62,43 @@ class LyricsTimelineUtilsTest {
 
         assertEquals(0, resolveCurrentLineIndex(wordTimed, position = 2_500))
     }
+
+    @Test
+    fun nextLyricBoundaryMs_returnsNullForEmptyTimeline() {
+        assertEquals(null, nextLyricBoundaryMs(emptyList(), index = 0))
+    }
+
+    @Test
+    fun nextLyricBoundaryMs_beforeTheFirstLineTargetsItsStart() {
+        // Intro: the next wake-up should land exactly on the first line's timestamp.
+        assertEquals(1_000L, nextLyricBoundaryMs(lines, index = -1))
+    }
+
+    @Test
+    fun nextLyricBoundaryMs_targetsTheNextLineStart() {
+        assertEquals(4_000L, nextLyricBoundaryMs(lines, index = 0))
+        assertEquals(7_000L, nextLyricBoundaryMs(lines, index = 1))
+    }
+
+    @Test
+    fun nextLyricBoundaryMs_onTheLastLineReturnsNull() {
+        assertEquals(null, nextLyricBoundaryMs(lines, index = 2))
+        assertEquals(null, nextLyricBoundaryMs(lines, index = 99))
+    }
+
+    @Test
+    fun nextLyricBoundaryMs_respectsPerWordTiming() {
+        // A word-timed line whose last word starts after the next line's timestamp keeps the
+        // boundary at that word instead of the next line's start.
+        val wordTimed = listOf(
+            SyncedLine(
+                time = 1_000,
+                line = "held on",
+                words = listOf(SyncedWord(time = 1_000, word = "held"), SyncedWord(time = 6_000, word = "on"))
+            ),
+            SyncedLine(time = 4_000, line = "second")
+        )
+
+        assertEquals(6_001L, nextLyricBoundaryMs(wordTimed, index = 0))
+    }
 }

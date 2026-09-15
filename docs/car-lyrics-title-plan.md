@@ -192,7 +192,7 @@ player.replaceMediaItem(index, item.buildUpon()
 - `wrapFadingPlayer()` 在最外层再包一层并记录实例
 - 新增 `Player.unwrapLyricTitlePlayer()`，并把 `publishMediaSessionPlayer()` 里的解包链改为 `unwrapLyricTitlePlayer().unwrapMappingPlayer().unwrapFadingPlayer()`
 - `publishMediaSessionPlayer()` 在换 wrapper 后调用 `carLyricTitleController?.onPlayerReplaced()`（见 §6.3「wrapper 身份」）
-- `onCreate` 的 `serviceScope` 里调用 `startCarLyricTitle()`，其中同时注册 `AudioDeviceCallback`（`registerCarLyricTitleOutputMonitor()` / `unregisterCarLyricTitleOutputMonitor()`，`onDestroy` 注销）
+- `onCreate` 的 `serviceScope` 里调用 `startCarLyricTitle()`；蓝牙路由的真值与事件都由独立的 `CarLyricTitleOutputMonitor`（`data/service/player/`）持有：Service 只负责实例化（传入 `audioManager` / `contentResolver` / debuggable 标志 / `onRouteChanged = controller::signal`）并在 `onDestroy` 里 `stop()`。`AudioDeviceCallback` 的注册/注销、A2DP 判定与 debug 逃生标志都在该类内部
 - `isCarLyricTitleOutputActive()` / `hasBluetoothA2dpOutput()`：输出路由判定（见 §6.4）
 
 > `publishMediaSessionPlayer()`（MusicService L328-337 附近）是**唯一**的 wrapper 换代咽喉——`oldPlayer.removeListener(playerListener)` → `wrapFadingPlayer()` → `session.player = wrappedPlayer`。控制器的 listener 重挂与覆盖值重置都挂在这里，不需要另找位置。
@@ -563,7 +563,8 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 |---|---|
 | `data/service/player/LyricTitlePlayer.kt` | 新增（出站 metadata 覆盖层） |
 | `data/service/player/CarLyricTitleController.kt` | 新增（门控 + 歌词行 → 标题） |
-| `utils/LyricsTimelineUtils.kt` | 新增（`resolveCurrentLineIndex` / `resolveLineEndTimeMs` 从 `LyricsSheet.kt` 移入） |
+| `data/service/player/CarLyricTitleOutputMonitor.kt` | 新增（A2DP 路由真值 + 设备增删事件，2026-09-15 从 `MusicService` 收编） |
+| `utils/LyricsTimelineUtils.kt` | 新增（`resolveCurrentLineIndex` / `resolveLineEndTimeMs` / `nextLyricBoundaryMs`，前两者从 `LyricsSheet.kt` 移入，第三者从控制器移入） |
 | `data/service/MusicService.kt` | 改（包装链 + 解包链 + 启动控制器 + A2DP 路由判定 + debug 逃生标志 + `publishMediaSessionPlayer()` 里通知 wrapper 换代 + `AudioDeviceCallback` 注册/注销） |
 | `data/preferences/UserPreferencesRepository.kt` | 改（偏好项） |
 | `presentation/viewmodel/SettingsViewModel.kt` | 改（UiState / Group2 / 开关方法） |
@@ -583,7 +584,7 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 4. **调试逃生口**：`pixelplayer_car_lyric_title_force_a2dp` 只在 debuggable 构建读取，release 忽略。不建议放开给 release。**改这个标志不会触发任何事件**（它不是设备增删），所以删除标志后最多等一个看门狗周期（≤5s）才恢复真实标题；若此刻已暂停/播完，需要手动触发一次播放事件（如 `adb shell cmd media_session dispatch previous`）让它立刻重算。
 5. **云端曲目的歌词**：Navidrome 有 `getLyrics` 但未接入 `LyricsRepository`，Jellyfin 无该接口 → 云端曲目基本拿不到歌词，会走"保持原标题"的降级路径。想支持的话要先把服务端歌词接进 `LyricsRepository`。
 6. **无同步歌词的歌**：只有 `plain` 歌词不会启用（没有时间轴就无法定位当前行）。若将来想做"整段歌词滚动"，那是另一套切片机制。
-7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。若要补测，`nextBoundaryMs()` 已接近纯函数（只需注入 `lines` 与 `position`），把它挪进 `LyricsTimelineUtils` 即可直接单测"下一行边界时刻"的算术（含变速、首行前、末行后三种情况）。
+7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。边界算术那部分已经能测了——`nextLyricBoundaryMs()` 已挪进 `LyricsTimelineUtils`（2026-09-15）并有单测覆盖空时间轴、首行前、行间映射、末行后、逐字时间五种情形；剩下的控制器单测需要注入时钟与协程调度器，暂未做。
 8. **`AudioDeviceCallback` 路径未在模拟器验证**：模拟器没有可供连/断的 A2DP 设备。真机或任何蓝牙音频设备（耳机/音箱）都能覆盖这条分支。
 9. **Media3 自带的每 3s 周期位置刷新**（已定案，不动）：`MediaSessionImpl` 在播放/加载中会排一次位置刷新，**默认开启，且与本功能的设置开关无关**——它是框架既有行为，在未改动的上游版本里同样存在。未播放时没有，关闭开关也照旧。详见 §6.3 的定案表与"为什么不做零定时器"。
 10. **本轮调研未改动任何 Kotlin 代码**：§6.3 的定案、门控矩阵与 §11.9 均为源码核实 + 模拟器实测的结论，无对应代码变更。

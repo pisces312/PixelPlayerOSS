@@ -202,8 +202,8 @@ class MusicService : MediaSessionService() {
     private var lyricTitlePlayer: com.lostf1sh.pixelplayeross.data.service.player.LyricTitlePlayer? = null
     // Drives the car lyric title feature; see CarLyricTitleController for the gating rules.
     private var carLyricTitleController: com.lostf1sh.pixelplayeross.data.service.player.CarLyricTitleController? = null
-    // Pushes a recompute when the audio route changes, so the Bluetooth gate reacts immediately.
-    private var carLyricTitleOutputCallback: AudioDeviceCallback? = null
+    // Audio-route truth + change events for the car lyric title's Bluetooth gate.
+    private var carLyricTitleOutputMonitor: com.lostf1sh.pixelplayeross.data.service.player.CarLyricTitleOutputMonitor? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var keepPlayingInBackground = true
     private var isManualShuffleEnabled = false
@@ -233,9 +233,6 @@ class MusicService : MediaSessionService() {
 
     companion object {
         private const val TAG = "MusicService_PixelPlayer"
-        /** Debug-only escape hatch: `adb shell settings put global <name> 1` pretends a Bluetooth
-         *  A2DP sink is connected, which an emulator can never have. Ignored on release builds. */
-        private const val CAR_LYRIC_TITLE_FORCE_A2DP_SETTING = "pixelplayer_car_lyric_title_force_a2dp"
         const val NOTIFICATION_ID = 101
         const val ACTION_SLEEP_TIMER_EXPIRED = "com.lostf1sh.pixelplayeross.ACTION_SLEEP_TIMER_EXPIRED"
         const val EXTRA_FORCE_FOREGROUND_ON_START =
@@ -775,70 +772,21 @@ class MusicService : MediaSessionService() {
 
     private fun startCarLyricTitle() {
         if (carLyricTitleController != null) return
+        val outputMonitor = com.lostf1sh.pixelplayeross.data.service.player.CarLyricTitleOutputMonitor(
+            audioManager = audioManager,
+            contentResolver = contentResolver,
+            isDebuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0,
+            onRouteChanged = { carLyricTitleController?.signal() }
+        )
+        carLyricTitleOutputMonitor = outputMonitor
         carLyricTitleController = CarLyricTitleController(
             scope = serviceScope,
             musicRepository = musicRepository,
             userPreferencesRepository = userPreferencesRepository,
             playerProvider = { lyricTitlePlayer },
-            isBluetoothOutputActive = ::isCarLyricTitleOutputActive
+            isBluetoothOutputActive = outputMonitor::isActive
         ).also { it.start() }
-        registerCarLyricTitleOutputMonitor()
-    }
-
-    /**
-     * The lyric title is only allowed while Bluetooth is the active output, so a route change must
-     * push a recompute: without it the phone's own speaker or a wired headset would keep showing a
-     * lyric line until the next lyric boundary. The device list is the *event*, not the answer —
-     * the controller re-reads the route on every tick, so a flag cached here could never go stale.
-     */
-    private fun registerCarLyricTitleOutputMonitor() {
-        if (carLyricTitleOutputCallback != null) return
-        val callback = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-                carLyricTitleController?.signal()
-            }
-
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-                carLyricTitleController?.signal()
-            }
-        }
-        audioManager.registerAudioDeviceCallback(callback, null)
-        carLyricTitleOutputCallback = callback
-    }
-
-    private fun unregisterCarLyricTitleOutputMonitor() {
-        carLyricTitleOutputCallback?.let { callback ->
-            runCatching { audioManager.unregisterAudioDeviceCallback(callback) }
-        }
-        carLyricTitleOutputCallback = null
-    }
-
-    /**
-     * Whether the car lyric title may replace the session title: true only while Bluetooth is the
-     * active output, so wired headphones or the phone speaker keep showing the real track title.
-     *
-     * Note that Android exposes no API for the peer's AVRCP version, and none is needed: a head
-     * unit that cannot render metadata simply never asks for it. The condition here is about *our*
-     * routing, not the remote's capability.
-     *
-     * Debug builds additionally honour [CAR_LYRIC_TITLE_FORCE_A2DP_SETTING], because an emulator has
-     * no A2DP sink and the feature would otherwise be impossible to exercise locally.
-     */
-    private fun isCarLyricTitleOutputActive(): Boolean {
-        if (hasBluetoothA2dpOutput()) return true
-        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) {
-            return false
-        }
-        return android.provider.Settings.Global.getInt(
-            contentResolver,
-            CAR_LYRIC_TITLE_FORCE_A2DP_SETTING,
-            0
-        ) == 1
-    }
-
-    private fun hasBluetoothA2dpOutput(): Boolean {
-        return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            .any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+        outputMonitor.start()
     }
 
     private fun startTemporaryForegroundForCommand() {
@@ -1045,7 +993,8 @@ class MusicService : MediaSessionService() {
         followUpMediaSessionUiRefreshJob?.cancel()
         debouncedWidgetUpdateJob?.cancel()
         unregisterHeadsetReconnectMonitor()
-        unregisterCarLyricTitleOutputMonitor()
+        carLyricTitleOutputMonitor?.stop()
+        carLyricTitleOutputMonitor = null
         replayGainProcessor.cancel()
 
         engine.removePlayerSwapListener(playerSwapListener)

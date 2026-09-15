@@ -35,3 +35,18 @@ fun resolveCurrentLineIndex(
         position in line.time.toLong()..<lineEndTime
     }?.index ?: -1
 }
+
+/**
+ * Position at which the line at [index] stops being the active one, or null when there is none
+ * left: before the first line (intro) the boundary is the first line's start; on or past the
+ * last line there is nothing left to announce. Used by the car lyric title controller to arm
+ * its next wake-up.
+ */
+fun nextLyricBoundaryMs(lines: List<SyncedLine>, index: Int): Long? {
+    if (lines.isEmpty()) return null
+    // Before the first line (intro): wait for it.
+    if (index < 0) return lines.first().time.toLong()
+    // On the last line: nothing left to announce.
+    if (index >= lines.lastIndex) return null
+    return resolveLineEndTimeMs(lines[index], lines[index + 1].time)
+}

@@ -4,8 +4,8 @@ import androidx.media3.common.Player
 import com.lostf1sh.pixelplayeross.data.model.SyncedLine
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
+import com.lostf1sh.pixelplayeross.utils.nextLyricBoundaryMs
 import com.lostf1sh.pixelplayeross.utils.resolveCurrentLineIndex
-import com.lostf1sh.pixelplayeross.utils.resolveLineEndTimeMs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -248,7 +248,7 @@ class CarLyricTitleController(
             stopScheduling()
             return
         }
-        val boundaryMs = nextBoundaryMs(index) ?: run {
+        val boundaryMs = nextLyricBoundaryMs(lines, index) ?: run {
             stopScheduling()
             return
         }
@@ -280,16 +280,6 @@ class CarLyricTitleController(
         // Verbose on purpose: the wake-up cadence *is* the design, and this is the only way to see
         // it (a fixed poll has no such line). Suppressed in release by ReleaseTree.
         Timber.tag(TAG).v("car lyric title: next wake in %d ms (line %d)", remainingMs, index)
-    }
-
-    /** Position at which [index] stops being the active line, or null when there is none left. */
-    private fun nextBoundaryMs(index: Int): Long? {
-        if (lines.isEmpty()) return null
-        // Before the first line (intro): wait for it.
-        if (index < 0) return lines.first().time.toLong()
-        // On the last line: nothing left to announce.
-        if (index >= lines.lastIndex) return null
-        return resolveLineEndTimeMs(lines[index], lines[index + 1].time)
     }
 
     private fun stopScheduling() {
