@@ -47,4 +47,39 @@ class LocalPlaylistDaoTest {
             .containsExactly("intro", "chorus", "chorus", "outro")
             .inOrder()
     }
+
+    /**
+     * `playlist_songs` has no foreign key to `playlists`, so this guards the DAO-level cleanup:
+     * deleting one playlist must drop its own song rows and leave every other playlist alone.
+     */
+    @Test
+    fun deletingPlaylistRemovesOnlyItsOwnSongRows() = runTest {
+        playlistDao.upsertPlaylist(PlaylistEntity(id = "playlist-1", name = "AI Mix"))
+        playlistDao.upsertPlaylist(PlaylistEntity(id = "playlist-2", name = "Kept"))
+        playlistDao.replacePlaylistSongs("playlist-1", listOf("a", "b"))
+        playlistDao.replacePlaylistSongs("playlist-2", listOf("c"))
+
+        playlistDao.deletePlaylist("playlist-1")
+
+        assertThat(playlistDao.getPlaylistById("playlist-1")).isNull()
+        assertThat(playlistDao.observePlaylistSongs("playlist-1").first()).isEmpty()
+        assertThat(playlistDao.getPlaylistById("playlist-2")).isNotNull()
+        assertThat(playlistDao.observePlaylistSongs("playlist-2").first().map(PlaylistSongEntity::songId))
+            .containsExactly("c")
+    }
+
+    /** Deleting twice - or an id that never existed - must be a no-op rather than an error. */
+    @Test
+    fun deletingPlaylistTwiceIsANoOp() = runTest {
+        playlistDao.upsertPlaylist(PlaylistEntity(id = "playlist-1", name = "AI Mix"))
+        playlistDao.replacePlaylistSongs("playlist-1", listOf("a"))
+        playlistDao.upsertPlaylist(PlaylistEntity(id = "playlist-2", name = "Kept"))
+
+        playlistDao.deletePlaylist("playlist-1")
+        playlistDao.deletePlaylist("playlist-1")
+        playlistDao.deletePlaylist("never-existed")
+
+        assertThat(playlistDao.observePlaylistsWithSongs().first().map { it.playlist.id })
+            .containsExactly("playlist-2")
+    }
 }

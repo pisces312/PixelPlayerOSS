@@ -34,7 +34,7 @@ interface LocalPlaylistDao {
     suspend fun updatePlaylist(entity: PlaylistEntity)
 
     @Query("DELETE FROM playlists WHERE id = :playlistId")
-    suspend fun deletePlaylist(playlistId: String)
+    suspend fun deletePlaylistRow(playlistId: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertPlaylistSongs(entities: List<PlaylistSongEntity>)
@@ -47,6 +47,19 @@ interface LocalPlaylistDao {
 
     @Query("DELETE FROM playlists")
     suspend fun clearAllPlaylists()
+
+    /**
+     * Deletes a playlist together with its song rows.
+     *
+     * `playlist_songs` declares no foreign key to `playlists`, so deleting the playlist row on its
+     * own would leave its entries behind as unreachable orphans. Both statements share one
+     * transaction, so a playlist can never be left half removed.
+     */
+    @Transaction
+    suspend fun deletePlaylist(playlistId: String) {
+        clearPlaylistSongs(playlistId)
+        deletePlaylistRow(playlistId)
+    }
 
     @Transaction
     suspend fun replacePlaylistSongs(playlistId: String, songIds: List<String>) {

@@ -115,6 +115,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ExperimentalTextApi
@@ -1888,7 +1889,7 @@ fun LibraryScreen(
             },
             title = {
                 Text(
-                    stringResource(
+                    pluralStringResource(
                         R.plurals.presentation_batch_b_delete_playlists_confirm_title,
                         pendingDeletePlaylistIds.size,
                         pendingDeletePlaylistIds.size
