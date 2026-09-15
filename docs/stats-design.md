@@ -112,21 +112,24 @@ flowchart LR
 ```mermaid
 flowchart TB
     PLAY["播放中的 session"] --> TRACK["ListeningStatsTracker<br/>内存累加 · 尚未落盘"]
-    TRACK --> FIN["finalizeCurrentSession()<br/>切歌 / 播完 / 服务销毁"]
+    TRACK --> FIN["finalizeCurrentSession()<br/>切歌 / 播完 / 服务销毁 · 唯一落盘入口"]
     FIN --> JSON["playback_history.json<br/>AtomicFile · filesDir"]
     FIN --> ROOM["Room song_engagements<br/>DailyMix / 备份 / 导入"]
     JSON --> STATS["听歌统计 + 最近播放"]
     ROOM --> MIX["DailyMix 每日推荐"]
-    UI["打开统计页"] -.-> FLUSH["flushCurrentSession()<br/>OSS 新增 · 开页即落盘"]
-    FLUSH -.-> JSON
+    UI["打开统计页 / 点刷新"] -.-> FRAG["pendingFragment()<br/>只读整段 · 不落盘"]
+    FRAG -.-> STATS
+    CHANGED["刷新按钮 / 导入 / 恢复备份 / 排序上限"] -.-> CLEAR["invalidateSummaryCache()"]
+    CLEAR -.-> STATS
 ```
 
 关键点：
 
 1. **统计页只读 JSON 文件，不读 Room。** `song_engagements` 表只服务 DailyMix 推荐、Poweramp 导入与备份；播放时是双写（Room + JSON），但聚合查询全走 JSON。
-2. **原本的落盘时机太晚**：`finalizeCurrentSession()` 只在切歌 / 播完 / 服务销毁时触发，导致「正在播放时打开统计页 → 页面全空」。
-3. **修复**：新增 `ListeningStatsTracker.flushCurrentSession()`（Mutex 串行化），把当前累积时长同步落盘并重置累加器，session 继续计时新片段；`StatsViewModel.init` 里先 flush 再 `refreshRange()`。
-4. china-only 分支是同一套实现（无 flush），因此这个修复是 OSS 侧改进，不是移植。
+2. **落盘时机只有一处**：`finalizeCurrentSession()`（切歌 / 播完 / 服务销毁）。**打开统计页与点刷新都不落盘，也没有定时落盘。** 2026-09-15 之前的 `flushCurrentSession()`（开页 / 刷新时落盘）已整体删除 —— 它把「一次连续播放」切成多段，而聚合是「区间取并集 + 次数求和」，于是时长正确、播放次数每刷一次 +1（JSON 与 Room 双端虚高）。根因与修法见 `listening-stats-load-plan.md` §10。
+3. **首屏不为空**：播放中打开统计页时，未落盘的当前片段由 `ListeningStatsTracker.pendingFragment()`（只读、幂等，不改 session 状态）作为内存事件叠加进本次聚合 —— 返回的总是「本 session 从开始至今的整段」，与最终落盘的那条事件区间严格相等。旧实现走的是 `StatsViewModel.init` 里的 `flushCurrentSession()`，代价是整文件读 ×2 + 全量解析 + 全量序列化 + `fsync`，这也是「播放中切到统计页出现爆音」最可疑的来源。
+4. **聚合结果按周期缓存**：键为「日历周期身份」（`StatsPeriod.range` + 起止日期，见 `PlaybackStatsRepository.summaryCache`）。打开页面与来回切换周期都只算一次；播放产生的新事件不会主动清缓存，只有刷新按钮 / 导入 / 恢复备份 / 排序上限变更（`invalidateSummaryCache()`）才丢弃结果。刷新按钮因此只做「丢缓存 + 重查歌曲表 + 重算当前周期」。
+5. china-only 分支是同一套实现（无 `pendingFragment` / 无结果缓存），因此以上都是 OSS 侧改进，不是移植。
 
 ---
 
@@ -148,8 +151,8 @@ flowchart TB
 ```
 presentation/screens/StatsScreen.kt                        # 统计页（重写，3043 → ~846 行）
 presentation/screens/RecentlyPlayedScreen.kt               # 最近播放（中文 + 天分组）
-presentation/viewmodel/StatsViewModel.kt                   # 周期状态 + flush 触发
-presentation/viewmodel/ListeningStatsTracker.kt            # flushCurrentSession()
+presentation/viewmodel/StatsViewModel.kt                   # 周期状态 + 按需计算 + 刷新
+presentation/viewmodel/ListeningStatsTracker.kt            # pendingFragment() / flushCurrentSession() / 定时落盘
 presentation/components/RecentlyPlayedRangeSelector.kt     # 中文范围选择
 presentation/components/MergedRecentlyPlayedSongItem.kt    # 合并行 + ×N 徽章
 presentation/navigation/MainRootRoutes.kt                  # 一级路由注册

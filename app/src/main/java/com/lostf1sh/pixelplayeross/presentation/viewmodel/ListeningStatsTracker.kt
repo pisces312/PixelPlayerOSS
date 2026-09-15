@@ -15,8 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,7 +39,6 @@ class ListeningStatsTracker @Inject constructor(
     private var pendingVoluntarySongId: String? = null
     private var scope: CoroutineScope? = null
     private val persistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val flushMutex = Mutex()
     private val _playbackHistory = MutableStateFlow<List<PlaybackStatsRepository.PlaybackHistoryEntry>>(emptyList())
     val playbackHistory: StateFlow<List<PlaybackStatsRepository.PlaybackHistoryEntry>> = _playbackHistory.asStateFlow()
 
@@ -291,52 +288,48 @@ class ListeningStatsTracker @Inject constructor(
     }
 
     /**
-     * Persists the currently active listening session to disk so it is visible in the stats
-     * page without waiting for the user to skip the track, the song to end, or the service
-     * to be destroyed. The session itself is kept alive and continues accumulating from this
-     * point onward, so the next flush (or [finalizeCurrentSession]) records a fresh fragment
-     * of the same song.
+     * 当前这段「还没落盘」的收听，供统计页当作内存事件叠加 —— 这样打开统计页既能看到最新时长，
+     * 又不必为了看到它而重写一次整个历史文件。
      *
-     * Safe to call from any coroutine; serialised via [flushMutex].
+     * 本函数**只读**：不改动 session 的任何字段，因此对同一个 now 是幂等的 —— 连点多次刷新也只会
+     * 返回同一个区间，不会像写回的累加器那样把时长翻倍。
+     *
+     * 落盘只发生在 [finalizeCurrentSession]（换歌 / 播放停止 / `onCleared`），所以这里返回的**总是
+     * 「本 session 从开始至今的整段」**，与最终落盘的那条事件区间严格相等 —— 既不会重复计时，
+     * 也不会把一次连续播放记成多次。
+     *
+     * 返回 null 表示没有活跃会话，或累计时长还不到 [MIN_SESSION_LISTEN_MS]。
      */
-    suspend fun flushCurrentSession() {
-        val nowRealtime = SystemClock.elapsedRealtime()
-        val nowEpoch = System.currentTimeMillis()
-        var toPersist: Triple<String, Long, Long>? = null
-        flushMutex.withLock {
-            val session = currentSession ?: return@withLock
-            accumulateRealtimeListening(session, nowRealtime)
-            val listenedValue = session.accumulatedListeningMs.coerceAtLeast(0L)
-            if (listenedValue < MIN_SESSION_LISTEN_MS) return@withLock
-            val rawEndTimestamp = when {
-                session.isPlaying -> nowEpoch
-                session.lastUpdateEpochMs > 0L -> session.lastUpdateEpochMs
-                else -> session.startedAtEpochMs + listenedValue
-            }
-            val timestampValue = rawEndTimestamp
-                .coerceAtLeast(session.startedAtEpochMs.coerceAtLeast(0L))
-                .coerceAtMost(nowEpoch)
-            // Reset the accumulator so the session keeps timing a new fragment.
-            session.accumulatedListeningMs = 0L
-            session.lastRealtimeMs = nowRealtime
-            session.startedAtEpochMs = nowEpoch
-            toPersist = Triple(session.songId, listenedValue, timestampValue)
+    @Synchronized
+    fun pendingFragment(
+        nowMillis: Long = System.currentTimeMillis()
+    ): PlaybackStatsRepository.PlaybackEvent? {
+        val session = currentSession ?: return null
+        // 不能复用 accumulateRealtimeListening：它会写 session.accumulatedListeningMs。
+        val unsampledMs = if (session.isPlaying) {
+            (SystemClock.elapsedRealtime() - session.lastRealtimeMs).coerceAtLeast(0L)
+        } else {
+            0L
         }
-        val (songId, listened, timestamp) = toPersist ?: return
-        runCatching {
-            dailyMixManager.recordPlay(
-                songId = songId,
-                songDurationMs = listened,
-                timestamp = timestamp
-            )
-            playbackStatsRepository.recordPlayback(
-                songId = songId,
-                durationMs = listened,
-                timestamp = timestamp
-            )
-        }.onFailure { throwable ->
-            Timber.e(throwable, "Failed to flush listening session for song=%s", songId)
+        val listened = (session.accumulatedListeningMs + unsampledMs).coerceAtLeast(0L)
+        if (listened < MIN_SESSION_LISTEN_MS) return null
+        val rawEndTimestamp = when {
+            session.isPlaying -> nowMillis
+            session.lastUpdateEpochMs > 0L -> session.lastUpdateEpochMs
+            else -> session.startedAtEpochMs + listened
         }
+        // 区间口径与 finalizeCurrentSession 一致：end 落在 [startedAtEpochMs, now]，区间为 [end − listened, end]。
+        // 落盘只在 finalize 发生，所以这里给出的就是那条待落盘事件的区间，二者严格相等（不重复计时）。
+        val endTimestamp = rawEndTimestamp
+            .coerceAtLeast(session.startedAtEpochMs.coerceAtLeast(0L))
+            .coerceAtMost(nowMillis)
+        return PlaybackStatsRepository.PlaybackEvent(
+            songId = session.songId,
+            timestamp = endTimestamp,
+            durationMs = listened,
+            startTimestamp = (endTimestamp - listened).coerceAtLeast(0L),
+            endTimestamp = endTimestamp
+        )
     }
 
     @Suppress("UNUSED_PARAMETER")

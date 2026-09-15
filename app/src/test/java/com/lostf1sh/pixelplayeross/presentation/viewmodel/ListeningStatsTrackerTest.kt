@@ -99,6 +99,50 @@ class ListeningStatsTrackerTest {
         assertThat(expectedDurationMs).isGreaterThan(TimeUnit.SECONDS.toMillis(5))
     }
 
+    @Test
+    fun `pendingFragment reports the whole unpersisted session and stays idempotent`() {
+        // 刷新按钮不再落盘（删除 flushCurrentSession 之后），所以在途片段是「本 session 从开始
+        // 至今的整段」；它必须只读且幂等，否则每次刷新都会把同一次播放重复计入。
+        val tracker = ListeningStatsTracker(
+            dailyMixManager = dailyMixManager,
+            playbackStatsRepository = playbackStatsRepository,
+            scrobbleManager = scrobbleManager
+        )
+        val song = song(songId = "song-1")
+        var realtime = 0L
+        every { SystemClock.elapsedRealtime() } answers { realtime }
+
+        tracker.onSongChanged(
+            song = song,
+            positionMs = 0L,
+            durationMs = song.duration,
+            isPlaying = true
+        )
+
+        // 听 6 秒：还没落盘，片段就是这 6 秒。
+        realtime = TimeUnit.SECONDS.toMillis(6)
+        val first = requireNotNull(tracker.pendingFragment())
+        assertThat(first.songId).isEqualTo(song.id)
+        assertThat(first.durationMs).isEqualTo(TimeUnit.SECONDS.toMillis(6))
+
+        // 只读：固定 now 连取两次结果必须一致。若它像 accumulateRealtimeListening 那样写回
+        // session.accumulatedListeningMs，第二次就会翻倍。
+        val frozen = tracker.pendingFragment(nowMillis = 1_000_000L)
+        assertThat(tracker.pendingFragment(nowMillis = 1_000_000L)).isEqualTo(frozen)
+
+        // 继续听到 12 秒：片段是整段，而不是 6 + 12 的累加 —— 这正是「连点刷新不翻倍」的保证。
+        realtime = TimeUnit.SECONDS.toMillis(12)
+        assertThat(requireNotNull(tracker.pendingFragment()).durationMs)
+            .isEqualTo(TimeUnit.SECONDS.toMillis(12))
+
+        // finalize 落盘的也是这整段：一条事件、一次播放，随后没有可叠加的片段。
+        tracker.finalizeCurrentSession(forceSynchronousPersistence = true)
+        coVerify(timeout = 2_000) {
+            playbackStatsRepository.recordPlayback(song.id, TimeUnit.SECONDS.toMillis(12), any())
+        }
+        assertThat(tracker.pendingFragment()).isNull()
+    }
+
     private fun song(songId: String, durationMs: Long = 5 * 60 * 1000L): Song = Song(
         id = songId,
         title = "Song $songId",

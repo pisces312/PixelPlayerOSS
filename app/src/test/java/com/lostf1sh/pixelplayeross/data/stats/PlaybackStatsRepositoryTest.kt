@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.lostf1sh.pixelplayeross.data.model.ArtistRef
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -11,10 +12,14 @@ import java.util.concurrent.TimeUnit
 import io.mockk.every
 import io.mockk.mockk
 import kotlin.io.path.createTempDirectory
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 
 class PlaybackStatsRepositoryTest {
+
+    /** 最近一次 [createRepository] 用的目录，供需要直接查看历史文件的用例使用。 */
+    private var lastFilesDir: File? = null
 
     @Test
     fun `loadSummary excludes event that only touches the start boundary`() = runTest {
@@ -485,13 +490,246 @@ class PlaybackStatsRepositoryTest {
         assertThat(merged).hasSize(50)
     }
 
+    @Test
+    fun `loadSummary reuses the cached summary for the same calendar period`() = runTest {
+        val repository = createRepository()
+        val songs = listOf(song("song-1"))
+        val period = StatsPeriod(StatsTimeRange.DAY)
+        val now = LocalDate.of(2026, 4, 10).atTime(10, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        val first = repository.loadSummary(period, songs, now)
+
+        // 同一周期身份 → 直接复用算好的那份，不再聚合、不再读文件。
+        assertThat(repository.loadSummary(period, songs, now)).isSameInstanceAs(first)
+    }
+
+    @Test
+    fun `loadSummary keys the cache by calendar period rather than the exact now`() = runTest {
+        val repository = createRepository()
+        val songs = listOf(song("song-1"))
+        val period = StatsPeriod(StatsTimeRange.DAY)
+        val morning = LocalDate.of(2026, 4, 10).atTime(9, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        val first = repository.loadSummary(period, songs, morning)
+
+        // 同一天里 now 往前走几小时 → 周期身份没变，不应重算（否则时钟每走一分钟缓存就失效）。
+        val laterToday = repository.loadSummary(period, songs, morning + TimeUnit.HOURS.toMillis(3))
+        assertThat(laterToday).isSameInstanceAs(first)
+
+        // 换了日历周期 → 新的条目。
+        val tomorrow = morning + TimeUnit.DAYS.toMillis(1)
+        assertThat(repository.loadSummary(period, songs, tomorrow)).isNotSameInstanceAs(first)
+
+        // 回到原周期 → 原条目还在，往回翻页不需要重算。
+        assertThat(repository.loadSummary(period, songs, morning)).isSameInstanceAs(first)
+    }
+
+    @Test
+    fun `invalidateSummaryCache forces the next load to recompute`() = runTest {
+        val repository = createRepository()
+        val songs = listOf(song("song-1"))
+        val period = StatsPeriod(StatsTimeRange.DAY)
+        val now = LocalDate.of(2026, 4, 10).atTime(12, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        val first = repository.loadSummary(period, songs, now)
+        assertThat(repository.loadSummary(period, songs, now)).isSameInstanceAs(first)
+
+        repository.invalidateSummaryCache()
+
+        val recomputed = repository.loadSummary(period, songs, now)
+        assertThat(recomputed).isNotSameInstanceAs(first)
+        // 数据没变，重算出来的内容必须与原来完全一致（口径未变）。
+        assertThat(recomputed).isEqualTo(first)
+    }
+
+    @Test
+    fun `loadSummary folds in the in-flight fragment that is not persisted yet`() = runTest {
+        val repository = createRepository()
+        val songs = listOf(song("song-1"))
+        val period = StatsPeriod(StatsTimeRange.DAY)
+        val dayStart = LocalDate.of(2026, 4, 10).atTime(9, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val now = dayStart + TimeUnit.HOURS.toMillis(2)
+        val listenedMs = TimeUnit.MINUTES.toMillis(6)
+
+        val withoutFragment = repository.loadSummary(period, songs, now)
+        assertThat(withoutFragment.totalDurationMs).isEqualTo(0L)
+
+        val fragment = PlaybackStatsRepository.PlaybackEvent(
+            songId = "song-1",
+            timestamp = now,
+            durationMs = listenedMs,
+            startTimestamp = now - listenedMs,
+            endTimestamp = now
+        )
+        val withFragment = repository.loadSummary(period, songs, now, extraEvents = listOf(fragment))
+
+        assertThat(withFragment.totalDurationMs).isEqualTo(listenedMs)
+        assertThat(withFragment.totalPlayCount).isEqualTo(1)
+        // 片段还在增长，结果不能进缓存，所以拿到的不是同一个实例。
+        assertThat(withFragment).isNotSameInstanceAs(withoutFragment)
+    }
+
+    @Test
+    fun `in-flight fragment outside the period does not bypass the cache`() = runTest {
+        val repository = createRepository()
+        val songs = listOf(song("song-1"))
+        val period = StatsPeriod(StatsTimeRange.DAY)
+        val now = LocalDate.of(2026, 4, 10).atTime(12, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+        val cached = repository.loadSummary(period, songs, now)
+
+        // 片段落在明天 → 与今天无关，缓存照样命中（播放中去看「上周」同理）。
+        val tomorrowFragmentEnd = now + TimeUnit.DAYS.toMillis(1)
+        val fragmentMs = TimeUnit.MINUTES.toMillis(5)
+        val futureFragment = PlaybackStatsRepository.PlaybackEvent(
+            songId = "song-1",
+            timestamp = tomorrowFragmentEnd,
+            durationMs = fragmentMs,
+            startTimestamp = tomorrowFragmentEnd - fragmentMs,
+            endTimestamp = tomorrowFragmentEnd
+        )
+
+        assertThat(repository.loadSummary(period, songs, now, extraEvents = listOf(futureFragment)))
+            .isSameInstanceAs(cached)
+    }
+
+    @Test
+    fun `recordPlayback no longer notifies the stats refresh flow`() = runTest {
+        val repository = createRepository()
+        val before = repository.refreshFlow.value
+
+        repository.recordPlayback(songId = "song-1", durationMs = 5_000L, timestamp = 1_000L)
+
+        // 每次落盘都触发重算的话，统计页的数字就无法在刷新之前保持稳定。
+        assertThat(repository.refreshFlow.value).isEqualTo(before)
+    }
+
+    @Test
+    fun `importEventsFromBackup notifies and invalidates the cached summaries`() = runTest {
+        val repository = createRepository()
+        val songs = listOf(song("song-1"))
+        val period = StatsPeriod(StatsTimeRange.DAY)
+        val now = LocalDate.of(2026, 4, 10).atTime(20, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val cached = repository.loadSummary(period, songs, now)
+        val before = repository.refreshFlow.value
+        val importedMs = TimeUnit.MINUTES.toMillis(3)
+
+        val succeeded = repository.importEventsFromBackup(
+            events = listOf(
+                PlaybackStatsRepository.PlaybackEvent(
+                    songId = "song-1",
+                    timestamp = now,
+                    durationMs = importedMs,
+                    startTimestamp = now - importedMs,
+                    endTimestamp = now
+                )
+            )
+        )
+
+        assertThat(succeeded).isTrue()
+        assertThat(repository.refreshFlow.value).isNotEqualTo(before)
+        assertThat(repository.loadSummary(period, songs, now)).isNotSameInstanceAs(cached)
+    }
+
+    @Test
+    fun `day range counts only the part of history that falls inside the day`() = runTest {
+        // 粗筛（先按 endMillis 过滤、再展开候选）必须与「先展开全部历史」等价：
+        // 完全落在昨天的事件要排除，跨过零点的事件只计入今天那一段。
+        val repository = createRepository()
+        val zoneId = ZoneId.systemDefault()
+        val dayStart = LocalDate.of(2026, 4, 10).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val now = dayStart + TimeUnit.HOURS.toMillis(12)
+        val thirtyMinutes = TimeUnit.MINUTES.toMillis(30)
+        val yesterdayEnd = dayStart - TimeUnit.HOURS.toMillis(1)
+        val overnightMs = TimeUnit.MINUTES.toMillis(20)
+        val overnightEnd = dayStart + TimeUnit.MINUTES.toMillis(10)
+        val events = listOf(
+            PlaybackStatsRepository.PlaybackEvent(
+                songId = "song-1",
+                timestamp = yesterdayEnd,
+                durationMs = thirtyMinutes,
+                startTimestamp = yesterdayEnd - thirtyMinutes,
+                endTimestamp = yesterdayEnd
+            ),
+            PlaybackStatsRepository.PlaybackEvent(
+                songId = "song-2",
+                timestamp = overnightEnd,
+                durationMs = overnightMs,
+                startTimestamp = overnightEnd - overnightMs,
+                endTimestamp = overnightEnd
+            )
+        )
+
+        val summary = repository.buildSummaryFromEvents(
+            period = StatsPeriod(StatsTimeRange.DAY),
+            songs = listOf(song("song-1"), song("song-2")),
+            nowMillis = now,
+            allEvents = events,
+            zoneId = zoneId
+        )
+
+        // 23:50 → 00:10 的播放，今天只算 00:00 → 00:10。
+        assertThat(summary.totalDurationMs).isEqualTo(TimeUnit.MINUTES.toMillis(10))
+        assertThat(summary.uniqueSongs).isEqualTo(1)
+        assertThat(summary.songs.map { it.songId }).containsExactly("song-2")
+    }
+
+    @Test
+    fun `looping the same song counts every repetition`() = runTest {
+        // 反例保护：不能用「同歌合并时次数取 max」去修刷新重复计数。
+        // 单曲循环产生的两条事件与「被刷新切开的一段」在数据层同构（都首尾相接），
+        // 但它们必须计 2 次 —— 这正是修法只能落在「不切分」而不落在「改合并」的原因。
+        val repository = createRepository()
+        val songs = listOf(song("song-1"))
+        val zoneId = ZoneId.systemDefault()
+        val dayStart = LocalDate.of(2026, 4, 10).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        val trackDuration = TimeUnit.MINUTES.toMillis(3)
+        val firstEnd = dayStart + TimeUnit.HOURS.toMillis(1)
+        val events = listOf(
+            PlaybackStatsRepository.PlaybackEvent(
+                songId = "song-1",
+                timestamp = firstEnd,
+                durationMs = trackDuration,
+                startTimestamp = firstEnd - trackDuration,
+                endTimestamp = firstEnd
+            ),
+            PlaybackStatsRepository.PlaybackEvent(
+                songId = "song-1",
+                timestamp = firstEnd + trackDuration,
+                durationMs = trackDuration,
+                startTimestamp = firstEnd,
+                endTimestamp = firstEnd + trackDuration
+            )
+        )
+
+        val summary = repository.buildSummaryFromEvents(
+            period = StatsPeriod(StatsTimeRange.DAY),
+            songs = songs,
+            nowMillis = dayStart + TimeUnit.HOURS.toMillis(12),
+            allEvents = events,
+            zoneId = zoneId
+        )
+
+        assertThat(summary.totalPlayCount).isEqualTo(2)
+        // 时长是区间的并集：两段首尾相接 → 合并成 6 分钟，而不是 3 分钟或 9 分钟。
+        assertThat(summary.totalDurationMs).isEqualTo(trackDuration * 2)
+    }
+
     private fun createRepository(): PlaybackStatsRepository {
         val uniqueDir = createTempDirectory(
             "playback-stats-test-${Instant.now().toEpochMilli()}-"
         ).toFile()
+        lastFilesDir = uniqueDir
         val testContext = mockk<android.content.Context>(relaxed = true)
         every { testContext.filesDir } returns uniqueDir
         val userPreferencesRepository = mockk<UserPreferencesRepository>(relaxed = true)
+        every { userPreferencesRepository.statsRankingLimitFlow } returns flowOf(DEFAULT_RANKING_LIMIT)
         return PlaybackStatsRepository(testContext, userPreferencesRepository)
     }
 
@@ -518,4 +756,8 @@ class PlaybackStatsRepositoryTest {
         bitrate = 320_000,
         sampleRate = 44_100
     )
+
+    private companion object {
+        private const val DEFAULT_RANKING_LIMIT = 100
+    }
 }

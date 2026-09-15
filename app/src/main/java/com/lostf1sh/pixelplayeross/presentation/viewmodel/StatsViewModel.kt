@@ -43,9 +43,6 @@ class StatsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
 
-    private val _weeklyOverview = MutableStateFlow<PlaybackStatsSummary?>(null)
-    val weeklyOverview: StateFlow<PlaybackStatsSummary?> = _weeklyOverview.asStateFlow()
-
     @Volatile
     private var cachedSongs: List<Song>? = null
 
@@ -54,26 +51,21 @@ class StatsViewModel @Inject constructor(
 
     init {
         observeStatsRefreshFlow()
-        viewModelScope.launch {
-            // Flush the in-memory session so data accumulated since the last track change /
-            // service destroy shows up on first render.
-            listeningStatsTracker.flushCurrentSession()
-            refreshRange(
-                period = StatsPeriod.current(StatsTimeRange.DAY),
-                showLoading = true
-            )
-        }
+        // 打开统计页不再落盘（原来是 flushCurrentSession → 整文件重写 + fsync + 随后的重解析）。
+        // 未落盘的当前片段改为以内存事件叠加进这次计算，见 [loadRange] 里的 pendingFragment。
+        loadRange(
+            period = StatsPeriod.current(StatsTimeRange.DAY),
+            showLoading = true
+        )
     }
 
     fun onRangeSelected(range: StatsTimeRange) {
         if (range == _uiState.value.selectedRange && !_uiState.value.isLoading) {
             return
         }
-        val period = StatsPeriod.current(range)
-        refreshRange(
-            period = period,
-            showLoading = true,
-            updateWeeklyOverview = range == StatsTimeRange.WEEK && period.anchorMillis == null
+        loadRange(
+            period = StatsPeriod.current(range),
+            showLoading = true
         )
     }
 
@@ -81,45 +73,46 @@ class StatsViewModel @Inject constructor(
         val current = _uiState.value.selectedPeriod
         val shifted = current.shift(steps, System.currentTimeMillis())
         if (shifted == current) return
-        refreshRange(
-            period = shifted,
-            showLoading = true,
-            updateWeeklyOverview = shifted.range == StatsTimeRange.WEEK && shifted.anchorMillis == null
-        )
+        loadRange(period = shifted, showLoading = true)
     }
 
     fun onPeriodReset() {
         val current = _uiState.value.selectedPeriod
         val reset = StatsPeriod.current(current.range)
         if (reset == current) return
-        refreshRange(
-            period = reset,
-            showLoading = true,
-            updateWeeklyOverview = reset.range == StatsTimeRange.WEEK
-        )
+        loadRange(period = reset, showLoading = true)
     }
 
-    fun refreshWeeklyOverview() {
+    /**
+     * 刷新按钮：丢弃已算好的结果、重查歌曲表，然后重算当前周期。
+     *
+     * 这里**刻意不落盘**。原实现会先 `flushCurrentSession()` 把在途片段写成一条新事件，但那等于把
+     * 「一次连续播放」切成多段：聚合对区间是「取并集 + 次数求和」（`mergeSongEvents` 里首尾相接必合并、
+     * 合并时 `currentPlayCount += weight`），于是**时长正确、播放次数每刷一次 +1** —— JSON 的
+     * `totalPlayCount` 与 Room `song_engagements.play_count` 双双虚高。
+     *
+     * 在途片段已由 [loadRange] 里的 `pendingFragment()` 以只读内存事件叠加，落盘对「看到最新数字」
+     * 没有任何必要；落盘只应发生在真正结束一段播放时（`ListeningStatsTracker.finalizeCurrentSession`）。
+     */
+    fun requestStatsRefresh() {
         viewModelScope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    val songs = loadSongs()
-                    playbackStatsRepository.loadSummary(StatsTimeRange.WEEK, songs)
-                }
-            }.onSuccess { summary ->
-                _weeklyOverview.value = summary
-            }.onFailure { throwable ->
-                Timber.e(throwable, "Failed to load weekly stats overview")
-                _weeklyOverview.value = null
-            }
+            playbackStatsRepository.invalidateSummaryCache()
+            cachedSongs = null
+            loadRange(period = _uiState.value.selectedPeriod, showLoading = false)
         }
     }
 
-    private fun refreshRange(
-        period: StatsPeriod,
-        showLoading: Boolean = true,
-        updateWeeklyOverview: Boolean = false
-    ) {
+    /** 设置页的「重新生成统计」：丢弃结果缓存与歌曲表，由 refreshFlow 驱动重算。 */
+    fun forceRegenerateStats() {
+        cachedSongs = null
+        playbackStatsRepository.requestRefresh()
+    }
+
+    /**
+     * 只算 [period] 这一个周期。结果由 [PlaybackStatsRepository] 按「日历周期身份」缓存，
+     * 命中时不读文件、不做聚合，也不闪 loading。
+     */
+    private fun loadRange(period: StatsPeriod, showLoading: Boolean = true) {
         rangeJob?.cancel()
         rangeJob = viewModelScope.launch {
             if (showLoading) {
@@ -127,15 +120,15 @@ class StatsViewModel @Inject constructor(
             } else {
                 _uiState.update { it.copy(isRefreshing = true, selectedRange = period.range, selectedPeriod = period) }
             }
+            // 尚未落盘的当前片段：落在该周期内时 repository 会重算而不走缓存，落在周期外则无影响。
+            val extraEvents = listOfNotNull(listeningStatsTracker.pendingFragment())
             val summary = runCatching {
                 withContext(Dispatchers.IO) {
-                    val songs = loadSongs()
-                    playbackStatsRepository.loadSummary(period, songs)
-                }
-            }
-            summary.getOrNull()?.let { loaded ->
-                if (updateWeeklyOverview) {
-                    _weeklyOverview.value = loaded
+                    playbackStatsRepository.loadSummary(
+                        period = period,
+                        songs = loadSongs(),
+                        extraEvents = extraEvents
+                    )
                 }
             }
             _uiState.update { current ->
@@ -151,20 +144,17 @@ class StatsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 只有「外部数据变更」才会走到这里（导入 / 恢复备份 / 排序上限，见
+     * [PlaybackStatsRepository.requestRefresh]）。播放产生的写入刻意不再通知：否则每次落盘都会
+     * 触发一次重算，统计页的数字就无法在刷新前保持稳定。
+     */
     private fun observeStatsRefreshFlow() {
         viewModelScope.launch {
             playbackStatsRepository.refreshFlow
                 .drop(1)
                 .collectLatest {
-                    val selectedPeriod = _uiState.value.selectedPeriod
-                    refreshRange(
-                        period = selectedPeriod,
-                        showLoading = false,
-                        updateWeeklyOverview = selectedPeriod.range == StatsTimeRange.WEEK && selectedPeriod.anchorMillis == null
-                    )
-                    if (selectedPeriod.range != StatsTimeRange.WEEK || selectedPeriod.anchorMillis != null) {
-                        refreshWeeklyOverview()
-                    }
+                    loadRange(period = _uiState.value.selectedPeriod, showLoading = false)
                 }
         }
     }
@@ -175,15 +165,6 @@ class StatsViewModel @Inject constructor(
 
     fun resolveAlbumId(name: String): Long? {
         return cachedSongs?.firstOrNull { it.album.equals(name, ignoreCase = true) }?.albumId
-    }
-
-    fun requestStatsRefresh() {
-        playbackStatsRepository.requestRefresh()
-    }
-
-    fun forceRegenerateStats() {
-        cachedSongs = null
-        playbackStatsRepository.requestRefresh()
     }
 
     private suspend fun loadSongs(): List<Song> {

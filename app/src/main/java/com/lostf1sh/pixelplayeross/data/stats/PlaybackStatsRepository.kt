@@ -56,6 +56,22 @@ class PlaybackStatsRepository @Inject constructor(
     private val _refreshVersion = MutableStateFlow(0L)
     val refreshFlow: StateFlow<Long> = _refreshVersion.asStateFlow()
 
+    /**
+     * 算好的区间统计，键为「日历周期身份」（range + 起止日期）而不是 `now` 截断后的边界：
+     * 同一周期内时间流逝不会让缓存失效，跨天 / 跨周才需要算一次新的。
+     *
+     * 打开统计页、来回切换周期都不再触发全量聚合；只有显式刷新（[invalidateSummaryCache]）
+     * 或外部数据变更（导入 / 恢复备份 / 排序上限，见 [requestRefresh]）才会丢弃结果。
+     * 播放本身**不会**清缓存，这样「来回切换不变」才成立。
+     */
+    private val summaryCacheLock = Any()
+    private val summaryCache =
+        object : LinkedHashMap<SummaryCacheKey, PlaybackStatsSummary>(16, 0.75f, true) {
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<SummaryCacheKey, PlaybackStatsSummary>
+            ): Boolean = size > MAX_SUMMARY_CACHE_ENTRIES
+        }
+
     private val statsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
@@ -201,7 +217,7 @@ class PlaybackStatsRepository @Inject constructor(
         durationMs: Long,
         timestamp: Long = System.currentTimeMillis(),
         playCount: Int = 1
-    ) = withContext(Dispatchers.IO) {
+    ): Unit = withContext(Dispatchers.IO) {
         if (songId.isBlank()) return@withContext
         val coercedTimestamp = timestamp.coerceAtLeast(0L)
         val coercedDuration = durationMs.coerceAtLeast(0L)
@@ -214,39 +230,99 @@ class PlaybackStatsRepository @Inject constructor(
             endTimestamp = coercedTimestamp,
             playCount = playCount.coerceAtLeast(1)
         )
-        val writeSucceeded = updateEventsAtomically { events ->
+        // 刻意不调用 notifyStatsChanged()：那会让每次落盘都触发一次重算，与
+        // 「打开统计页 / 来回切换周期时统计只算一次」直接冲突。新事件会在用户点刷新
+        // （StatsViewModel.requestStatsRefresh）或周期身份变化时被算进去。
+        updateEventsAtomically { events ->
             events += sanitizedEvent
             events
-        }
-        if (writeSucceeded) {
-            notifyStatsChanged()
         }
     }
 
     suspend fun loadSummary(
         range: StatsTimeRange,
         songs: List<Song>,
-        nowMillis: Long = System.currentTimeMillis()
-    ): PlaybackStatsSummary = loadSummary(StatsPeriod(range), songs, nowMillis)
+        nowMillis: Long = System.currentTimeMillis(),
+        extraEvents: List<PlaybackEvent> = emptyList()
+    ): PlaybackStatsSummary = loadSummary(StatsPeriod(range), songs, nowMillis, extraEvents)
 
+    /**
+     * 区间统计。
+     *
+     * 结果按「日历周期身份」缓存（见 [summaryCache]）：命中时直接返回同一个实例，不读文件、
+     * 不做任何聚合 —— 这是「打开统计页 / 来回切换周期时统计只算一次」的实现基础。
+     *
+     * @param extraEvents 尚未落盘的内存事件（当前播放中的片段，见
+     *   `ListeningStatsTracker.pendingFragment`）。它落在 [period] 内时该周期视为未命中 ——
+     *   片段还在增长，缓存没有意义；落在周期外（例如播放中去看「上周」）则不影响缓存命中。
+     */
     suspend fun loadSummary(
         period: StatsPeriod,
         songs: List<Song>,
-        nowMillis: Long = System.currentTimeMillis()
+        nowMillis: Long = System.currentTimeMillis(),
+        extraEvents: List<PlaybackEvent> = emptyList()
     ): PlaybackStatsSummary = withContext(Dispatchers.IO) {
         val zoneId = ZoneId.systemDefault()
-        val allEvents = readEvents()
+        val cacheKey = summaryCacheKey(period, nowMillis, zoneId)
+        val affectsPeriod = extraEvents.isNotEmpty() &&
+            periodOverlapsEvents(period, extraEvents, nowMillis, zoneId)
+        if (!affectsPeriod) {
+            synchronized(summaryCacheLock) { summaryCache[cacheKey] }?.let { return@withContext it }
+        }
+
         val limit = userPreferencesRepository.statsRankingLimitFlow.first().let { raw ->
             if (raw <= 0) Int.MAX_VALUE else raw
         }
-        buildSummaryFromEvents(
+        val summary = buildSummaryFromEvents(
             period = period,
             songs = songs,
             nowMillis = nowMillis,
-            allEvents = allEvents,
+            allEvents = readEvents() + extraEvents,
             zoneId = zoneId,
             maxRankingCount = limit
         )
+        if (!affectsPeriod) {
+            synchronized(summaryCacheLock) { summaryCache[cacheKey] = summary }
+        }
+        summary
+    }
+
+    /**
+     * 丢弃已算好的区间统计。用在「显式刷新」「导入 / 恢复备份」「排序上限变更」上；
+     * 播放产生的新事件不清缓存（见 [recordPlayback]）。
+     */
+    fun invalidateSummaryCache() {
+        synchronized(summaryCacheLock) { summaryCache.clear() }
+    }
+
+    private fun summaryCacheKey(
+        period: StatsPeriod,
+        nowMillis: Long,
+        zoneId: ZoneId
+    ): SummaryCacheKey = SummaryCacheKey(
+        range = period.range,
+        startDate = period.startDate(nowMillis, zoneId),
+        endDateExclusive = period.endDateExclusive(nowMillis, zoneId)
+    )
+
+    /**
+     * [events] 是否与 [period] 的区间有交集。
+     *
+     * 非 ALL 的边界只由日历决定（不依赖事件），可以直接用空事件表算；ALL 的起点取自最早事件，
+     * 一律视为受影响（重算），以免漏掉回溯出来的区间。
+     */
+    private fun periodOverlapsEvents(
+        period: StatsPeriod,
+        events: List<PlaybackEvent>,
+        nowMillis: Long,
+        zoneId: ZoneId
+    ): Boolean {
+        if (period.range == StatsTimeRange.ALL) return true
+        val (startBound, endBound) = period.resolveBounds(emptyList(), nowMillis, zoneId)
+        val lowerBound = startBound ?: Long.MIN_VALUE
+        return events.any { event ->
+            event.endMillis() >= lowerBound && event.startMillis() <= endBound
+        }
     }
 
     /**
@@ -299,11 +375,30 @@ class PlaybackStatsRepository @Inject constructor(
         maxRankingCount: Int = MAX_RANKING_STATS_COUNT
     ): PlaybackStatsSummary {
         val songMap = songs.associateBy { it.id }
-        // 必须先把导入事件展开成真实区间，再算时间边界：
-        // StatsTimeRange.ALL 的起点取「最早事件的 start」，而导入事件的原始 start 就是
-        // last_played 时间戳；若先算边界，回溯出的 [t − N×时长, t] 会整条落在边界之前被裁掉。
-        val expandedEvents = allEvents.map { event -> expandImportedSpan(event, songMap) }
-        val (startBound, endBound) = period.resolveBounds(expandedEvents, nowMillis, zoneId)
+        // 边界必须先算对，再决定展开谁：
+        // - StatsTimeRange.ALL 的起点取「最早事件的 start」，而导入事件的原始 start 就是
+        //   last_played 时间戳；若先算边界，回溯出的 [t − N×时长, t] 会整条落在边界之前被裁掉，
+        //   所以 ALL 先展开再算边界。
+        // - 其余 range 的边界只由日历决定（不依赖事件），因此可以先用 endMillis 粗筛、再展开候选：
+        //   展开只改 start 不改 end，粗筛不会漏事件。历史永不裁剪，这一步把「看今天」的成本
+        //   从 O(全部历史) 压到 O(命中区间)。
+        val startBound: Long?
+        val endBound: Long
+        val expandedEvents: List<PlaybackEvent>
+        if (period.range == StatsTimeRange.ALL) {
+            expandedEvents = allEvents.map { event -> expandImportedSpan(event, songMap) }
+            val bounds = period.resolveBounds(expandedEvents, nowMillis, zoneId)
+            startBound = bounds.first
+            endBound = bounds.second
+        } else {
+            val bounds = period.resolveBounds(emptyList(), nowMillis, zoneId)
+            startBound = bounds.first
+            endBound = bounds.second
+            val lowerBound = startBound ?: Long.MIN_VALUE
+            expandedEvents = allEvents
+                .filter { event -> event.endMillis() >= lowerBound }
+                .map { event -> expandImportedSpan(event, songMap) }
+        }
         val filteredEvents = expandedEvents.mapNotNull { event ->
             val start = event.startMillis()
             val end = event.endMillis()
@@ -583,7 +678,8 @@ class PlaybackStatsRepository @Inject constructor(
             mergeImportedEvents(base, events)
         }
         if (writeSucceeded) {
-            notifyStatsChanged()
+            // 导入属于「外部数据变更」：结果缓存失效，并通知统计页重算。
+            requestRefresh()
         }
         writeSucceeded
     }
@@ -610,7 +706,9 @@ class PlaybackStatsRepository @Inject constructor(
             .toMutableList()
     }
 
+    /** 外部数据变更（导入 / 恢复备份 / 排序上限）：已算好的结果不再成立，丢弃并通知观察者。 */
     fun requestRefresh() {
+        invalidateSummaryCache()
         notifyStatsChanged()
     }
 
@@ -736,6 +834,16 @@ class PlaybackStatsRepository @Inject constructor(
         merged += PlaybackSpan(currentStart, currentEnd, currentPlayCount)
         return merged
     }
+
+    /**
+     * 结果缓存的键 = 日历周期身份。刻意不含 `now`：用截断后的边界做键的话，时钟每走一分钟
+     * 缓存就会失效一次，「每个统计只算一次」不成立。
+     */
+    private data class SummaryCacheKey(
+        val range: StatsTimeRange,
+        val startDate: LocalDate?,
+        val endDateExclusive: LocalDate?
+    )
 
     private data class DaySlice(
         val date: LocalDate,
@@ -934,40 +1042,34 @@ class PlaybackStatsRepository @Inject constructor(
         return sessions
     }
 
+    /**
+     * 以内存里的事件表为基准改写历史文件。
+     *
+     * 进程内所有写入都经过本方法、且都持 [fileLock]，因此 `cachedEvents` 就是最新基准 ——
+     * 不需要「锁外解析 + 锁内重读比对」（那会多读一次整文件、多解析一次全量历史）。
+     * 写成功后缓存直接换成刚写下去的那份（已 sanitize，与磁盘一致），下次读取无需重新解析。
+     *
+     * [MAX_FILE_UPDATE_RETRIES] 现在只在写失败时起作用。
+     */
     private fun updateEventsAtomically(
         transform: (MutableList<PlaybackEvent>) -> MutableList<PlaybackEvent>
     ): Boolean {
         repeat(MAX_FILE_UPDATE_RETRIES) {
-            val rawSnapshot = synchronized(fileLock) { readRawHistoryLocked() }
-            val updatedEvents = transform(parseEvents(rawSnapshot))
-            val payload = serializeEvents(updatedEvents)
+            val base = synchronized(fileLock) { cachedEvents?.toMutableList() }
+                ?: parseEvents(synchronized(fileLock) { readRawHistoryLocked() })
+            val sanitized = transform(base).map { event -> sanitizeEvent(event) }
+            val payload = gson.toJson(sanitized).toByteArray(Charsets.UTF_8)
 
             val writeSucceeded = synchronized(fileLock) {
-                val latestRaw = readRawHistoryLocked()
-                if (latestRaw != rawSnapshot) {
-                    return@synchronized false
+                writePayloadLocked(payload).also { written ->
+                    if (written) cachedEvents = sanitized
                 }
-                val result = writePayloadLocked(payload)
-                if (result) cachedEvents = null
-                result
             }
             if (writeSucceeded) {
                 return true
             }
         }
-
-        val fallbackRawSnapshot = synchronized(fileLock) { readRawHistoryLocked() }
-        val payload = serializeEvents(transform(parseEvents(fallbackRawSnapshot)))
-        return synchronized(fileLock) {
-            val result = writePayloadLocked(payload)
-            if (result) cachedEvents = null
-            result
-        }
-    }
-
-    private fun serializeEvents(events: List<PlaybackEvent>): ByteArray {
-        val sanitized = events.map { sanitizeEvent(it) }
-        return gson.toJson(sanitized).toByteArray(Charsets.UTF_8)
+        return false
     }
 
     private fun writePayloadLocked(payload: ByteArray): Boolean {
@@ -1186,6 +1288,9 @@ class PlaybackStatsRepository @Inject constructor(
         private const val UNKNOWN_ARTIST = "Unknown Artist"
         private const val SEGMENT_JOIN_TOLERANCE_MS = 0L
         private const val MAX_RANKING_STATS_COUNT = 100
+
+        /** 结果缓存的 LRU 上限：够覆盖「本周 + 上周 + 本月 + …」的来回翻页，又不会长期累积。 */
+        private const val MAX_SUMMARY_CACHE_ENTRIES = 12
     }
 }
 
