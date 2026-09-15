@@ -34,21 +34,35 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 ## 常用命令（PowerShell，仓库根目录）
 
 ```powershell
-.\gradlew.bat :app:assembleDebug            # 增量构建
-.\gradlew.bat :app:testDebugUnitTest        # 单元测试（JUnit 5）
-.\gradlew.bat :app:lintDebug                # Lint（release 构建不做）
+.\gradlew.bat :app:assembleRelease              # 默认构建（可交付；无签名环境变量时产出未签名 APK）
+.\gradlew.bat :app:assembleDebug                # 仅按需：release 复现不了 / 难定位时
+.\gradlew.bat :app:testDebugUnitTest            # 单元测试（JUnit 5，JVM）
+.\gradlew.bat :app:lintDebug                    # Lint（release 构建不做）
+.\gradlew.bat :app:connectedDebugAndroidTest    # instrumented 测试（需连真机 / 模拟器）
 ```
 
 - **debug / release 可共存**：`debug` 带 `applicationIdSuffix = ".debug"` + `versionNameSuffix = "-debug"`，应用名 `PixelPlayerOSS [D]`（`app/src/debug/res/values/strings.xml`），
   图标走 `app/src/debug/res` 的红底覆盖（只覆盖 `ic_launcher_background` 与 legacy 方/圆图标，foreground 与 `mipmap-anydpi-v26` XML 沿用 main）。
   改了 main 图标后重跑根目录 `gen_debug_icons.py`（Pillow）重新生成 debug 图标。
-- **debug 也过 R8**：`isMinifyEnabled` + `isShrinkResources` 与 release 一致（产物更接近 release），
-  仍可调试（proguard 保留 `SourceFile,LineNumberTable`，mapping 在 `app/build/outputs/mapping/debug/`）。
+- **默认构建 `release`；`debug` 只在按需排查时构建**：R8 只跑在 `release` / `benchmark` 上，
+  `debug` 是 `isMinifyEnabled = false` + `isShrinkResources = false`。
+  理由：debug 的用途是「release 上复现不了、又难定位」的问题，此时未混淆的栈帧逐行对应源码，
+  也不会有 R8 改名 / facade 合并造成的干扰；代价只有体积，而且只在自己点名要时才付。
+  体积实测（arm64-v8a、0.4.1、同一份代码）：**release 37.5 MB / debug 无 R8 152.1 MB /
+  debug 带 R8 69.2 MB**（差别几乎全在 dex：14.5 MB / 128.0 MB / 45.0 MB）。
+  **不要再给 `debug` 打开 R8**：instrumented test 的 test APK 是独立程序，按**未混淆的原名**调用
+  app APK 里的类与成员，而被 minify 的 app 恰好把这些改写或删掉（Kotlin facade、`RoomDatabase.close()`、
+  app 自己不调用的 DAO 方法），逐个 keep 是无底洞 —— 详见下方「instrumented 测试」。
 - **ABI 只构建 `arm64-v8a`**（`pixelplayer.enableAbiSplits` 默认 true）；关掉该 property 时文件名中的 abi 段为 `universal`。
 - **模拟器可直接运行 `arm64-v8a` 产物（已实测确认，2026-09-14）**：本机 AVD 安装默认构建的
   `pixelplayeross-arm64-v8a-*.apk` 即可运行，**不要**为了"让模拟器装得上"去构建 universal ——
   `-Ppixelplayer.enableAbiSplits=false` 会覆盖并清掉同目录的 arm64 产物。
-  真机/模拟器验证统一用 `.\gradlew.bat :app:assembleDebug`。
+  真机/模拟器验证统一用 `.\gradlew.bat :app:assembleRelease`（debug 与 release 的 applicationId 不同，可共存）。
+- **instrumented 测试**：`.\gradlew.bat :app:connectedDebugAndroidTest`，跑在 `debug` 变体上
+  （`testBuildType` 保持默认；正因 debug 不 minify，这套测试才跑得起来）。
+  只跑某几个类：追加 `-Pandroid.testInstrumentationRunnerArguments.class=全限定类名,逗号分隔`。
+  唯一跑不了的：`SyncWorkerTest` 需要 MockK inline（JVMTI agent），ART 拒绝从 app cache 加载，
+  属既有测试设计问题，与构建配置无关。
 - **APK 命名**：`pixelplayeross-<abi>-<APP_VERSION_NAME>-<buildtype>.apk`（`androidComponents.onVariants` 设置 `outputFileName`），
   例 `pixelplayeross-arm64-v8a-0.3.0-debug.apk`。改命名规则改 `app/build.gradle.kts`。
 - 签名走 `keystore.properties`（或 `pixelplayer.disableReleaseSigning=true` 跳过），勿提交密钥。详见下方「签名与发布」。
@@ -151,4 +165,4 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 
 - commit message 用英文；不修改上游 `CHANGELOG.md`（自用分支不提 PR）。
 - 新功能字符串同时加中文（`values-zh-rCN/`）与英文（`values/`）两种语言，不手写其他语言。
-- 改动后至少跑 `assembleDebug`，UI 类改动装真机验证。
+- 改动后至少跑 `assembleRelease`（默认构建）；UI 类改动装真机验证。需要逐行调试时才额外构建 `debug`。

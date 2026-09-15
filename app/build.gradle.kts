@@ -158,15 +158,13 @@ android {
             // Separate application id so debug and release can be installed side by side.
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            // Ship the debug build through the same R8 pipeline as release: it keeps the
-            // APK size and startup behaviour representative, and stays debuggable because
-            // we keep SourceFile/LineNumberTable (see proguard-rules.pro).
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            // No R8 here. `release` is the default build (see AGENTS.md), so `debug` is only
+            // built on demand to chase a problem that resists diagnosis - and for that job an
+            // unminified build is strictly better: every stack frame maps to a source line, and
+            // nothing the instrumentation reaches for has been rewritten or deleted. Measured
+            // cost, arm64-v8a / 0.4.1: 152.1 MB unminified vs 69.2 MB with R8 (release: 37.5 MB).
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
 
         release {
@@ -395,6 +393,9 @@ dependencies {
 
     debugImplementation(platform(libs.androidx.compose.bom))
     debugImplementation(libs.androidx.ui.tooling)
+    // `ui-test-manifest` contributes the `androidx.activity.ComponentActivity` that
+    // `createComposeRule()` launches. The instrumented tests run on `debug`, so this variant needs
+    // it - without it every Compose test dies with "Unable to resolve activity".
     debugImplementation(libs.androidx.ui.test.manifest)
 
     constraints {
