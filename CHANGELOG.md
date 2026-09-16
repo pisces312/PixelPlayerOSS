@@ -2,6 +2,40 @@
 
 All notable changes to PixelPlayerOSS will be documented in this file.
 
+## [0.4.2-pisces.1] - 2026-09-16
+
+The current lyric line can be published as the media title, so a Bluetooth car head unit that
+scrolls its title displays lyrics, and the AI side streams its answer so the model's thought
+process is visible while it thinks and can be read back from a saved mix afterwards.
+
+### Added
+- Car lyric title, under Settings > Playback > Bluetooth car: the current lyric line is sent as the outgoing media title, so head units that can only render Title/Artist/Album/Genre, and scroll that title, show lyrics instead of a fixed track name. Off by default. The title is rewritten only while the switch is on, the current output is a Bluetooth A2DP device and the song has synced lyrics; every other case keeps the real track title, which is what keeps the override off the notification, the lock screen and the phone's own speakers. Plain un-timed lyrics cannot drive it, and cloud tracks rarely have any, since the lyrics sources in this build are local and LRCLIB.
+- A title lead setting, 0 to 1 s in 0.1 s steps, that publishes every cue that many milliseconds early to compensate the AVRCP round trip and the head unit's redraw. It is greyed out while the switch is off, and moving it re-resolves the active cue immediately.
+- Long lyric lines are split into evenly timed cues rather than truncated: a line wider than the head unit's roughly ten character title field is published in slices that stay in step with the vocals. Scheduling wakes on the next cue boundary instead of a fixed interval, so a paused or finished track arms no timer at all and the title is restored within one wake-up when the switch is turned off or the Bluetooth route disappears.
+- The AI request is streamed, and the mix sheet shows the model's thought process while it thinks: a status line plus a collapsible card that follows the stream to the bottom and folds itself once the answer arrives.
+- The thought process survives into the result phase, which also gained the vertical scrollbar its song list never had, and is stored with the playlist (schema v11) so it can be read back later from the AI prompt banner on the playlist screen, next to the prompt and the sampling that produced it.
+- Serendipity has its own sampling settings, defaulting to a random slice of 200 songs, with the advanced controls reachable from the sheet.
+- Long-pressing Serendipity generates a mix from the defaults in a single gesture.
+- The AI prompt banner on a playlist opens a full read-out: the complete prompt, selectable for copying, the sampling that generation used, and the originally generated songs in order, each marked when it has since been removed from the mix or become unavailable.
+- A Genres tab in the library, with name sorting, so browsing by genre no longer depends on the search screen.
+- The search screen's idle state lists search history; tapping an entry re-runs it, and clearing asks for confirmation first.
+- Double-tapping the already-selected bottom navigation entry scrolls Home, the library sublists and Stats back to the top. Search keeps focusing its search bar.
+- Simplified Chinese is complete across screens, settings, components, and the import and logs resources, both of which were missing entirely.
+
+### Changed
+- The default AI mix length is 15 rather than 25, for both the describe and the Serendipity entries.
+- The AI sheet opens fully expanded and its input phase scrolls, so the generate button is reachable with the keyboard up instead of sitting below the fold.
+- The five-star row in the player can be collapsed again with its own chevron.
+- Listening stats are computed on demand and cached per calendar period. Opening the page no longer rewrites and fsyncs the whole playback history, nor runs three full aggregations, which is what made audio stutter over Bluetooth while entering it. Finalizing a session remains the single place the file is written.
+
+### Fixed
+- AI generation failed with network unreachable whenever thinking was enabled. The AI client was built from the app-wide HTTP client and only raised its call timeout, so the 8 second read timeout survived every request, and a model that stays silent while it thinks was cut off by it and classified as a network failure even though the request had been reaching the provider all along. Streaming keeps the connection busy, so the misclassification cannot happen any more.
+- Deleting an AI playlist crashed its confirmation dialog: the title passed a plurals id to stringResource(), which resolves ids through getString() and was guaranteed to throw.
+- Deleting a playlist left its song rows behind, because that table declares no foreign key to playlists. Both rows are now deleted in one transaction, and the songs themselves are untouched.
+- Search could go permanently dead: a second PlayerViewModel was created inside a navigation route and its onCleared() tore down the app-wide search state holder, so after visiting the AI mix screen once, every search returned an empty list until the app was restarted.
+- Deleting a song that is not the one playing no longer closes the full player, a multi-select delete always completes its callback, batch playlist deletion asks for confirmation, and revoking only the notification permission no longer forces the setup wizard to be completed again.
+- Mini-player transport gestures: the skip dead zone is gone, dismissing the playlist takes 30% of the screen width instead of a short swipe, and a vertically dominant drag no longer skips a track. The lyrics overlay claims horizontal drags only, so vertical scrolling stays with the list.
+
 ## [0.4.1-pisces.1] - 2026-09-13
 
 Second fork release. The AI side gets a second entry point that reads the moment, and a mix now
