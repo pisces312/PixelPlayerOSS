@@ -99,6 +99,7 @@ data class SettingsUiState(
     val animatedLyricsBlurEnabled: Boolean = true,
     val animatedLyricsBlurStrength: Float = 2.5f,
     val carLyricTitleEnabled: Boolean = false,
+    val carLyricTitleLeadMs: Int = UserPreferencesRepository.DEFAULT_CAR_LYRIC_TITLE_LEAD_MS,
     val backupInfoDismissed: Boolean = false,
     val isDataTransferInProgress: Boolean = false,
     val restorePlan: RestorePlan? = null,
@@ -173,7 +174,8 @@ private sealed interface SettingsUiUpdate {
         val animatedLyricsBlurEnabled: Boolean,
         val animatedLyricsBlurStrength: Float,
         val songDeletionEnabled: Boolean,
-        val carLyricTitleEnabled: Boolean
+        val carLyricTitleEnabled: Boolean,
+        val carLyricTitleLeadMs: Int
     ) : SettingsUiUpdate
 }
 
@@ -330,7 +332,8 @@ class SettingsViewModel @Inject constructor(
                 userPreferencesRepository.animatedLyricsBlurEnabledFlow,
                 userPreferencesRepository.animatedLyricsBlurStrengthFlow,
                 userPreferencesRepository.songDeletionEnabledFlow,
-                userPreferencesRepository.carLyricTitleEnabledFlow
+                userPreferencesRepository.carLyricTitleEnabledFlow,
+                userPreferencesRepository.carLyricTitleLeadMsFlow
             ) { values ->
                 val requestedAudioOutputMode = values[4] as AudioOutputMode
                 SettingsUiUpdate.Group2(
@@ -358,7 +361,8 @@ class SettingsViewModel @Inject constructor(
                     animatedLyricsBlurEnabled = values[14] as Boolean,
                     animatedLyricsBlurStrength = values[15] as Float,
                     songDeletionEnabled = values[16] as Boolean,
-                    carLyricTitleEnabled = values[17] as Boolean
+                    carLyricTitleEnabled = values[17] as Boolean,
+                    carLyricTitleLeadMs = values[18] as Int
                 )
             }.collect { update ->
                 _uiState.update { state ->
@@ -380,7 +384,8 @@ class SettingsViewModel @Inject constructor(
                         animatedLyricsBlurEnabled = update.animatedLyricsBlurEnabled,
                         animatedLyricsBlurStrength = update.animatedLyricsBlurStrength,
                         songDeletionEnabled = update.songDeletionEnabled,
-                        carLyricTitleEnabled = update.carLyricTitleEnabled
+                        carLyricTitleEnabled = update.carLyricTitleEnabled,
+                        carLyricTitleLeadMs = update.carLyricTitleLeadMs
                     )
                 }
             }
@@ -901,6 +906,12 @@ class SettingsViewModel @Inject constructor(
     fun setCarLyricTitleEnabled(enabled: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.setCarLyricTitleEnabled(enabled)
+        }
+    }
+
+    fun setCarLyricTitleLeadMs(leadMs: Int) {
+        viewModelScope.launch {
+            userPreferencesRepository.setCarLyricTitleLeadMs(leadMs)
         }
     }
 

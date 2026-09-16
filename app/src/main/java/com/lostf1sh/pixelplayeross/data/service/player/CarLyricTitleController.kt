@@ -1,11 +1,12 @@
 package com.lostf1sh.pixelplayeross.data.service.player
 
 import androidx.media3.common.Player
-import com.lostf1sh.pixelplayeross.data.model.SyncedLine
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
-import com.lostf1sh.pixelplayeross.utils.nextLyricBoundaryMs
-import com.lostf1sh.pixelplayeross.utils.resolveCurrentLineIndex
+import com.lostf1sh.pixelplayeross.utils.LyricCue
+import com.lostf1sh.pixelplayeross.utils.buildLyricCues
+import com.lostf1sh.pixelplayeross.utils.nextCueTimeMs
+import com.lostf1sh.pixelplayeross.utils.resolveCueIndex
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,11 +25,25 @@ import timber.log.Timber
  * The override is published through [LyricTitlePlayer], which fakes a metadata-changed event
  * rather than mutating the playlist; see that class for why.
  *
- * **Scheduling.** Media3 exposes no position callback, so the active line has to be sampled. Rather
- * than sampling on a fixed interval, this controller sleeps until the *next lyric boundary* —
- * `delay = min(boundary - position, WATCHDOG_INTERVAL_MS) / speed` — and recomputes from the live
+ * **Segments.** A head unit renders only a handful of characters of the title, so a line longer
+ * than [MAX_CHARS_PER_CUE] is published in several slices spread evenly over that line's own
+ * duration; [buildLyricCues] does the cutting. Scheduling, publishing and the de-duplication key
+ * all work on slices, so read "cue" below where an earlier revision of this class read "line".
+ *
+ * **Lead.** Every cue is published `leadMs` *before* its timestamp, because the path from
+ * [LyricTitlePlayer.publishMetadataOverride] to pixels on the head unit costs a few hundred
+ * milliseconds (AVRCP round trip plus the unit redrawing), and a title that changes exactly on the
+ * beat reads as late. The value comes from the "title lead" setting — it describes the car rather
+ * than the song, so it is one value for the whole track and deliberately never a per-cue value: a
+ * uniform shift leaves the interval between cues exactly as the lyrics define it, so the error
+ * stays constant instead of accumulating. The one visible cost is that each cue also *ends* that
+ * much earlier — unavoidable while the whole state is a single Title field.
+ *
+ * **Scheduling.** Media3 exposes no position callback, so the active cue has to be sampled. Rather
+ * than sampling on a fixed interval, this controller sleeps until the *next cue* —
+ * `delay = min(nextCue - position, WATCHDOG_INTERVAL_MS) / speed` — and recomputes from the live
  * position after every wake-up, so inaccuracy cannot accumulate. That is roughly one wake-up per
- * lyric line instead of two per second, and **no** wake-up at all while paused, disabled, or
+ * published cue instead of two per second, and **no** wake-up at all while paused, disabled, or
  * without synced lyrics. The watchdog cap is the self-healing fallback a fixed poll gets for free:
  * if an event we depend on never arrives, the title still catches up within
  * [WATCHDOG_INTERVAL_MS].
@@ -60,16 +75,29 @@ class CarLyricTitleController(
 
     private var enabled = false
     private var currentSongId: String? = null
-    private var lines: List<SyncedLine> = emptyList()
+    private var cues: List<LyricCue> = emptyList()
     private var syncOffsetMs = 0
-    private var lastPublishedLine: String? = null
+
+    /**
+     * How early every cue is published, mirrored from the user's "title lead" setting. Starts at 0 —
+     * the safe direction (publish on the beat) — until the store has been read, which happens within
+     * the first few ticks.
+     */
+    private var leadMs = 0
+
+    /**
+     * [LyricCue.sequence] of the last published cue, or one of the two sentinels in the companion.
+     * The sequence — not the text — is the key, because two cues of one line can read alike and a
+     * text key would swallow the second one.
+     */
+    private var lastPublishedCue = CUE_UNPUBLISHED
     private var lyricsJob: Job? = null
 
-    /** Pending wake-up for the next lyric boundary; null while paused or past the last line. */
+    /** Pending wake-up for the next cue; null while paused or past the last cue. */
     private var boundaryJob: Job? = null
 
     /** Identifies what [boundaryJob] is waiting for, so repeated signals cannot re-arm it. */
-    private var armedLineIndex: Int? = null
+    private var armedCueIndex: Int? = null
     private var armedBoundaryMs: Long? = null
     private var armedSpeed = 1f
 
@@ -104,10 +132,21 @@ class CarLyricTitleController(
                         // boundary, otherwise the head unit would keep the last lyric line on
                         // screen.
                         stopScheduling()
-                        publish(player = playerProvider(), line = null)
+                        publish(player = playerProvider(), cue = null)
                     }
                     Timber.tag(TAG).d("car lyric title: toggle %s", if (value) "on" else "off")
                 }
+                signal()
+            }
+        }
+
+        scope.launch {
+            userPreferencesRepository.carLyricTitleLeadMsFlow.collect { value ->
+                if (leadMs == value) return@collect
+                leadMs = value
+                // A different lead changes which cue is active right now, so recompute instead of
+                // waiting for the next boundary — otherwise the new value would only take effect
+                // from the following line and the slider would feel broken.
                 signal()
             }
         }
@@ -131,12 +170,12 @@ class CarLyricTitleController(
 
     /**
      * Called when the service hands the MediaSession a new player wrapper (crossfade, engine swap).
-     * The new instance starts with no override while [lastPublishedLine] still holds the previous
-     * line, which would suppress the re-publish and leave the real track title on screen until the
-     * line changes. Forgetting it makes the next tick publish to the new wrapper.
+     * The new instance starts with no override while [lastPublishedCue] still holds the previous
+     * cue, which would suppress the re-publish and leave the real track title on screen until the
+     * cue changes. Forgetting it makes the next tick publish to the new wrapper.
      */
     fun onPlayerReplaced() {
-        lastPublishedLine = null
+        lastPublishedCue = CUE_UNPUBLISHED
         signal()
     }
 
@@ -176,17 +215,19 @@ class CarLyricTitleController(
             return@withContext
         }
 
-        if (lines.isEmpty()) {
+        if (cues.isEmpty()) {
             reportState("idle: no synced lyrics for song $mediaId")
             stopScheduling()
             publish(player, null)
             return@withContext
         }
 
-        val positionMs = player.currentPosition + syncOffsetMs
-        val index = resolveCurrentLineIndex(lines, positionMs)
-        reportState("active: ${lines.size} synced lines")
-        publish(player, lines.getOrNull(index)?.line?.trim()?.takeIf { it.isNotEmpty() })
+        // The lead belongs to the position used for *resolving*, which is what makes every cue
+        // appear that much before its own timestamp while leaving the gaps between cues alone.
+        val positionMs = player.currentPosition + syncOffsetMs + leadMs
+        val index = resolveCueIndex(cues, positionMs)
+        reportState("active: ${cues.size} cues")
+        publish(player, cues.getOrNull(index))
         scheduleNextWakeUp(player, positionMs, index)
     }
 
@@ -196,19 +237,19 @@ class CarLyricTitleController(
      */
     private fun onSongChanged(player: LyricTitlePlayer, mediaId: String) {
         currentSongId = mediaId
-        lines = emptyList()
+        cues = emptyList()
         syncOffsetMs = 0
         stopScheduling()
         lyricsJob?.cancel()
         publish(player, null)
         lyricsJob = scope.launch {
-            loadLyrics(mediaId)
+            loadLyrics(player, mediaId)
             // Lyrics arriving is what makes scheduling possible again.
             signal()
         }
     }
 
-    private suspend fun loadLyrics(mediaId: String) {
+    private suspend fun loadLyrics(player: Player, mediaId: String) {
         val song = runCatching { musicRepository.getSong(mediaId).first() }.getOrNull()
         if (song == null) {
             Timber.tag(TAG).d("car lyric title: no song for media id %s, keeping track title", mediaId)
@@ -222,24 +263,35 @@ class CarLyricTitleController(
         val lyrics = runCatching { musicRepository.getLyrics(song) }.getOrNull()
 
         if (currentSongId != mediaId) return
+        // Read here rather than up front, and on the main dispatcher: Media3 wants all player
+        // access from one thread, and on the last line this duration *is* the end of the timeline,
+        // so the longer the lyrics take to arrive the more likely it is to be known already.
+        val trackDurationMs = withContext(Dispatchers.Main.immediate) { player.duration }
+
         syncOffsetMs = offset
-        lines = lyrics?.synced.orEmpty()
+        cues = buildLyricCues(
+            lines = lyrics?.synced.orEmpty(),
+            trackDurationMs = trackDurationMs,
+            maxCharsPerCue = MAX_CHARS_PER_CUE
+        )
         Timber.tag(TAG).d(
-            "car lyric title: loaded %d synced lines for %s (offset %d ms)",
-            lines.size,
+            "car lyric title: loaded %d synced lines as %d cues for %s (offset %d ms, lead %d ms)",
+            lyrics?.synced?.size ?: 0,
+            cues.size,
             mediaId,
-            offset
+            offset,
+            leadMs
         )
     }
 
     /**
-     * Arms the single pending wake-up, for the moment [index] stops being the active line. Also the
+     * Arms the single pending wake-up, for the moment [index] stops being the active cue. Also the
      * watchdog: capping the delay at [WATCHDOG_INTERVAL_MS] means a missed event or a very sparse
      * lyric still gets refreshed instead of leaving the title stale forever.
      *
      * Idempotent for one transition: a burst of player events (startup, crossfade) asks for a
      * recompute over and over, and re-arming each time would cancel and relaunch the timer
-     * needlessly. Skipping is safe because the deadline for a given (line, boundary, speed) is
+     * needlessly. Skipping is safe because the deadline for a given (cue, boundary, speed) is
      * absolute — the residual is re-derived from the live position when the timer fires anyway.
      */
     private fun scheduleNextWakeUp(player: Player, positionMs: Long, index: Int) {
@@ -248,7 +300,7 @@ class CarLyricTitleController(
             stopScheduling()
             return
         }
-        val boundaryMs = nextLyricBoundaryMs(lines, index) ?: run {
+        val boundaryMs = nextCueTimeMs(cues, index) ?: run {
             stopScheduling()
             return
         }
@@ -257,7 +309,7 @@ class CarLyricTitleController(
         val speed = player.playbackParameters.speed.takeIf { it > 0f } ?: 1f
 
         if (boundaryJob?.isActive == true &&
-            armedLineIndex == index &&
+            armedCueIndex == index &&
             armedBoundaryMs == boundaryMs &&
             armedSpeed == speed
         ) {
@@ -265,7 +317,7 @@ class CarLyricTitleController(
         }
 
         boundaryJob?.cancel()
-        armedLineIndex = index
+        armedCueIndex = index
         armedBoundaryMs = boundaryMs
         armedSpeed = speed
 
@@ -279,13 +331,18 @@ class CarLyricTitleController(
         }
         // Verbose on purpose: the wake-up cadence *is* the design, and this is the only way to see
         // it (a fixed poll has no such line). Suppressed in release by ReleaseTree.
-        Timber.tag(TAG).v("car lyric title: next wake in %d ms (line %d)", remainingMs, index)
+        Timber.tag(TAG).v(
+            "car lyric title: next wake in %d ms (cue %d, lead %d ms)",
+            remainingMs,
+            index,
+            leadMs
+        )
     }
 
     private fun stopScheduling() {
         boundaryJob?.cancel()
         boundaryJob = null
-        armedLineIndex = null
+        armedCueIndex = null
         armedBoundaryMs = null
     }
 
@@ -320,11 +377,19 @@ class CarLyricTitleController(
         Timber.tag(TAG).d("car lyric title: %s", state)
     }
 
-    /** Replaces the exposed title with [line], or restores the real metadata when it is null. */
-    private fun publish(player: LyricTitlePlayer?, line: String?) {
+    /**
+     * Replaces the exposed title with [cue]'s text, or restores the real metadata when there is no
+     * cue to show (the intro before the first line, or a line that carries no lyrics).
+     *
+     * De-duplicated on the cue's sequence rather than its text: a long line split in two can yield
+     * two cues that read alike, and a text key would silently swallow the second one.
+     */
+    private fun publish(player: LyricTitlePlayer?, cue: LyricCue?) {
         if (player == null) return
-        if (line == lastPublishedLine) return
-        lastPublishedLine = line
+        val key = cue?.sequence ?: CUE_TRACK_TITLE
+        if (key == lastPublishedCue) return
+        lastPublishedCue = key
+        val line = cue?.text?.takeIf { it.isNotEmpty() }
         player.publishMetadataOverride(
             line?.let { player.innerPlayer.mediaMetadata.buildUpon().setTitle(it).build() }
         )
@@ -335,6 +400,17 @@ class CarLyricTitleController(
 
     companion object {
         private const val TAG = "MusicService_PixelPlayer"
+
+        /**
+         * Characters per published cue. A head unit truncates its title field at roughly this many
+         * (measured at 10 on the model this was built for), so a longer line is published in
+         * several slices instead of being clipped.
+         */
+        private const val MAX_CHARS_PER_CUE = 10
+
+        /** [publish] keys, chosen so they cannot collide with a real cue sequence. */
+        private const val CUE_UNPUBLISHED = -2
+        private const val CUE_TRACK_TITLE = -1
 
         /** Floor for the armed delay, so a boundary already in the past cannot spin the loop. */
         private const val MIN_WAKE_UP_DELAY_MS = 100L

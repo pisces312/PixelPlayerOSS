@@ -9,6 +9,8 @@
     <string name="presentation_batch_g_stats_cd_refresh">刷新收听统计</string>
     <string name="presentation_batch_g_stats_hero_listening">收听时长</string>
     <string name="presentation_batch_g_stats_hero_plays">播放次数</string>
+    <string name="presentation_batch_g_stats_hero_songs">歌曲</string>
+    <string name="presentation_batch_g_stats_hero_artists">歌手</string>
     <string name="presentation_batch_g_stats_range_day_short">今日</string>
     <string name="presentation_batch_g_stats_range_week_short">本周</string>
     <string name="presentation_batch_g_stats_range_month_short">本月</string>

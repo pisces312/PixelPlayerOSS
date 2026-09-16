@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Diagnostics / log collector -->
+    <string name="settings_diagnostics_section">诊断</string>
+    <string name="settings_log_level_title">日志级别</string>
+    <string name="settings_log_level_subtitle">当前：%1$s</string>
+    <string name="settings_export_logs_title">导出诊断日志</string>
+    <string name="settings_export_logs_subtitle">分享近期应用日志以便排查问题</string>
+    <string name="settings_trigger_crash_title">触发测试崩溃</string>
+    <string name="settings_trigger_crash_subtitle">主动抛出未捕获异常，用于验证崩溃处理</string>
+
+    <string name="log_level_verbose">详细</string>
+    <string name="log_level_debug">调试</string>
+    <string name="log_level_info">信息</string>
+    <string name="log_level_warning">警告</string>
+    <string name="log_level_error">错误</string>
+</resources>

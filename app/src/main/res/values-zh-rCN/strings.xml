@@ -238,4 +238,44 @@
 <string name="setcat_find_duplicates_title">查找重复曲目</string>
 <string name="setcat_find_duplicates_subtitle">扫描曲库中多次出现的歌曲</string>
 
+    <!-- Cloud downloads -->
+    <string name="cloud_downloads_title">下载</string>
+    <string name="cloud_downloads_settings_subtitle">管理离线云端歌曲与存储空间</string>
+    <string name="cloud_downloads_empty_title">暂无离线下载</string>
+    <string name="cloud_downloads_empty_subtitle">下载的云端歌曲会显示在这里。</string>
+    <string name="cloud_downloads_active_section">排队中与下载中</string>
+    <string name="cloud_downloads_completed_section">已完成</string>
+    <string name="cloud_downloads_failed_section">失败</string>
+    <string name="cloud_downloads_storage_used">已用离线存储</string>
+    <string name="cloud_downloads_storage_summary">已完成 %1$d · 共 %2$d</string>
+    <string name="cloud_downloads_downloaded_size">已下载 · %1$s</string>
+    <string name="cloud_downloads_section_count">%1$s · %2$d</string>
+    <string name="cloud_downloads_unknown_track">未知歌曲</string>
+    <string name="cloud_downloads_failed_fallback">下载失败</string>
+    <string name="cloud_download_action">下载</string>
+    <string name="cloud_downloading">下载中…</string>
+    <string name="cloud_download_queued">排队中</string>
+    <string name="cloud_download_retry">重试</string>
+    <string name="cloud_download_progress">%1$d%%</string>
+    <string name="cloud_download_selected">下载选中的云端歌曲</string>
+    <string name="cloud_download_selected_count">下载 %1$d 首云端歌曲</string>
+    <string name="cloud_download_selected_started">正在准备 %1$d 首云端歌曲以便离线播放</string>
+    <string name="cloud_album_download">下载专辑</string>
+    <string name="cloud_album_remove_downloads">移除下载</string>
+    <string name="cloud_playlist_download">下载播放列表</string>
+    <string name="cloud_remove_download">移除下载</string>
+
+    <!-- MusicBrainz enrichment -->
+    <string name="musicbrainz_lookup">在 MusicBrainz 中查找</string>
+    <string name="musicbrainz_lookup_failed">MusicBrainz 查询失败</string>
+    <string name="musicbrainz_searching">正在搜索录音匹配…</string>
+    <string name="musicbrainz_no_results">未找到合适的录音。</string>
+    <string name="musicbrainz_choose_match">选择 MusicBrainz 匹配项</string>
+    <string name="musicbrainz_match_score">匹配置信度：%1$d%%</string>
+    <string name="musicbrainz_applied">已保存 MusicBrainz 标识，并补全了缺失的年份与占位名称。</string>
+    <string name="musicbrainz_search_failed_fallback">MusicBrainz 搜索失败</string>
+    <string name="musicbrainz_save_failed_fallback">无法保存 MusicBrainz 元数据</string>
+
+    <!-- Song deletion protection -->
+    <string name="song_deletion_protection_blocked">保护模式已开启，删除已被阻止。</string>
 </resources>

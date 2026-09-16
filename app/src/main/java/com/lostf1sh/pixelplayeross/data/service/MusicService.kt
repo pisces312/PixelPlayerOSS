@@ -772,10 +772,11 @@ class MusicService : MediaSessionService() {
 
     private fun startCarLyricTitle() {
         if (carLyricTitleController != null) return
+        val isDebuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
         val outputMonitor = com.lostf1sh.pixelplayeross.data.service.player.CarLyricTitleOutputMonitor(
             audioManager = audioManager,
             contentResolver = contentResolver,
-            isDebuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0,
+            isDebuggable = isDebuggable,
             onRouteChanged = { carLyricTitleController?.signal() }
         )
         carLyricTitleOutputMonitor = outputMonitor

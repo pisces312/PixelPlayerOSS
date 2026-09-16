@@ -173,6 +173,7 @@ import com.lostf1sh.pixelplayeross.data.preferences.LaunchTab
 import com.lostf1sh.pixelplayeross.data.preferences.LibraryNavigationMode
 import com.lostf1sh.pixelplayeross.data.preferences.NavBarStyle
 import com.lostf1sh.pixelplayeross.data.preferences.ThemePreference
+import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.model.LyricsSourcePreference
 import com.lostf1sh.pixelplayeross.presentation.components.CollapsibleCommonTopBar
@@ -943,6 +944,20 @@ fun SettingsCategoryScreen(
                                     onCheckedChange = { settingsViewModel.setCarLyricTitleEnabled(it) },
                                     leadingIcon = { Icon(painterResource(R.drawable.rounded_directions_car_24), null, tint = MaterialTheme.colorScheme.secondary) },
                                     modifier = Modifier.settingHighlight("item_playback_car_lyrics", highlightKey)
+                                )
+                                SliderSettingsItem(
+                                    label = stringResource(R.string.setcat_car_lyrics_lead_title),
+                                    // 0–1000 ms in 100 ms steps: eleven stops, so nine ticks between them.
+                                    value = uiState.carLyricTitleLeadMs.toFloat(),
+                                    valueRange = 0f..UserPreferencesRepository.MAX_CAR_LYRIC_TITLE_LEAD_MS.toFloat(),
+                                    steps = 9,
+                                    onValueChange = { settingsViewModel.setCarLyricTitleLeadMs(it.toInt()) },
+                                    valueText = { value -> String.format(Locale.US, "%.1fs", value / 1000f) },
+                                    modifier = Modifier.settingHighlight("item_playback_car_lyrics_lead", highlightKey),
+                                    // Gated by the switch above: with the feature off the lead has no
+                                    // effect, so the slider greys out rather than disappearing, which
+                                    // would leave the user guessing where the option went.
+                                    enabled = uiState.carLyricTitleEnabled
                                 )
                             }
 

@@ -439,6 +439,18 @@ object SettingsRegistry {
                 onToggle = { viewModel, checked -> viewModel.setCarLyricTitleEnabled(checked) }
             ),
             SettingSpec(
+                id = "playback_car_lyrics_lead",
+                itemKey = "item_playback_car_lyrics_lead",
+                titleRes = R.string.setcat_car_lyrics_lead_title,
+                subtitleRes = R.string.setcat_car_lyrics_lead_subtitle,
+                category = SettingsCategory.PLAYBACK,
+                subscreenRoute = Screen.SettingsCategory.createRoute("playback"),
+                type = SettingType.NAVIGABLE_CARD,
+                keywordsStatic = listOf(
+                    "car", "bluetooth", "lyrics", "lead", "delay", "advance", "ahead", "sync", "title"
+                )
+            ),
+            SettingSpec(
                 id = "playback_crossfade",
                 itemKey = "item_playback_crossfade",
                 titleRes = R.string.setcat_crossfade_label,

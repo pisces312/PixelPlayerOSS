@@ -413,8 +413,12 @@ fun SliderSettingsItem(
         onValueChange: (Float) -> Unit,
         onValueChangeFinished: (() -> Unit)? = null,
         valueText: (Float) -> String,
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        enabled: Boolean = true
 ) {
+    // Mirrors Material3's disabled alpha. A disabled slider keeps its value on screen on purpose:
+    // the setting still reads as "this exists, and the switch above controls it".
+    val contentAlpha = if (enabled) 1f else 0.38f
     Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
@@ -428,13 +432,13 @@ fun SliderSettingsItem(
                         text = label,
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                         text = valueText(value),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = contentAlpha),
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         softWrap = false
@@ -445,7 +449,8 @@ fun SliderSettingsItem(
                 onValueChange = onValueChange,
                 onValueChangeFinished = onValueChangeFinished,
                 valueRange = valueRange,
-                steps = steps
+                steps = steps,
+                enabled = enabled
             )
         }
     }

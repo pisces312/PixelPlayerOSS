@@ -81,6 +81,16 @@
     <string name="edit_song_crop_dialog_hint">双指缩放、拖动调整画面构图。</string>
     <string name="edit_song_apply_cover_art">应用封面</string>
     <string name="edit_song_unable_to_load_image">所选图片加载失败</string>
+    <string name="edit_song_custom_metadata_heading">可选元数据</string>
+    <string name="edit_song_custom_metadata_description">设置 0–5 星评分，或添加 MOOD、COMMENT、YEAR、BPM 等文本字段。</string>
+    <string name="edit_song_rating">评分（0–5）</string>
+    <string name="edit_song_rating_not_set">未设置</string>
+    <string name="edit_song_custom_field_name">字段名</string>
+    <string name="edit_song_custom_field_value">值</string>
+    <string name="edit_song_add_custom_field">添加元数据字段</string>
+    <string name="edit_song_remove_custom_field">删除字段</string>
+    <string name="edit_song_custom_metadata_formats">评分与自定义字段可写入 MP3、WAV、AIFF、FLAC、OGG、Opus、M4A、M4B 与 MP4 文件。</string>
+    <string name="edit_song_custom_metadata_invalid">请检查可选元数据字段。</string>
 
     <string name="song_info_share_chooser_title">分享歌曲文件 via</string>
     <string name="cd_play_song_action">播放歌曲</string>

@@ -228,6 +228,7 @@ constructor(
         val IMMERSIVE_LYRICS_ENABLED = booleanPreferencesKey("immersive_lyrics_enabled")
         val IMMERSIVE_LYRICS_TIMEOUT = longPreferencesKey("immersive_lyrics_timeout")
         val CAR_LYRIC_TITLE_ENABLED = booleanPreferencesKey("car_lyric_title_enabled")
+        val CAR_LYRIC_TITLE_LEAD_MS = intPreferencesKey("car_lyric_title_lead_ms")
         val USE_ANIMATED_LYRICS = booleanPreferencesKey("use_animated_lyrics")
         val ANIMATED_LYRICS_BLUR_ENABLED = booleanPreferencesKey("animated_lyrics_blur_enabled")
         val ANIMATED_LYRICS_BLUR_STRENGTH = androidx.datastore.preferences.core.floatPreferencesKey("animated_lyrics_blur_strength")
@@ -693,6 +694,26 @@ constructor(
     suspend fun setCarLyricTitleEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.CAR_LYRIC_TITLE_ENABLED] = enabled
+        }
+    }
+
+    /**
+     * How early, in milliseconds, the car lyric title is published: the compensation for the AVRCP
+     * round trip plus the head unit's own redraw. It describes the car, not a song, so unlike
+     * [getLyricsSyncOffset] it is a single value used for everything. Out-of-range values are
+     * clamped rather than rejected, so a bad stored value can never disable the feature.
+     */
+    val carLyricTitleLeadMsFlow: Flow<Int> =
+            dataStore.data.map { preferences ->
+                (preferences[PreferencesKeys.CAR_LYRIC_TITLE_LEAD_MS]
+                        ?: DEFAULT_CAR_LYRIC_TITLE_LEAD_MS)
+                        .coerceIn(0, MAX_CAR_LYRIC_TITLE_LEAD_MS)
+            }
+
+    suspend fun setCarLyricTitleLeadMs(leadMs: Int) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CAR_LYRIC_TITLE_LEAD_MS] =
+                    leadMs.coerceIn(0, MAX_CAR_LYRIC_TITLE_LEAD_MS)
         }
     }
 
@@ -1344,6 +1365,9 @@ constructor(
         /** Default word-based delimiters (matched case-insensitively with whitespace boundaries) */
         val DEFAULT_ARTIST_WORD_DELIMITERS = listOf("featuring", "feat.", "feat", "ft.", "ft", "vs.", "vs", "versus", "with", "prod.", "prod")
         const val DEFAULT_ALBUM_ART_CACHE_LIMIT_MB = 200
+        /** Car lyric title lead: measured 0.3–1.0 s of downstream latency on the reference setup. */
+        const val DEFAULT_CAR_LYRIC_TITLE_LEAD_MS = 500
+        const val MAX_CAR_LYRIC_TITLE_LEAD_MS = 1_000
     }
 
     val navBarCornerRadiusFlow: Flow<Int> =

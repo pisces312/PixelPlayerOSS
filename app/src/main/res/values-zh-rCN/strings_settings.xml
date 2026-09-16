@@ -139,6 +139,8 @@
     <string name="setcat_car_lyrics_section">车载蓝牙</string>
     <string name="setcat_car_lyrics_title">标题显示歌词</string>
     <string name="setcat_car_lyrics_subtitle">通过蓝牙把当前歌词行作为媒体标题发送，支持滚动标题的车机会显示歌词。需要同步歌词。</string>
+    <string name="setcat_car_lyrics_lead_title">歌词提前量</string>
+    <string name="setcat_car_lyrics_lead_subtitle">歌词标题提前发送的时长。车机每行显示偏晚时调大。</string>
     <string name="setcat_queue_transitions">播放队列与过渡效果</string>
     <string name="setcat_crossfade_label">歌曲淡入淡出</string>
     <string name="setcat_crossfade_desc">开启歌曲之间平滑过渡</string>
@@ -274,4 +276,29 @@
     <string name="cd_remove_from_history">从历史记录移除</string>
     <string name="cd_clear_search">清空搜索</string>
     <string name="backup_history_modules_line">%1$d个模块 · 版本v%2$s · 数据库架构v%3$d</string>
+    <!-- 删除保护（资料库） -->
+    <string name="setcat_deletion_protection">删除保护</string>
+    <string name="setcat_allow_delete_songs_title">允许删除歌曲</string>
+    <string name="setcat_allow_delete_songs_subtitle">关闭后歌曲无法从设备上删除，避免误触损毁文件。</string>
+
+    <!-- 正在播放配色 / 屏幕常亮（外观） -->
+    <string name="setcat_global_now_playing_theme_title">全应用使用正在播放的配色</string>
+    <string name="setcat_global_now_playing_theme_subtitle">用当前歌曲的专辑封面为整个应用着色，仍然遵循浅色与深色模式。</string>
+    <string name="setcat_keep_screen_awake_title">播放时保持屏幕常亮</string>
+    <string name="setcat_keep_screen_awake_subtitle">音乐正在播放且应用可见时阻止屏幕休眠。</string>
+
+    <!-- 播放列表同步 -->
+    <string name="setcat_m3u_sync_section">播放列表同步</string>
+    <string name="setcat_m3u_sync_title">自动 M3U 同步</string>
+    <string name="setcat_m3u_sync_disabled_subtitle">选择外部文件夹，与本地播放列表双向同步</string>
+    <string name="setcat_m3u_sync_enabled_subtitle">正在与 %1$s 同步</string>
+    <string name="setcat_m3u_sync_selected_folder">所选文件夹</string>
+    <string name="setcat_m3u_sync_now_title">立即同步播放列表</string>
+    <string name="setcat_m3u_sync_now_subtitle">双向导入导出改动，不覆盖冲突项</string>
+    <string name="setcat_m3u_sync_result">%1$d 项变更 · %2$d 项冲突 · %3$d 项未解析</string>
+
+    <!-- 统计 -->
+    <string name="setcat_statistics_section">统计</string>
+    <string name="setcat_stats_ranking_unlimited_title">统计排行不设上限</string>
+    <string name="setcat_stats_ranking_unlimited_subtitle">在听歌统计中显示全部上榜歌曲、歌手与专辑，而不是在 100 处截断。</string>
 </resources>

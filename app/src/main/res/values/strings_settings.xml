@@ -166,6 +166,8 @@
     <string name="setcat_car_lyrics_section">Car / Bluetooth</string>
     <string name="setcat_car_lyrics_title">Show lyrics as media title</string>
     <string name="setcat_car_lyrics_subtitle">Send the current lyric line as the media title over Bluetooth, so car head units that scroll the title display lyrics. Requires synced lyrics.</string>
+    <string name="setcat_car_lyrics_lead_title">Title lead</string>
+    <string name="setcat_car_lyrics_lead_subtitle">How early the lyric title is sent. Raise it if the head unit shows each line late.</string>
     <string name="setcat_queue_transitions">Queue and Transitions</string>
     <string name="setcat_crossfade_label">Crossfade</string>
     <string name="setcat_crossfade_desc">Enable smooth transition between songs.</string>
