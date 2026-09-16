@@ -36,6 +36,7 @@ constructor(
      * [sampleMode] / [sampleSize] override the saved sampling settings when non-null; otherwise the
      * caller's saved preference is used. [promptType] / [useCache] are forwarded to [AiHandler] so
      * the Serendipity path can opt out of the response cache and label its own usage rows.
+     * [listener] is forwarded untouched: matching stays local, only the raw stream is reported.
      */
     suspend fun generate(
         description: String,
@@ -43,7 +44,8 @@ constructor(
         sampleMode: AiLibrarySampleMode? = null,
         sampleSize: Int? = null,
         promptType: String = AiHandler.PROMPT_TYPE_PLAYLIST,
-        useCache: Boolean = true
+        useCache: Boolean = true,
+        listener: AiProgressListener? = null
     ): List<Song> =
             withContext(Dispatchers.Default) {
                 val songs = musicRepository.getAllSongsOnce()
@@ -56,7 +58,8 @@ constructor(
                                 request = description,
                                 librarySample = librarySample(songs, resolvedMode, resolvedSize),
                                 promptType = promptType,
-                                useCache = useCache
+                                useCache = useCache,
+                                listener = listener
                         )
                 resolve(parse(raw), songs, maxLength)
             }
@@ -71,7 +74,8 @@ constructor(
      */
     suspend fun generateSerendipity(
         description: String,
-        maxLength: Int = DEFAULT_MAX_LENGTH
+        maxLength: Int = DEFAULT_MAX_LENGTH,
+        listener: AiProgressListener? = null
     ): List<Song> =
             generate(
                     description = description,
@@ -79,7 +83,8 @@ constructor(
                     sampleMode = preferences.getSerendipitySampleMode().first(),
                     sampleSize = preferences.getSerendipitySampleSize().first(),
                     promptType = AiHandler.PROMPT_TYPE_SERENDIPITY_PLAYLIST,
-                    useCache = false
+                    useCache = false,
+                    listener = listener
             )
 
     /**

@@ -9,6 +9,7 @@ import com.lostf1sh.pixelplayeross.data.preferences.AiPreferencesRepository
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /**
@@ -55,12 +56,16 @@ constructor(
      *
      * [promptType] only labels the usage row and the request log, which is how the settings screen
      * can tell an ordinary mix from one that also paid for a rephrased prompt.
+     *
+     * [listener] receives thinking / answer deltas while the request is streaming. A cache hit is
+     * answered without contacting the provider, so it reports no progress at all.
      */
     suspend fun generate(
         request: String,
         librarySample: String,
         promptType: String = PROMPT_TYPE_PLAYLIST,
-        useCache: Boolean = true
+        useCache: Boolean = true,
+        listener: AiProgressListener? = null
     ): String {
         val (provider, apiKey, baseUrl) = credentials()
         val model = preferences.getModel(provider).first()
@@ -101,9 +106,12 @@ constructor(
                         model = model,
                         systemPrompt = AiSystemPromptEngine.systemPrompt(),
                         userPrompt = userPrompt,
-                        thinkingEnabled = thinking
+                        thinkingEnabled = thinking,
+                        listener = listener
                 )
             } catch (t: Throwable) {
+                // Closing the sheet cancels the request: that is not a failure worth logging.
+                if (t is CancellationException) throw t
                 requestLogStore.write(
                     AiRequestLog(
                         timestamp = System.currentTimeMillis(),
@@ -197,6 +205,8 @@ constructor(
                             thinkingEnabled = thinking
                     )
                 } catch (t: Throwable) {
+                    // Closing the sheet cancels the request: that is not a failure worth logging.
+                    if (t is CancellationException) throw t
                     requestLogStore.write(
                             AiRequestLog(
                                     timestamp = System.currentTimeMillis(),

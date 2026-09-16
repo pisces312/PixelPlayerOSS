@@ -121,6 +121,9 @@
     <string name="ai_mix_advanced">高级</string>
     <string name="ai_mix_generate">生成</string>
     <string name="ai_mix_generating">正在挑选歌曲……</string>
+    <string name="ai_thinking_status">AI 正在思考……</string>
+    <string name="ai_thinking_section">思考过程</string>
+    <string name="ai_thinking_toggle">展开或收起思考过程</string>
     <string name="ai_mix_result_count">%1$d 首</string>
     <string name="ai_mix_play">播放</string>
     <string name="ai_mix_save_only">仅保存</string>

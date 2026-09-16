@@ -121,6 +121,9 @@
     <string name="ai_mix_advanced">Advanced</string>
     <string name="ai_mix_generate">Generate</string>
     <string name="ai_mix_generating">Picking songs…</string>
+    <string name="ai_thinking_status">Thinking…</string>
+    <string name="ai_thinking_section">Thought process</string>
+    <string name="ai_thinking_toggle">Expand or collapse the thought process</string>
     <string name="ai_mix_result_count">%1$d songs</string>
     <string name="ai_mix_play">Play</string>
     <string name="ai_mix_save_only">Save only</string>

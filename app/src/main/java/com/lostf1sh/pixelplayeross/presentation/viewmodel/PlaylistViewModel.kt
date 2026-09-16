@@ -18,6 +18,8 @@ import com.lostf1sh.pixelplayeross.data.playlist.NlpPlaylistGenerator
 import com.lostf1sh.pixelplayeross.data.ai.AiHandler
 import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.ai.AiPlaylistGenerator
+import com.lostf1sh.pixelplayeross.data.ai.AiProgressEvent
+import com.lostf1sh.pixelplayeross.data.ai.AiProgressListener
 import com.lostf1sh.pixelplayeross.data.ai.AiSystemPromptEngine
 import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityContext
 import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityContextCollector
@@ -45,8 +47,12 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import java.io.OutputStreamWriter
 import android.content.Context
 import android.graphics.Bitmap
@@ -96,6 +102,13 @@ data class AiMixSaved(
     val startPlayback: Boolean
 )
 
+/** Which part of a streaming answer the model is currently producing. */
+enum class AiGenerationStage {
+    IDLE,
+    THINKING,
+    ANSWERING
+}
+
 /** Preview state for the offline "describe it" playlist creation flow. */
 data class NlpPlaylistPreviewState(
     val isGenerating: Boolean = false,
@@ -107,6 +120,13 @@ data class NlpPlaylistPreviewState(
     /** Sampling actually used for this generation, captured so saving persists the right metadata. */
     val sampleMode: AiLibrarySampleMode? = null,
     val sampleSize: Int? = null,
+    /**
+     * Streaming progress of the AI provider. The offline NLP flow leaves both at their defaults,
+     * so its dialog is unaffected.
+     */
+    val stage: AiGenerationStage = AiGenerationStage.IDLE,
+    /** Chain of thought accumulated so far; never cached, logged or persisted. */
+    val thinkingText: String = "",
 )
 
 /**
@@ -150,6 +170,14 @@ class PlaylistViewModel @Inject constructor(
 
     private val _aiPlaylistPreviewState = MutableStateFlow(NlpPlaylistPreviewState())
     val aiPlaylistPreviewState: StateFlow<NlpPlaylistPreviewState> = _aiPlaylistPreviewState.asStateFlow()
+
+    /**
+     * The in-flight AI generation.
+     *
+     * Held so a new request (or closing the sheet) cancels the previous one: the streaming call
+     * closes its socket instead of finishing unseen in the background.
+     */
+    private var aiGenerationJob: Job? = null
 
     /** Non-null while the Serendipity sheet is open. */
     private val _serendipityState = MutableStateFlow<SerendipityUiState?>(null)
@@ -491,7 +519,7 @@ class PlaylistViewModel @Inject constructor(
                 aiPreferences.getLibrarySampleMode().first() to
                         aiPreferences.getLibrarySampleSize().first()
             }
-        ) { aiPlaylistGenerator.generate(description, maxLength) }
+        ) { listener -> aiPlaylistGenerator.generate(description, maxLength, listener = listener) }
     }
 
     /**
@@ -508,45 +536,84 @@ class PlaylistViewModel @Inject constructor(
                 aiPreferences.getSerendipitySampleMode().first() to
                         aiPreferences.getSerendipitySampleSize().first()
             }
-        ) { aiPlaylistGenerator.generateSerendipity(description, maxLength) }
+        ) { listener ->
+            aiPlaylistGenerator.generateSerendipity(description, maxLength, listener = listener)
+        }
     }
 
     private fun startPreview(
         description: String,
         resolveSample: (suspend () -> Pair<AiLibrarySampleMode, Int>)? = null,
-        generate: suspend () -> List<Song>
+        generate: suspend (AiProgressListener?) -> List<Song>
     ) {
         if (description.isBlank()) return
-        viewModelScope.launch {
+        // Regenerating while a request is in flight: drop the old socket first.
+        aiGenerationJob?.cancel()
+        aiGenerationJob = viewModelScope.launch {
             _aiPlaylistPreviewState.update {
-                it.copy(isGenerating = true, errorMessage = null, hasResult = false)
+                it.copy(
+                        isGenerating = true,
+                        errorMessage = null,
+                        hasResult = false,
+                        stage = AiGenerationStage.IDLE,
+                        thinkingText = ""
+                )
             }
             // Captured before the call so the saved metadata reflects this generation even if the
             // user changes the advanced controls while the request is in flight.
             val sample = resolveSample?.invoke()
-            val result = runCatching { generate() }
-            _aiPlaylistPreviewState.value =
-                    result.fold(
-                            onSuccess = { songs ->
-                                NlpPlaylistPreviewState(
-                                        isGenerating = false,
-                                        songs = songs.toImmutableList(),
-                                        hasResult = true,
-                                        sampleMode = sample?.first,
-                                        sampleSize = sample?.second
-                                )
-                            },
-                            onFailure = { error ->
-                                Timber.tag("PlaylistVM").e(error, "AI playlist generation failed")
+            val songs =
+                    try {
+                        generate(progressListener())
+                    } catch (e: CancellationException) {
+                        // Superseded by a newer request or dismissed: leave the state to whoever
+                        // took over instead of writing an error into it.
+                        throw e
+                    } catch (error: Throwable) {
+                        Timber.tag("PlaylistVM").e(error, "AI playlist generation failed")
+                        _aiPlaylistPreviewState.value =
                                 NlpPlaylistPreviewState(
                                         isGenerating = false,
                                         hasResult = true,
                                         errorMessage = describeAiFailure(error)
                                 )
-                            }
+                        return@launch
+                    }
+            _aiPlaylistPreviewState.value =
+                    NlpPlaylistPreviewState(
+                            isGenerating = false,
+                            songs = songs.toImmutableList(),
+                            hasResult = true,
+                            sampleMode = sample?.first,
+                            sampleSize = sample?.second
                     )
         }
     }
+
+    /**
+     * Mirrors the provider's stream into the preview state.
+     *
+     * Only the answer *stage* is tracked, not its text: the raw candidate list is noisy and the
+     * locally matched songs are what the result phase shows anyway. Bound to the generating scope
+     * so a late chunk from a cancelled request cannot repopulate a state that was already reset.
+     */
+    private fun CoroutineScope.progressListener() =
+            AiProgressListener { event ->
+                if (!isActive) return@AiProgressListener
+                when (event) {
+                    is AiProgressEvent.Thinking ->
+                            _aiPlaylistPreviewState.update {
+                                it.copy(
+                                        stage = AiGenerationStage.THINKING,
+                                        thinkingText = event.full
+                                )
+                            }
+                    is AiProgressEvent.Answer ->
+                            _aiPlaylistPreviewState.update {
+                                it.copy(stage = AiGenerationStage.ANSWERING)
+                            }
+                }
+            }
 
     /**
      * Opens Serendipity: gather the moment's signals, compose a local prompt, show the sheet.
@@ -581,8 +648,12 @@ class PlaylistViewModel @Inject constructor(
                     aiPreferences.getSerendipitySampleMode().first() to
                             aiPreferences.getSerendipitySampleSize().first()
                 }
-            ) {
-                aiPlaylistGenerator.generateSerendipity(composed.prompt, DEFAULT_AI_MIX_LENGTH)
+            ) { listener ->
+                aiPlaylistGenerator.generateSerendipity(
+                        composed.prompt,
+                        DEFAULT_AI_MIX_LENGTH,
+                        listener = listener
+                )
             }
         }
     }
@@ -716,8 +787,10 @@ class PlaylistViewModel @Inject constructor(
     /** Resolves songs by id, used to list the originally generated songs of an AI playlist. */
     fun songsByIds(ids: List<String>): Flow<List<Song>> = musicRepository.getSongsByIds(ids)
 
-    /** Clears the AI preview when its dialog closes. */
+    /** Clears the AI preview when its dialog closes, aborting any request still in flight. */
     fun resetAiPlaylistPreview() {
+        aiGenerationJob?.cancel()
+        aiGenerationJob = null
         _aiPlaylistPreviewState.value = NlpPlaylistPreviewState()
     }
 

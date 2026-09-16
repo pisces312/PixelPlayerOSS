@@ -1,6 +1,7 @@
 # AI 流式输出 + 生成界面展示思考过程 方案
 
-> 状态：待审阅，未动手实现。
+> 状态：**已实施（2026-09-16）** —— 构建与单测通过，实现记录与偏离见 §10。
+> 真机双 provider（MiMo / 火山方舟）端到端验证待接设备后补（§8）。
 > 涉及代码：`data/ai/OpenAiCompatibleClient.kt`、`data/ai/AiHandler.kt`、
 > `data/ai/AiPlaylistGenerator.kt`（+ 新增 `data/ai/AiProgressEvent.kt`）、
 > `presentation/viewmodel/PlaylistViewModel.kt`、
@@ -285,3 +286,38 @@ state 无 errorMessage」。
   符合用户预期，且比现状（后台跑完、用户无感知）更省。
 - 回退：单 commit 改动，必要时直接 revert（commit message 拟：
   "Stream AI chat completions and surface thinking in the mix sheet"）。
+
+## 10. 实现记录（2026-09-16）
+
+按 §4/§5 落地，文件与计划一致：
+
+| 文件 | 改动 |
+|---|---|
+| `data/ai/AiProgressEvent.kt` | 新增：`AiProgressEvent.Thinking/Answer`（`delta` + 累积 `full`）、`AiProgressListener` |
+| `data/ai/OpenAiCompatibleClient.kt` | `chat()` 改 SSE；新增 `streamingClient`(read 120s / connect 15s / **不设** callTimeout) 与 `simpleClient`(read 60s / call 60s)；新增 `SseLine` + `parseSseLine` + `ChatStreamAccumulator`；`listModels()` 走 `simpleClient` |
+| `data/ai/AiHandler.kt` | `generate(..., listener)` 透传；两处 `catch (Throwable)` 前置 `if (t is CancellationException) throw t` |
+| `data/ai/AiPlaylistGenerator.kt` | `generate` / `generateSerendipity` 加 `listener` 透传 |
+| `presentation/viewmodel/PlaylistViewModel.kt` | `AiGenerationStage` 枚举 + `stage`/`thinkingText` 字段；`aiGenerationJob` 在再生成/`resetAiPlaylistPreview()` 时 cancel；listener 只写 stage 与思考全文 |
+| `presentation/components/AiMixSheet.kt` | `GeneratingPhase(state)`：状态行 + 可折叠思考卡片；无思考内容时退化为原 200dp 大转圈 |
+| `strings_ai.xml`（en + zh-rCN） | `ai_thinking_status` / `ai_thinking_section` / `ai_thinking_toggle` |
+
+与计划的偏离（都不改变对外行为）：
+
+1. 解析逻辑做成 `ChatStreamAccumulator`（吃整行、维护累积与 usage），而不是只暴露 `parseSseLine`：
+   单测因此能覆盖「多分片拼接 / usage 末包 / 非 SSE 整包兜底 / chunk error / 空正文」整条链路，
+   `SseLine` 与 `parseSseLine` 仍作为 `internal` 一并暴露，两类断言都在。
+2. `AiProgressEvent.Answer.full` 未接任何 UI（与 §5.6.4 一致），只用于把 stage 切到 ANSWERING。
+3. listener 绑在发起请求的 `CoroutineScope` 上并加 `isActive` 守卫：已取消请求的尾包不会把
+   `resetAiPlaylistPreview()` 刚清掉的 state 写回（计划未细化，属竞态兜底）。
+4. 单测用 JUnit 5 + Truth（仓库主流：82 个文件用 jupiter，38 个用 junit4），共 9 个用例。
+
+验证结果（本机，2026-09-16）：
+
+- `:app:testDebugUnitTest` —— **753 个用例全通过**，其中新增 `OpenAiCompatibleClientSseTest` 9/9。
+- `:app:assembleRelease` —— 成功，`pixelplayeross-arm64-v8a-0.4.1-pisces.1-release.apk`（37.6 MB），
+  `apksigner verify` → v2 scheme、`CN=pisces312`。
+- `:app:lintDebug` —— 仍有 **344 errors**，**全部为存量**（11 个非 en/zh 语种的 `MissingTranslation`
+  等，另有 2 条在未改动的 `CarLyricTitleController.kt`）。本次按 §5.7 约定只加 en + zh-rCN，
+  新增 3 条 `MissingTranslation` 与既有 122 条同类；改动文件内**零新增** lint 问题。
+- 真机项（§8.1–8.7）待接设备后补：思考过程实时滚动、关思考退化、换个说法、测试连接、
+  取消后无 FAILED 日志、请求日志不含思考内容。

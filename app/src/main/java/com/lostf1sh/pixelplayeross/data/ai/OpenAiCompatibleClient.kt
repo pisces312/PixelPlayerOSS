@@ -7,7 +7,11 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -17,13 +21,162 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSource
+
+private val json = Json { ignoreUnknownKeys = true }
+
+private const val SSE_DATA_PREFIX = "data:"
+private const val SSE_DONE_MARKER = "[DONE]"
+
+/** How one raw SSE line was classified. */
+internal sealed interface SseLine {
+    /** `data: {...}` — a decoded chunk. */
+    data class Data(val payload: JsonObject) : SseLine
+
+    /** `data: [DONE]` — the stream ended normally. */
+    data object Done : SseLine
+
+    /** Blank lines, `:` heartbeats, `event:` / `id:` fields and unparsable payloads. */
+    data object Ignore : SseLine
+}
+
+/**
+ * Classifies one raw line of a chat completions stream.
+ *
+ * Kept free of IO so the stream handling can be unit tested by feeding hand-written lines.
+ */
+internal fun parseSseLine(line: String): SseLine {
+    val trimmed = line.trim()
+    if (!trimmed.startsWith(SSE_DATA_PREFIX)) return SseLine.Ignore
+    val payload = trimmed.removePrefix(SSE_DATA_PREFIX).trim()
+    if (payload == SSE_DONE_MARKER) return SseLine.Done
+    val decoded = runCatching { json.parseToJsonElement(payload) as? JsonObject }.getOrNull()
+    return if (decoded == null) SseLine.Ignore else SseLine.Data(decoded)
+}
+
+/**
+ * Accumulates one chat completions stream: thinking deltas, answer deltas and the trailing usage
+ * packet. The [listener] sees every delta as it arrives; nothing is written to disk here.
+ */
+internal class ChatStreamAccumulator(private val listener: AiProgressListener?) {
+
+    private val thinking = StringBuilder()
+    private val answer = StringBuilder()
+
+    private var promptTokens = 0
+    private var outputTokens = 0
+    private var thoughtTokens = 0
+
+    /** True once `data: [DONE]` arrived: the read loop can stop. */
+    var isDone = false
+        private set
+
+    /** Consumes one raw SSE line. */
+    fun accept(rawLine: String) {
+        if (isDone) return
+        when (val line = parseSseLine(rawLine)) {
+            SseLine.Ignore -> Unit
+            SseLine.Done -> isDone = true
+            is SseLine.Data -> acceptChunk(line.payload)
+        }
+    }
+
+    /**
+     * Consumes a whole non-streamed body.
+     *
+     * Some proxies buffer the SSE response and hand back a single `chat.completion` object; parsing
+     * it here means such an endpoint degrades to "wait, then show everything" instead of failing.
+     */
+    fun acceptWholeBody(body: String) {
+        val payload =
+                runCatching { json.parseToJsonElement(body) as? JsonObject }.getOrNull()
+                        ?: throw AiProviderException(
+                                kind = AiErrorKind.RESPONSE_PARSE,
+                                statusCode = null,
+                                message = "Malformed response"
+                        )
+        val message = payload["choices"]?.jsonArrayFirst()?.let { (it as? JsonObject)?.get("message") }
+        emitThinking(message.deltaField("reasoning_content") ?: message.deltaField("reasoning"))
+        emitAnswer(message.deltaField("content"))
+        applyUsage(payload["usage"] as? JsonObject)
+        isDone = true
+    }
+
+    /** Trims the accumulated answer and pairs it with the token counters. */
+    fun toResult(): OpenAiCompatibleClient.ChatResult {
+        val content = answer.toString().trim()
+        if (content.isEmpty()) {
+            throw AiProviderException(
+                    kind = AiErrorKind.RESPONSE_PARSE,
+                    statusCode = null,
+                    message = "Empty response from model"
+            )
+        }
+        return OpenAiCompatibleClient.ChatResult(
+                content = content,
+                promptTokens = promptTokens,
+                outputTokens = outputTokens,
+                thoughtTokens = thoughtTokens
+        )
+    }
+
+    private fun acceptChunk(payload: JsonObject) {
+        (payload["error"] as? JsonObject)?.let { error ->
+            throw AiProviderException(
+                    kind = AiErrorKind.SERVER,
+                    statusCode = null,
+                    message = error["message"]?.primitiveContent() ?: "Provider reported an error"
+            )
+        }
+        val delta = payload["choices"]?.jsonArrayFirst()?.let { (it as? JsonObject)?.get("delta") }
+        emitThinking(delta.deltaField("reasoning_content") ?: delta.deltaField("reasoning"))
+        emitAnswer(delta.deltaField("content"))
+        applyUsage(payload["usage"] as? JsonObject)
+    }
+
+    private fun emitThinking(delta: String?) {
+        if (delta.isNullOrEmpty()) return
+        thinking.append(delta)
+        listener?.onProgress(AiProgressEvent.Thinking(delta, thinking.toString()))
+    }
+
+    private fun emitAnswer(delta: String?) {
+        if (delta.isNullOrEmpty()) return
+        answer.append(delta)
+        listener?.onProgress(AiProgressEvent.Answer(delta, answer.toString()))
+    }
+
+    private fun applyUsage(usage: JsonObject?) {
+        if (usage == null) return
+        promptTokens = usage.intField("prompt_tokens")
+        outputTokens = usage.intField("completion_tokens")
+        thoughtTokens =
+                usage.nestedIntField("completion_tokens_details", "reasoning_tokens")
+                        ?: usage.intField("reasoning_tokens")
+    }
+}
+
+private fun JsonElement?.deltaField(name: String): String? =
+        (this as? JsonObject)?.get(name)?.primitiveContent()
+
+private fun JsonElement?.primitiveContent(): String? =
+        runCatching { this?.jsonPrimitive?.contentOrNull }.getOrNull()
+
+private fun JsonElement?.jsonArrayFirst(): JsonElement? =
+        runCatching { (this as? JsonArray)?.firstOrNull() }.getOrNull()
+
+private fun JsonObject?.intField(name: String): Int =
+        runCatching { this?.get(name)?.jsonPrimitive?.intOrNull }.getOrNull() ?: 0
+
+private fun JsonObject?.nestedIntField(parent: String, name: String): Int? =
+        runCatching { ((this?.get(parent) as? JsonObject)?.get(name)?.jsonPrimitive?.intOrNull) }
+                .getOrNull()
 
 /**
  * Minimal OpenAI-compatible client: chat completions plus model listing.
@@ -44,12 +197,30 @@ constructor(private val baseClient: OkHttpClient) {
         val thoughtTokens: Int
     )
 
-    private val json = Json { ignoreUnknownKeys = true }
-
-    private val client by lazy {
+    /**
+     * Used for chat. Completions are streamed, so the socket keeps receiving thinking tokens while
+     * the model reasons — the shared client's 8s read timeout would fire during that silence and be
+     * reported as "network unreachable".
+     */
+    private val streamingClient by lazy {
         baseClient
                 .newBuilder()
-                .callTimeout(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(STREAM_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                // No overall cap: a long chain of thought can legitimately outlive any fixed budget.
+                .callTimeout(0, TimeUnit.MILLISECONDS)
+                .build()
+    }
+
+    /** Used for model listing: a plain GET, so a bounded total time is still the right guard. */
+    private val simpleClient by lazy {
+        baseClient
+                .newBuilder()
+                .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(SIMPLE_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .callTimeout(SIMPLE_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 .build()
     }
 
@@ -68,19 +239,31 @@ constructor(private val baseClient: OkHttpClient) {
                         ?: emptyList()
             }
 
+    /**
+     * Streams a chat completion and returns the assembled answer.
+     *
+     * [listener] is called for every thinking / answer delta while the stream is open, which is how
+     * the mix sheet shows the model reasoning. Cancelling the calling coroutine closes the socket,
+     * so a dismissed sheet stops paying for tokens.
+     */
     suspend fun chat(
         baseUrl: String,
         apiKey: String,
         model: String,
         systemPrompt: String,
         userPrompt: String,
-        thinkingEnabled: Boolean?
+        thinkingEnabled: Boolean?,
+        listener: AiProgressListener? = null
     ): ChatResult =
             withContext(Dispatchers.IO) {
                 val body =
                         buildJsonObject {
                                     put("model", model)
-                                    put("stream", false)
+                                    put("stream", true)
+                                    put(
+                                            "stream_options",
+                                            buildJsonObject { put("include_usage", true) }
+                                    )
                                     put(
                                             "messages",
                                             buildJsonArray {
@@ -120,34 +303,77 @@ constructor(private val baseClient: OkHttpClient) {
                                 .post(body.toRequestBody(JSON_MEDIA_TYPE))
                                 .build()
 
-                val payload = execute(request)
-                val content =
-                        payload["choices"]
-                                ?.jsonArrayFirst()
-                                ?.let { (it as? JsonObject)?.get("message") as? JsonObject }
-                                ?.get("content")
-                                ?.primitiveContent()
-                                ?.trim()
-                if (content.isNullOrEmpty()) {
+                executeStream(request, listener)
+            }
+
+    private suspend fun executeStream(
+        request: Request,
+        listener: AiProgressListener?
+    ): ChatResult {
+        val call = streamingClient.newCall(request)
+        val job = coroutineContext[Job]
+        job?.invokeOnCompletion { if (job.isCancelled) call.cancel() }
+
+        val response =
+                try {
+                    call.execute()
+                } catch (e: IOException) {
+                    // A cancelled call also surfaces as an IOException; it is not a network failure.
+                    if (job?.isCancelled == true) {
+                        throw CancellationException("Chat request cancelled")
+                    }
                     throw AiProviderException(
-                            kind = AiErrorKind.RESPONSE_PARSE,
+                            kind = AiErrorKind.NETWORK,
                             statusCode = null,
-                            message = "Empty response from model"
+                            message = e.message ?: "Network failure",
+                            cause = e
                     )
                 }
 
-                val usage = payload["usage"] as? JsonObject
-                ChatResult(
-                        content = content,
-                        promptTokens = usage.intField("prompt_tokens"),
-                        outputTokens = usage.intField("completion_tokens"),
-                        thoughtTokens =
-                                usage.nestedIntField(
-                                        "completion_tokens_details",
-                                        "reasoning_tokens"
-                                ) ?: usage.intField("reasoning_tokens")
+        response.use {
+            if (!it.isSuccessful) {
+                // Error bodies are ordinary JSON even on a streaming endpoint.
+                val raw = it.body.string()
+                throw AiProviderException(
+                        kind = aiErrorKindFor(it.code),
+                        statusCode = it.code,
+                        message = errorMessage(raw) ?: "HTTP ${it.code}"
                 )
             }
+
+            val accumulator = ChatStreamAccumulator(listener)
+            try {
+                pump(it.body.source(), accumulator)
+            } catch (e: IOException) {
+                coroutineContext.ensureActive()
+                throw AiProviderException(
+                        kind = AiErrorKind.NETWORK,
+                        statusCode = null,
+                        message = e.message ?: "Network failure",
+                        cause = e
+                )
+            }
+            return accumulator.toResult()
+        }
+    }
+
+    /** Feeds the SSE body into [accumulator] until `[DONE]`, EOF or cancellation. */
+    private suspend fun pump(source: BufferedSource, accumulator: ChatStreamAccumulator) {
+        var isFirstLine = true
+        while (!accumulator.isDone) {
+            coroutineContext.ensureActive()
+            val line = source.readUtf8Line() ?: break
+            if (isFirstLine) {
+                isFirstLine = false
+                // A buffering proxy answers with one plain chat.completion object instead of SSE.
+                if (line.trimStart().startsWith("{")) {
+                    accumulator.acceptWholeBody(line + "\n" + source.readUtf8())
+                    break
+                }
+            }
+            accumulator.accept(line)
+        }
+    }
 
     private fun Request.Builder.applyAuth(apiKey: String): Request.Builder = apply {
         if (apiKey.isNotBlank()) addHeader("Authorization", "Bearer $apiKey")
@@ -163,7 +389,7 @@ constructor(private val baseClient: OkHttpClient) {
     private fun execute(request: Request): JsonObject {
         val response =
                 try {
-                    client.newCall(request).execute()
+                    simpleClient.newCall(request).execute()
                 } catch (e: IOException) {
                     throw AiProviderException(
                             kind = AiErrorKind.NETWORK,
@@ -207,23 +433,15 @@ constructor(private val baseClient: OkHttpClient) {
                 null
             }
 
-    private fun JsonElement?.primitiveContent(): String? =
-            runCatching { this?.jsonPrimitive?.contentOrNull }.getOrNull()
-
-    private fun JsonElement?.jsonArrayFirst(): JsonElement? =
-            runCatching { (this as? JsonArray)?.firstOrNull() }.getOrNull()
-
-    private fun JsonObject?.intField(name: String): Int =
-            runCatching { this?.get(name)?.jsonPrimitive?.intOrNull }.getOrNull() ?: 0
-
-    private fun JsonObject?.nestedIntField(parent: String, name: String): Int? =
-            runCatching {
-                        ((this?.get(parent) as? JsonObject)?.get(name)?.jsonPrimitive?.intOrNull)
-                    }
-                    .getOrNull()
-
     private companion object {
-        const val REQUEST_TIMEOUT_SECONDS = 60L
+        const val CONNECT_TIMEOUT_SECONDS = 15L
+
+        /** Silence allowed between two chunks; a live stream never comes close. */
+        const val STREAM_READ_TIMEOUT_SECONDS = 120L
+        const val SIMPLE_READ_TIMEOUT_SECONDS = 60L
+        const val SIMPLE_CALL_TIMEOUT_SECONDS = 60L
+        const val WRITE_TIMEOUT_SECONDS = 30L
+
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }

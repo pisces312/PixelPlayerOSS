@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.presentation.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +21,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Song
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.AiGenerationStage
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.NlpPlaylistPreviewState
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlaylistViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.SerendipityUiState
@@ -186,7 +190,7 @@ fun AiMixSheet(
                     onRephrase = onRephraseSerendipity
                 )
 
-                AiMixPhase.Generating -> GeneratingPhase()
+                AiMixPhase.Generating -> GeneratingPhase(state)
 
                 AiMixPhase.Result -> ResultPhase(
                     state = state,
@@ -406,25 +410,125 @@ private fun SerendipitySignals(
     }
 }
 
+/**
+ * Generation in progress: a status line, plus the model's chain of thought when the provider
+ * streams one. Providers that do not think (or when thinking is off) keep the plain spinner.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun GeneratingPhase() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(200.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+private fun GeneratingPhase(state: NlpPlaylistPreviewState) {
+    val isThinking = state.stage == AiGenerationStage.THINKING
+    val hasThinking = state.thinkingText.isNotBlank()
+
+    if (!hasThinking) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            contentAlignment = Alignment.Center
         ) {
-            LoadingIndicator(modifier = Modifier.size(56.dp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                LoadingIndicator(modifier = Modifier.size(56.dp))
+                Text(
+                    text = stringResource(R.string.ai_mix_generating),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            LoadingIndicator(modifier = Modifier.size(24.dp))
             Text(
-                text = stringResource(R.string.ai_mix_generating),
+                text =
+                    stringResource(
+                        if (isThinking) R.string.ai_thinking_status
+                        else R.string.ai_mix_generating
+                    ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+
+        ThinkingCard(thinkingText = state.thinkingText, isThinking = isThinking)
+    }
+}
+
+/**
+ * The accumulated thought process, collapsed as soon as the model starts answering.
+ *
+ * A manual toggle wins over that default: once the user has touched it, [isThinking] flipping is
+ * no longer allowed to change the expansion.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun ThinkingCard(thinkingText: String, isThinking: Boolean) {
+    var expanded by remember { mutableStateOf(true) }
+    var userToggled by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(isThinking) {
+        if (!isThinking && !userToggled) expanded = false
+    }
+    // Follow the stream: latest sentence stays visible while it is still being written.
+    LaunchedEffect(thinkingText, expanded) {
+        if (expanded) scrollState.scrollTo(scrollState.maxValue)
+    }
+
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+    ) {
+        Column(modifier = Modifier.padding(start = 12.dp, top = 8.dp, end = 4.dp, bottom = 12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.ai_thinking_section),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isThinking) {
+                    LoadingIndicator(modifier = Modifier.size(14.dp))
+                }
+                IconButton(onClick = {
+                    expanded = !expanded
+                    userToggled = true
+                }) {
+                    Icon(
+                        imageVector =
+                            if (expanded) Icons.Rounded.ExpandMore else Icons.Rounded.ChevronRight,
+                        contentDescription = stringResource(R.string.ai_thinking_toggle)
+                    )
+                }
+            }
+
+            if (expanded) {
+                Text(
+                    text = thinkingText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(scrollState)
+                )
+            }
         }
     }
 }
