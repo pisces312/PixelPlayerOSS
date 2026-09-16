@@ -1,6 +1,7 @@
 # AI 思考过程留档 + 结果页 / 提示词详情展示 方案
 
-> 状态：**待审阅，未动手实现**。
+> 状态：**已实施（2026-09-16）** —— 实现记录、与计划的偏离及验证结果见 §9。
+> 真机端到端（结果页展开 / 滚动条拖动、详情弹窗展示、覆盖安装）待接设备后补。
 > 涉及代码：`data/database/PlaylistEntity.kt`、`data/database/Migrations.kt`、
 > `data/database/PixelPlayerDatabase.kt`、`di/AppModule.kt`（+ 新增 `app/schemas/.../11.json`）、
 > `data/model/PlayList.kt`、`data/preferences/PlaylistPreferencesRepository.kt`、
@@ -176,3 +177,50 @@ if (!playlist.aiThinking.isNullOrBlank()) {
 
 只拆两个的原因：UI 展示（提交 2）依赖数据层与 VM 保留（提交 1），再往下拆会留下没有可读性
 收益的中间态。中间提交不要求能独立编译（本仓规则），构建/测试只在最终 commit 上跑一次。
+
+## 9. 实现记录（2026-09-16）
+
+按 §2–§5 落地，文件与计划一致：
+
+| 文件 | 改动 |
+|---|---|
+| `data/database/PlaylistEntity.kt` | 加 `ai_thinking` 列字段，`toPlaylist()` / `toEntity()` 双向映射 |
+| `data/database/Migrations.kt` | 新增 `MIGRATION_10_11`（`addColumnIfMissing`） |
+| `data/database/PixelPlayerDatabase.kt` | `version = 11` |
+| `di/AppModule.kt` | `addMigrations(...)` 末尾追加 `MIGRATION_10_11` |
+| `app/schemas/.../11.json` | 新增（KSP 生成，`ai_thinking TEXT` 可空） |
+| `data/model/PlayList.kt` | 加 `aiThinking: String? = null` |
+| `data/preferences/PlaylistPreferencesRepository.kt` | `createPlaylist(..., aiThinking)` 并透传 |
+| `presentation/viewmodel/PlaylistViewModel.kt` | 成功分支改 `update { it.copy(...) }`（保留 `thinkingText`、`stage` 回落 `IDLE`）；`saveAiMix` 传 `aiThinking`；更新 `thinkingText` 注释 |
+| `presentation/components/AiMixSheet.kt` | `ResultPhase` 改用 `Box` + `LazyColumn(listState)` + `ExpressiveScrollBar`，思考卡片作为首个 item；`ThinkingCard` 加 `innerScroll` |
+| `presentation/screens/PlaylistDetailScreen.kt` | `AiPromptDetailsDialog` 在采样元信息之后插入思考过程区块（复用 `ai_thinking_section`，无需新字符串） |
+| 测试 | 新增 `PlaylistAiThinkingMappingTest`（JVM，2 例）；`LocalPlaylistDaoTest` 补 1 例；`PlaylistMigrationTest` 补 10→11 用例 |
+
+与计划的偏离（都不改变既有行为，且都属于"计划未细化"的补足）：
+
+1. **`ThinkingCard` 的初始展开态**由 `remember { mutableStateOf(true) }` 改为
+   `remember { mutableStateOf(isThinking) }`。计划只要求加 `innerScroll`，但保留 `true` 会让结果页
+   首帧先渲染整段思考、下一帧再收起（可见闪烁）。改为跟随 `isThinking` 后：生成阶段首次出现
+   思考时仍展开（等价于原行为），结果页则从第一帧就是收起的。
+2. **结果页「没有匹配」文案的判断拆成独立 `if`**（`songs.isEmpty() && errorMessage == null`），
+   而不是原来的 `else if`：思考内容存在但一首都没匹配上时，两句提示应当同时可见（计划只写了
+   滚动区在"songs 或思考非空"时渲染，没说清这种组合）。
+3. **滚动条显隐用 `derivedStateOf { canScrollForward || canScrollBackward }`**，列表的 `end`
+   padding 随它切换（`ArtistDetailScreen` 的既有写法）。计划只写"加一条滚动条"，未定显隐策略。
+4. **`ai_thinking` 增删列不做回填**：与 `ai_prompt` 一致，旧行为 null。
+
+验证结果（本机 + pixel6 AVD，2026-09-16）：
+
+- `:app:testDebugUnitTest` —— **755 个用例全通过**（新增 `PlaylistAiThinkingMappingTest` 2/2）。
+- `:app:connectedDebugAndroidTest`（只跑 `PlaylistMigrationTest` + `LocalPlaylistDaoTest`）——
+  **6/6 通过**，其中 `migrationFromTenToElevenAddsThinkingAndLeavesExistingRowsAlone` 由
+  `runMigrationsAndValidate` 校验通过，等于确认 `MIGRATION_10_11` 落地的库与导出的
+  `11.json` 的 identity hash 一致（比原计划"待真机"更强的验证）。
+- `:app:assembleRelease` —— 成功，`pixelplayeross-arm64-v8a-0.4.1-pisces.1-release.apk`（37.6 MB），
+  `apksigner verify` → v2 scheme、`CN=pisces312`。
+- `:app:lintDebug` —— 仍是 **4 errors / 912 warnings / 35 hints**，错误与改动前**逐条相同**
+  （`SerendipityContextCollector` / `HomeScreen` / `CarLyricTitleController` ×2），
+  本次改动文件**零新增**；任务因此仍 exit 1，但 release 交付不经过 lint。
+- 仍待真机：结果页展开思考并拖滚动条、详情弹窗展示、以及**覆盖安装**（v10 库 → v11）后
+  旧播放列表不显示思考区块、`ai_thinking` 列存在。
+

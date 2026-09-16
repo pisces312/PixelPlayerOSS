@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -41,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -472,8 +474,18 @@ private fun GeneratingPhase(state: NlpPlaylistPreviewState) {
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun ThinkingCard(thinkingText: String, isThinking: Boolean) {
-    var expanded by remember { mutableStateOf(true) }
+private fun ThinkingCard(
+    thinkingText: String,
+    isThinking: Boolean,
+    /**
+     * False when an outer list already scrolls this content — the result phase hosts the card as
+     * one of its items, so the card must not start a second scroller nested in the same viewport.
+     */
+    innerScroll: Boolean = true
+) {
+    // Starts expanded only while the model is still thinking: in the result phase the card is
+    // composed after the answer arrived, and a thought process that long has to be opt-in there.
+    var expanded by remember { mutableStateOf(isThinking) }
     var userToggled by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
@@ -482,7 +494,7 @@ private fun ThinkingCard(thinkingText: String, isThinking: Boolean) {
     }
     // Follow the stream: latest sentence stays visible while it is still being written.
     LaunchedEffect(thinkingText, expanded) {
-        if (expanded) scrollState.scrollTo(scrollState.maxValue)
+        if (expanded && innerScroll) scrollState.scrollTo(scrollState.maxValue)
     }
 
     Surface(
@@ -523,10 +535,14 @@ private fun ThinkingCard(thinkingText: String, isThinking: Boolean) {
                     text = thinkingText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .heightIn(max = 220.dp)
-                        .verticalScroll(scrollState)
+                    modifier =
+                            Modifier.padding(end = 8.dp).let { base ->
+                                if (innerScroll) {
+                                    base.heightIn(max = 220.dp).verticalScroll(scrollState)
+                                } else {
+                                    base
+                                }
+                            }
                 )
             }
         }
@@ -544,6 +560,14 @@ private fun ResultPhase(
     onSaveOnly: () -> Unit,
     onRegenerate: () -> Unit
 ) {
+    // The thought process and the songs share one scroll region: ExpressiveScrollBar only accepts a
+    // lazy list/grid state, so a second scroller could not have a shared, drag-able indicator.
+    val listState = rememberLazyListState()
+    val showScrollBar by remember {
+        derivedStateOf { listState.canScrollForward || listState.canScrollBackward }
+    }
+    val thinkingText = state.thinkingText
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         state.errorMessage?.let { message ->
             Text(
@@ -567,19 +591,49 @@ private fun ResultPhase(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
 
-            LazyColumn(
+        if (songs.isNotEmpty() || thinkingText.isNotBlank()) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 320.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                contentPadding = PaddingValues(bottom = 8.dp)
+                    .heightIn(max = 320.dp)
             ) {
-                items(songs, key = { it.id }) { song ->
-                    MixSongRow(song = song, onRemove = { onRemove(song) })
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(
+                        bottom = 8.dp,
+                        end = if (showScrollBar) 24.dp else 0.dp
+                    )
+                ) {
+                    if (thinkingText.isNotBlank()) {
+                        item(key = "ai_thinking", contentType = "ai_thinking") {
+                            // Collapsed by default: the thought process is long, and the songs are
+                            // what the user came back for. Expanding is one tap on the header.
+                            ThinkingCard(
+                                thinkingText = thinkingText,
+                                isThinking = false,
+                                innerScroll = false
+                            )
+                        }
+                    }
+                    items(songs, key = { it.id }) { song ->
+                        MixSongRow(song = song, onRemove = { onRemove(song) })
+                    }
+                }
+
+                if (showScrollBar) {
+                    ExpressiveScrollBar(
+                        listState = listState,
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    )
                 }
             }
-        } else if (state.errorMessage == null) {
+        }
+
+        if (songs.isEmpty() && state.errorMessage == null) {
             Text(
                 text = stringResource(R.string.presentation_batch_e_describe_no_matches),
                 style = MaterialTheme.typography.bodyMedium,

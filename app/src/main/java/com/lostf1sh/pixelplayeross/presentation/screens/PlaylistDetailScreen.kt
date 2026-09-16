@@ -1262,7 +1262,8 @@ private fun AiPromptBanner(
 
 /**
  * Full read-out for an AI playlist: the complete prompt (selectable), the sampling used at
- * generation, and the originally generated songs in order with their current status.
+ * generation, the model's thought process when it streamed one, and the originally generated songs
+ * in order with their current status.
  */
 @Composable
 private fun AiPromptDetailsDialog(
@@ -1316,6 +1317,24 @@ private fun AiPromptDetailsDialog(
                         DetailMetaRow(
                             label = stringResource(R.string.ai_playlist_sample_size_label),
                             value = stringResource(R.string.ai_playlist_sample_size_value, size)
+                        )
+                    }
+                }
+
+                playlist.aiThinking?.takeIf { it.isNotBlank() }?.let { thinking ->
+                    HorizontalDivider()
+                    Text(
+                        text = stringResource(R.string.ai_thinking_section),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // Selectable rather than clipped: this is the model's own reasoning, worth
+                    // copying out when a mix has to be explained or a prompt tuned.
+                    SelectionContainer {
+                        Text(
+                            text = thinking,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
