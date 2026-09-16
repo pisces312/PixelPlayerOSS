@@ -162,11 +162,13 @@ if (!playlist.aiThinking.isNullOrBlank()) {
    - 开思考生成 → 结果页出现「思考过程」标题行（收起）→ 展开看全文 → 拖右侧滚动条能滚。
    - 保存 → 曲库 / 播放列表 → 详情页 → 点 AI 描述横幅 → 弹窗出现思考过程，文本可选中。
    - 关思考生成 → 结果页无思考卡片，布局与今天一致。
-   - **短屏或大字号下确认底部「重新生成」仍可见可点**（§4 的风险点）。
-6. **备选（仅当第 5 步确认高度不够时启用）**：滚动区由 `heightIn(max = 320.dp)` 改为
-   `Modifier.weight(1f, fill = false)`，让它吃掉剩余空间、底部按钮固定可见。仓库内已有同构先例：
-   `FileExplorerBottomSheet.kt:362`（`Box(Modifier.weight(1f))` → `LazyColumn` → `ExpressiveScrollBar`，:434）。
-   默认不采用，因为要多验证一次约束行为（sheet 内容被测量时的约束是否有限）。
+   - ~~短屏或大字号下确认底部「重新生成」仍可见可点（§4 的风险点）~~ —— **已否决（2026-09-16）**：
+     小屏 / 大字号不再属于目标设备范围，验收只覆盖主流直板手机竖屏，见 `AGENTS.md`「目标设备与屏幕尺寸」。
+6. **备选：已否决（2026-09-16）**。原方案是滚动区由 `heightIn(max = 320.dp)` 改为
+   `Modifier.weight(1f, fill = false)`，让它吃掉剩余空间、底部按钮固定可见
+   （同构先例 `FileExplorerBottomSheet.kt:362`：`Box(Modifier.weight(1f))` → `LazyColumn` → `ExpressiveScrollBar`）。
+   否决理由：该改动只服务短屏 / 大字号，而这两者已明确排除在目标设备之外；在参照机
+   （`pixel6`，411 × 914 dp）上底部按钮本来可见，改它属于无必要的约束行为实验。
 
 ## 8. 提交拆分
 

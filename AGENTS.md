@@ -27,9 +27,33 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 ## 技术栈与版本
 
 - Gradle 9.6.1（wrapper 已改腾讯云镜像）、AGP 9.3.1、Kotlin 2.4.10、KSP 2.3.10、JDK 21（JBR）。
-- compileSdk = targetSdk = 37，minSdk = 30；版本在 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE`（当前 0.3.0 / 3）。
-- Media3 1.10.1、Room 2.8.4（**schema 仅到 v6**，任何实体变更都要新增 migration）、Hilt、OkHttp/Retrofit、TagLib + JAudioTagger 元数据。
+- compileSdk = targetSdk = 37，minSdk = 30；版本号在 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE`
+  （**以该文件为准，本文不抄写具体值** —— 每发一版就变，抄在这里必然过期）。
+- Media3 1.10.1、Room 2.8.4（**数据库 schema 版本以 `PixelPlayerDatabase.kt` 的 `version` 为准，本文不抄写**；
+  任何实体变更都要把 `version` +1 并新增 migration）、Hilt、OkHttp/Retrofit、TagLib + JAudioTagger 元数据。
 - 依赖仓库为官方 `google()` / `mavenCentral()`（首次构建较慢，无国内镜像）。
+
+## 目标设备与屏幕尺寸（UI 布局前提）
+
+**只针对一类设备：主流直板手机竖屏。** 参照机 = 本机 AVD `pixel6`（411 × 914 dp）。
+**明确不作为目标**（2026-09-16 定；此后不再为它们加兜底）：
+
+- 短屏 —— 横屏、分屏 / 多窗口、小折叠外屏，即竖屏可用高度明显低于 ~640 dp 的情况；
+- 极值字体缩放（系统字体 ≥ 1.3）；
+- 平板 / 折叠屏展开态。
+
+推论（照此判断，不必逐个重新论证）：
+
+- 布局按参照机的可用高度设计即可，**不为"更小的屏幕还塞不塞得下"预留弹性**；
+- 某处布局在小屏被裁 → **默认不算缺陷**：说一句即可，不要顺手改成
+  `weight(1f, fill = false)` 之类的自适应；
+- **既有兜底保留，不要回退**：`AiMixSheet.InputPhase` 的 `verticalScroll` 同时服务软键盘弹出
+  （主流机型也需要），sheet 的 `skipPartiallyExpanded` 与各处 `heightIn(max = …)` 同理 ——
+  它们同时改善主流机型的观感，不属于纯小屏适配。
+
+已确认接受的代价：`AiMixSheet.ResultPhase` 是「固定行 + `heightIn(max = 320.dp)` 列表」，
+短屏 / 大字号下底部「重新生成」理论上会被裁。**决定不修**；备选方案（滚动区改
+`weight(1f, fill = false)`）见 `docs/ai-thinking-persistence-plan.md` §7.6，已否决。
 
 ## 常用命令（PowerShell，仓库根目录）
 
@@ -165,4 +189,4 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 
 - commit message 用英文；不修改上游 `CHANGELOG.md`（自用分支不提 PR）。
 - 新功能字符串同时加中文（`values-zh-rCN/`）与英文（`values/`）两种语言，不手写其他语言。
-- 改动后至少跑 `assembleRelease`（默认构建）；UI 类改动装真机验证。需要逐行调试时才额外构建 `debug`。
+- 改动后至少跑 `assembleRelease`（默认构建）；UI 类改动装真机验证（**验收范围见「目标设备与屏幕尺寸」**，小屏被裁不算缺陷）。需要逐行调试时才额外构建 `debug`。
