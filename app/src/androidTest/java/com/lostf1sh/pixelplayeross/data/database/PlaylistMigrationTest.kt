@@ -49,6 +49,49 @@ class PlaylistMigrationTest {
         }
     }
 
+    /**
+     * v11 adds `ai_thinking`. A playlist generated before it existed keeps its row and simply has no
+     * thought process, which is what both the result phase and the prompt details dialog key off.
+     */
+    @Test
+    @Throws(IOException::class)
+    fun migrationFromTenToElevenAddsThinkingAndLeavesExistingRowsAlone() {
+        migrationHelper.createDatabase(DATABASE_NAME, 10).apply {
+            execSQL(
+                "INSERT INTO playlists " +
+                    "(id, name, created_at, last_modified, is_queue_generated, source, ai_prompt) " +
+                    "VALUES ('playlist-1', 'AI Mix', 1, 1, 0, 'AI', 'rainy evening')"
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            name = DATABASE_NAME,
+            version = 11,
+            validateDroppedTables = true,
+            MIGRATION_10_11,
+        ).use { database ->
+            assertThat(database.playlistText("playlist-1", "ai_prompt")).isEqualTo("rainy evening")
+            assertThat(database.playlistText("playlist-1", "ai_thinking")).isNull()
+
+            database.execSQL(
+                "UPDATE playlists SET ai_thinking = 'weighed the mood' WHERE id = 'playlist-1'"
+            )
+
+            assertThat(database.playlistText("playlist-1", "ai_thinking"))
+                .isEqualTo("weighed the mood")
+        }
+    }
+
+    private fun SupportSQLiteDatabase.playlistText(playlistId: String, column: String): String? {
+        return query(
+            "SELECT $column FROM playlists WHERE id = ? LIMIT 1",
+            arrayOf(playlistId),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }
+
     private fun SupportSQLiteDatabase.playlistSongIds(playlistId: String): List<String> {
         return query(
             "SELECT song_id FROM playlist_songs WHERE playlist_id = ? ORDER BY sort_order",

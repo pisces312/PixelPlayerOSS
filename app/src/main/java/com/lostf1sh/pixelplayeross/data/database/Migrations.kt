@@ -286,3 +286,16 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         )
     }
 }
+
+/**
+ * v10 -> v11: keep the chain of thought the model streamed before answering.
+ *
+ * Nullable with no default: a playlist generated with thinking off, generated before this column
+ * existed, or built by hand simply has no thought process, and both the result phase and the prompt
+ * details dialog skip the section instead of showing an empty box.
+ */
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.addColumnIfMissing("playlists", "ai_thinking", "`ai_thinking` TEXT")
+    }
+}

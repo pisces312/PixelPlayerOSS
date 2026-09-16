@@ -125,7 +125,10 @@ data class NlpPlaylistPreviewState(
      * so its dialog is unaffected.
      */
     val stage: AiGenerationStage = AiGenerationStage.IDLE,
-    /** Chain of thought accumulated so far; never cached, logged or persisted. */
+    /**
+     * Chain of thought accumulated so far. Kept out of the request log and the response cache; a
+     * saved playlist keeps it in its own `ai_thinking` column.
+     */
     val thinkingText: String = "",
 )
 
@@ -579,14 +582,18 @@ class PlaylistViewModel @Inject constructor(
                                 )
                         return@launch
                     }
-            _aiPlaylistPreviewState.value =
-                    NlpPlaylistPreviewState(
-                            isGenerating = false,
-                            songs = songs.toImmutableList(),
-                            hasResult = true,
-                            sampleMode = sample?.first,
-                            sampleSize = sample?.second
-                    )
+            // copy() rather than a fresh state: the streamed thought process has to survive into
+            // the result phase, and rebuilding the state would silently drop it.
+            _aiPlaylistPreviewState.update {
+                it.copy(
+                        isGenerating = false,
+                        songs = songs.toImmutableList(),
+                        hasResult = true,
+                        stage = AiGenerationStage.IDLE,
+                        sampleMode = sample?.first,
+                        sampleSize = sample?.second
+                )
+            }
         }
     }
 
@@ -810,7 +817,9 @@ class PlaylistViewModel @Inject constructor(
         if (songs.isEmpty()) return
         viewModelScope.launch {
             // The preview state still holds the unedited generation: its songs are the "original"
-            // snapshot, while [songs] is the user's possibly trimmed result being saved.
+            // snapshot, while [songs] is the user's possibly trimmed result being saved. Reading it
+            // here is safe even though the caller resets the preview right after: viewModelScope
+            // runs on Main.immediate, so this prologue finishes before the first suspension.
             val preview = _aiPlaylistPreviewState.value
             val playlist = playlistPreferencesRepository.createPlaylist(
                 name = name,
@@ -820,7 +829,9 @@ class PlaylistViewModel @Inject constructor(
                 aiPrompt = prompt.ifBlank { null },
                 aiSampleMode = preview.sampleMode?.name,
                 aiSampleSize = preview.sampleSize,
-                aiOriginalSongIds = preview.songs.map { it.id }
+                aiOriginalSongIds = preview.songs.map { it.id },
+                // Why the model picked these songs; blank when thinking was off.
+                aiThinking = preview.thinkingText.ifBlank { null }
             )
             _aiMixSaved.emit(
                 AiMixSaved(

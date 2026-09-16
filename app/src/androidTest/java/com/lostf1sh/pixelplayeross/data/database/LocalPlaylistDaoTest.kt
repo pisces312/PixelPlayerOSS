@@ -68,6 +68,30 @@ class LocalPlaylistDaoTest {
             .containsExactly("c")
     }
 
+    /**
+     * The streamed thought process is stored verbatim on the playlist row and reads back with the
+     * rest of the AI metadata; playlists that never had one stay null instead of empty text.
+     */
+    @Test
+    fun aiThinkingRoundTripsThroughThePlaylistRow() = runTest {
+        val thinking = "Weigh the mood first, then drop anything with a driving beat."
+        playlistDao.upsertPlaylist(
+            PlaylistEntity(
+                id = "playlist-1",
+                name = "AI Mix",
+                source = "AI",
+                aiPrompt = "rainy evening",
+                aiThinking = thinking,
+            )
+        )
+        playlistDao.upsertPlaylist(PlaylistEntity(id = "playlist-2", name = "Manual"))
+
+        val rows = playlistDao.observePlaylistsWithSongs().first().associateBy { it.playlist.id }
+
+        assertThat(rows.getValue("playlist-1").playlist.aiThinking).isEqualTo(thinking)
+        assertThat(rows.getValue("playlist-2").playlist.aiThinking).isNull()
+    }
+
     /** Deleting twice - or an id that never existed - must be a no-op rather than an error. */
     @Test
     fun deletingPlaylistTwiceIsANoOp() = runTest {

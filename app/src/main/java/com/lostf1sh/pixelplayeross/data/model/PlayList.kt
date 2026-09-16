@@ -37,7 +37,13 @@ data class Playlist(
      * [songIds] can be added to, removed from or reordered; this keeps what was *originally*
      * generated, so the detail screen can show it. Empty for manual and pre-v10 playlists.
      */
-    val aiOriginalSongIds: List<String> = emptyList()
+    val aiOriginalSongIds: List<String> = emptyList(),
+    /**
+     * The chain of thought the model streamed before producing the list, kept so the result phase
+     * and the prompt details dialog can show how the mix was arrived at. Null for playlists built
+     * by hand, generated with thinking off, or saved before this was recorded.
+     */
+    val aiThinking: String? = null
 )
 
 enum class PlaylistShapeType {

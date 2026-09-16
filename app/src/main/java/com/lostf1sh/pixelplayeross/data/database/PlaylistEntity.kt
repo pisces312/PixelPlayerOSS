@@ -71,6 +71,9 @@ data class PlaylistEntity(
     /** JSON array of the originally generated song ids, in generation order. Schema v10. */
     @ColumnInfo(name = "ai_original_song_ids")
     val aiOriginalSongIds: String? = null,
+    /** Chain of thought the model streamed before answering; null when it sent none. Schema v11. */
+    @ColumnInfo(name = "ai_thinking")
+    val aiThinking: String? = null,
 )
 
 fun PlaylistEntity.toPlaylist(songIds: List<String>): Playlist {
@@ -94,6 +97,7 @@ fun PlaylistEntity.toPlaylist(songIds: List<String>): Playlist {
         aiSampleMode = aiSampleMode,
         aiSampleSize = aiSampleSize,
         aiOriginalSongIds = decodeSongIds(aiOriginalSongIds),
+        aiThinking = aiThinking,
     )
 }
 
@@ -117,5 +121,6 @@ fun Playlist.toEntity(): PlaylistEntity {
         aiSampleMode = aiSampleMode,
         aiSampleSize = aiSampleSize,
         aiOriginalSongIds = encodeSongIds(aiOriginalSongIds),
+        aiThinking = aiThinking,
     )
 }

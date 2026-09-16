@@ -60,7 +60,9 @@ class PlaylistPreferencesRepository @Inject constructor(
         /** Context size used at generation; null for manual playlists. */
         aiSampleSize: Int? = null,
         /** Ordered snapshot of the songs originally generated; empty for manual playlists. */
-        aiOriginalSongIds: List<String> = emptyList()
+        aiOriginalSongIds: List<String> = emptyList(),
+        /** Chain of thought the model streamed before answering; null when it sent none. */
+        aiThinking: String? = null
     ): Playlist {
         ensureMigratedIfNeeded()
         val now = System.currentTimeMillis()
@@ -84,6 +86,7 @@ class PlaylistPreferencesRepository @Inject constructor(
             aiSampleMode = aiSampleMode,
             aiSampleSize = aiSampleSize,
             aiOriginalSongIds = aiOriginalSongIds,
+            aiThinking = aiThinking,
         )
         localPlaylistDao.upsertPlaylist(newPlaylist.toEntity())
         localPlaylistDao.replacePlaylistSongs(newPlaylist.id, newPlaylist.songIds)
