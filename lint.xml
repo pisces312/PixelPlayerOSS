@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <lint>
     <issue id="LocalContextGetResourceValueCall" severity="warning" />
+
+    <!--
+        Only values/ and values-zh-rCN/ are maintained here; the other 11 locales are filled in by
+        the translation flow (see AGENTS.md), so a key existing in English and Chinese only is the
+        expected state, not a defect. Keep these as warnings rather than disabling them: the report
+        still lists every gap, it just no longer fails the build.
+    -->
+    <issue id="MissingTranslation" severity="warning" />
+    <issue id="MissingQuantity" severity="warning" />
+    <issue id="ImpliedQuantity" severity="warning" />
 </lint>
