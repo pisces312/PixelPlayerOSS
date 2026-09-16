@@ -66,7 +66,7 @@ fun RatingStars(
                         )
                         onRatingChange(if (star == rating) 0 else star)
                     }
-                    .padding(4.dp)
+                    .padding(2.dp)
                     .scale(scale)
             )
         }

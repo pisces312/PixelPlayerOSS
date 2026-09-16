@@ -2438,7 +2438,7 @@ private fun BottomToggleRow(
         label = "ratingSegmentWeight"
     )
     val outerPadding by animateDpAsState(
-        targetValue = if (ratingExpanded) 8.dp else 26.dp,
+        targetValue = if (ratingExpanded) 2.dp else 26.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "toggleRowOuterPadding"
     )
