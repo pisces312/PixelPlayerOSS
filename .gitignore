@@ -1,6 +1,6 @@
 *.iml
 .DS_Store
-hs_err_pid*.log
+*.log
 *.salive
 *.apk
 *.aab
