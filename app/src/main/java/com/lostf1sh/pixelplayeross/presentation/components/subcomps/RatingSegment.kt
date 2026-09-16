@@ -34,7 +34,7 @@ import com.lostf1sh.pixelplayeross.R
  *
  * Collapsed visual only: an outlined star, or a filled star with the current score inside once
  * the song is rated. Tapping reports [onExpand]; the expanded star picker is drawn as an overlay
- * by the host (see `BottomToggleRow` in FullPlayerContent), which owns the expanded state.
+ * by the host (see `BottomToggleRow`), which owns the expanded state.
  */
 @Composable
 fun RatingSegment(

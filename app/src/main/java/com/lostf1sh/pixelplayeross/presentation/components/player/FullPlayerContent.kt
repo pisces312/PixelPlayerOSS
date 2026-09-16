@@ -5,12 +5,10 @@ import android.content.Context
 import android.content.res.Configuration
 import android.net.Uri
 import com.lostf1sh.pixelplayeross.data.model.Lyrics
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -43,7 +41,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -77,20 +74,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -103,13 +95,11 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bookmark
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.AudioBookmarksViewModel
@@ -130,8 +120,6 @@ import com.lostf1sh.pixelplayeross.presentation.components.AutoScrollingTextOnDe
 import com.lostf1sh.pixelplayeross.presentation.components.LocalMaterialTheme
 import com.lostf1sh.pixelplayeross.presentation.components.LyricsSheet
 import com.lostf1sh.pixelplayeross.presentation.components.scoped.rememberSmoothProgress
-import com.lostf1sh.pixelplayeross.presentation.components.subcomps.RatingSegment
-import com.lostf1sh.pixelplayeross.presentation.components.subcomps.RatingStars
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.FetchLyricsDialog
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.LyricsSearchUiState
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerSheetState
@@ -150,7 +138,6 @@ import kotlinx.coroutines.launch
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import timber.log.Timber
 import java.util.Locale
-import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import com.lostf1sh.pixelplayeross.presentation.components.WavySliderExpressive
 import com.lostf1sh.pixelplayeross.presentation.components.ToggleSegmentButton
@@ -1086,7 +1073,22 @@ private fun FullPlayerControlsSection(
                 onShuffleToggle = onShuffleToggle,
                 onRepeatToggle = onRepeatToggle,
                 onFavoriteToggle = onFavoriteToggle,
-                onRatingSelected = onRatingSelected
+                onRatingSelected = onRatingSelected,
+                activeColorMain = LocalMaterialTheme.current.primaryFixed,
+                onActiveColorMain = LocalMaterialTheme.current.onPrimaryFixed,
+                activeColorSecondary = LocalMaterialTheme.current.secondaryFixed,
+                onActiveColorSecondary = LocalMaterialTheme.current.onSecondaryFixed,
+                activeColorTertiary = LocalMaterialTheme.current.tertiaryFixed,
+                onActiveColorTertiary = LocalMaterialTheme.current.onTertiaryFixed,
+                inactiveColor = LocalMaterialTheme.current.onSurface.copy(alpha = 0.07f),
+                inactiveContentColor = LocalMaterialTheme.current.onSurface,
+                containerColor = LocalMaterialTheme.current.surfaceContainerLowest.copy(alpha = 0.7f),
+                ratedColor = LocalMaterialTheme.current.tertiaryContainer,
+                ratedContentColor = LocalMaterialTheme.current.onTertiaryContainer,
+                ratingPillColor = LocalMaterialTheme.current.surfaceContainerHighest,
+                capsuleHorizontalPadding = 26.dp,
+                innerPadding = 6.dp,
+                segmentSpacing = 6.dp
             )
         }
     }
@@ -2414,247 +2416,3 @@ private fun expressiveSkipButtonColors(colorScheme: ColorScheme): TransportButto
     )
 }
 
-@Composable
-private fun BottomToggleRow(
-    modifier: Modifier,
-    isShuffleEnabled: Boolean,
-    isShuffleTransitionInProgress: Boolean,
-    repeatMode: Int,
-    isFavoriteProvider: () -> Boolean,
-    ratingProvider: () -> Int,
-    onShuffleToggle: () -> Unit,
-    onRepeatToggle: () -> Unit,
-    onFavoriteToggle: () -> Unit,
-    onRatingSelected: (Int) -> Unit
-) {
-    val isFavorite = isFavoriteProvider()
-    val rating = ratingProvider()
-    val rowCorners = 60.dp
-    val inactiveBg = LocalMaterialTheme.current.onSurface.copy(alpha = 0.07f)
-    val inactiveContentColor = LocalMaterialTheme.current.onSurface
-    val ratedColor = LocalMaterialTheme.current.tertiaryContainer
-    val ratedContentColor = LocalMaterialTheme.current.onTertiaryContainer
-
-    // Tapping the rating slot raises an expanded rating pill ON TOP of the toggle row. The four
-    // segments never reflow (no crushed buttons mid-animation); the pill animates from the rating
-    // slot's captured bounds out to the outer capsule's full bounds and back. Tapping a star rates
-    // and dismisses; tapping anywhere else on the pill, the close button, or the back gesture cancels.
-    var ratingExpanded by remember { mutableStateOf(false) }
-    val expandProgress by animateFloatAsState(
-        targetValue = if (ratingExpanded) 1f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "ratingExpandProgress"
-    )
-    // The overlay wears the collapsed slot's own colors when rated; when unrated it is an opaque
-    // surface panel (the collapsed slot is translucent, but the expanded pill must hide the
-    // covered segments completely). Both animate in sync with RatingSegment's background.
-    val pillColor by animateColorAsState(
-        targetValue = if (rating > 0) ratedColor else LocalMaterialTheme.current.surfaceContainerHighest,
-        animationSpec = tween(durationMillis = 250),
-        label = "ratingPillColor"
-    )
-    val pillContentColor = if (rating > 0) ratedContentColor else inactiveContentColor
-    // Corner radius the overlay shrinks back into: matches the collapsed slot (rated pill vs
-    // plain unrated box) so the handoff at the end of the collapse animation is seamless.
-    var collapseTargetCorners by remember { mutableStateOf(8.dp) }
-    val density = LocalDensity.current
-    var parentCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    var slotCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    val slotBounds = remember(parentCoords, slotCoords) {
-        val parent = parentCoords
-        val slot = slotCoords
-        if (parent != null && slot != null && parent.isAttached && slot.isAttached) {
-            val topLeft = parent.localPositionOf(slot, Offset.Zero)
-            RatingSlotBounds(
-                left = topLeft.x,
-                top = topLeft.y,
-                width = slot.size.width.toFloat(),
-                height = slot.size.height.toFloat()
-            )
-        } else {
-            null
-        }
-    }
-
-    BackHandler(enabled = ratingExpanded) { ratingExpanded = false }
-
-    Box(
-        modifier = modifier
-            .onGloballyPositioned { parentCoords = it }
-            .padding(horizontal = 26.dp)
-            .background(
-                color = LocalMaterialTheme.current.surfaceContainerLowest.copy(alpha = 0.7f),
-                shape = AbsoluteSmoothCornerShape(
-                    cornerRadiusBL = rowCorners,
-                    smoothnessAsPercentTR = 60,
-                    cornerRadiusBR = rowCorners,
-                    smoothnessAsPercentBL = 60,
-                    cornerRadiusTL = rowCorners,
-                    smoothnessAsPercentBR = 60,
-                    cornerRadiusTR = rowCorners,
-                    smoothnessAsPercentTL = 60
-                )
-            )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 6.dp)
-                .clip(
-                    AbsoluteSmoothCornerShape(
-                        cornerRadiusBL = rowCorners,
-                        smoothnessAsPercentTR = 60,
-                        cornerRadiusBR = rowCorners,
-                        smoothnessAsPercentBL = 60,
-                        cornerRadiusTL = rowCorners,
-                        smoothnessAsPercentBR = 60,
-                        cornerRadiusTR = rowCorners,
-                        smoothnessAsPercentTL = 60
-                    )
-                )
-                .background(Color.Transparent)
-                // While the overlay pill is up (or animating) the covered segments must not be
-                // reachable by accessibility services — the pill provides the only semantics.
-                .then(
-                    if (expandProgress > 0f) {
-                        Modifier.clearAndSetSemantics { }
-                    } else {
-                        Modifier
-                    }
-                ),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val segmentModifier = Modifier.weight(1f)
-
-            ToggleSegmentButton(
-                modifier = segmentModifier,
-                active = isShuffleEnabled,
-                enabled = !isShuffleTransitionInProgress,
-                activeColor = LocalMaterialTheme.current.primaryFixed,
-                activeCornerRadius = rowCorners,
-                activeContentColor = LocalMaterialTheme.current.onPrimaryFixed,
-                inactiveColor = inactiveBg,
-                inactiveContentColor = inactiveContentColor,
-                onClick = onShuffleToggle,
-                iconId = R.drawable.rounded_shuffle_24,
-                contentDesc = "Shuffle"
-            )
-            val repeatActive = repeatMode != Player.REPEAT_MODE_OFF
-            val repeatIcon = when (repeatMode) {
-                Player.REPEAT_MODE_ONE -> R.drawable.rounded_repeat_one_24
-                Player.REPEAT_MODE_ALL -> R.drawable.rounded_repeat_24
-                else -> R.drawable.rounded_repeat_24
-            }
-            ToggleSegmentButton(
-                modifier = segmentModifier,
-                active = repeatActive,
-                activeColor = LocalMaterialTheme.current.secondaryFixed,
-                activeCornerRadius = rowCorners,
-                activeContentColor = LocalMaterialTheme.current.onSecondaryFixed,
-                inactiveColor = inactiveBg,
-                inactiveContentColor = inactiveContentColor,
-                onClick = onRepeatToggle,
-                iconId = repeatIcon,
-                contentDesc = "Repeat"
-            )
-            ToggleSegmentButton(
-                modifier = segmentModifier,
-                active = isFavorite,
-                activeColor = LocalMaterialTheme.current.tertiaryFixed,
-                activeCornerRadius = rowCorners,
-                activeContentColor = LocalMaterialTheme.current.onTertiaryFixed,
-                inactiveColor = inactiveBg,
-                inactiveContentColor = inactiveContentColor,
-                onClick = onFavoriteToggle,
-                iconId = if (isFavorite) R.drawable.round_favorite_24 else R.drawable.rounded_favorite_24,
-                contentDesc = stringResource(
-                    if (isFavorite) R.string.player_rating_favorite_on else R.string.player_rating_favorite_off
-                )
-            )
-            RatingSegment(
-                modifier = Modifier
-                    .weight(1f)
-                    .onGloballyPositioned { slotCoords = it },
-                rating = rating,
-                rowCorners = rowCorners,
-                ratedColor = ratedColor,
-                ratedContentColor = ratedContentColor,
-                inactiveColor = inactiveBg,
-                inactiveContentColor = inactiveContentColor,
-                onExpand = {
-                    collapseTargetCorners = if (rating > 0) rowCorners else 8.dp
-                    ratingExpanded = true
-                }
-            )
-        }
-
-        val bounds = slotBounds
-        val parent = parentCoords
-        if (bounds != null && parent != null && expandProgress > 0f) {
-            // Fully expanded, the pill coincides with the outer capsule exactly: offset and size
-            // both interpolate to the parent's bounds, corners to the capsule's radius.
-            val pillLeft = bounds.left * (1f - expandProgress)
-            val pillTop = bounds.top * (1f - expandProgress)
-            val pillWidth = bounds.width + (parent.size.width - bounds.width) * expandProgress
-            val pillHeight = bounds.height + (parent.size.height - bounds.height) * expandProgress
-            val pillCorners = lerp(collapseTargetCorners, rowCorners, expandProgress)
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = pillLeft.roundToInt(),
-                            y = pillTop.roundToInt()
-                        )
-                    }
-                    .size(
-                        width = with(density) { pillWidth.toDp() },
-                        height = with(density) { pillHeight.toDp() }
-                    )
-                    .clip(
-                        AbsoluteSmoothCornerShape(pillCorners, 60)
-                    )
-                    .background(pillColor)
-                    .clickable { ratingExpanded = false },
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RatingStars(
-                        rating = rating,
-                        onRatingChange = { stars ->
-                            onRatingSelected(stars)
-                            ratingExpanded = false
-                        },
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        starSize = 36.dp,
-                        selectedTint = pillContentColor,
-                        unselectedTint = pillContentColor.copy(alpha = 0.45f)
-                    )
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = stringResource(R.string.player_rating_collapse_cd),
-                        tint = pillContentColor,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .clickable { ratingExpanded = false }
-                            .padding(6.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-private data class RatingSlotBounds(
-    val left: Float,
-    val top: Float,
-    val width: Float,
-    val height: Float
-)
