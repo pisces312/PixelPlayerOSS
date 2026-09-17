@@ -24,6 +24,14 @@
     <string name="library_storage_filter_all_songs">All Songs</string>
     <string name="library_storage_filter_online">Cloud</string>
     <string name="library_storage_filter_offline">Local</string>
+    <string name="library_playlist_filter_all">All playlists</string>
+    <string name="library_playlist_filter_ai">AI playlists</string>
+    <string name="library_playlist_filter_normal">Regular playlists</string>
+    <string name="cd_toggle_playlist_source_filter">Toggle playlist source filter</string>
+    <string name="library_no_ai_playlists">No AI-generated playlists</string>
+    <string name="library_no_ai_playlists_hint">Generate one with the AI playlist feature.</string>
+    <string name="library_no_normal_playlists">No regular playlists</string>
+    <string name="library_no_normal_playlists_hint">All your playlists are AI-generated.</string>
     <string name="cd_sort_options">Sort options</string>
 
     <string name="lyrics_synced_badge">SYNCED</string>

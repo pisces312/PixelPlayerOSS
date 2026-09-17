@@ -5,6 +5,7 @@ import com.lostf1sh.pixelplayeross.data.model.Playlist
 import com.lostf1sh.pixelplayeross.data.database.toEntity
 import com.lostf1sh.pixelplayeross.data.database.toPlaylist
 import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylist
+import com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -38,6 +39,12 @@ class PlaylistPreferencesRepository @Inject constructor(
     val playlistSongOrderModesFlow: Flow<Map<String, String>> =
         userPreferencesRepository.playlistSongOrderModesFlow
     val playlistsSortOptionFlow: Flow<String> = userPreferencesRepository.playlistsSortOptionFlow
+
+    val playlistSourceFilterFlow: Flow<PlaylistSourceFilter> =
+        userPreferencesRepository.lastPlaylistSourceFilterFlow
+
+    suspend fun setPlaylistSourceFilter(filter: PlaylistSourceFilter) =
+        userPreferencesRepository.saveLastPlaylistSourceFilter(filter)
 
     suspend fun createPlaylist(
         name: String,

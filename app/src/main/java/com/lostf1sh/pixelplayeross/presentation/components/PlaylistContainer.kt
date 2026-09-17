@@ -78,6 +78,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.navigation.NavController
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.model.Playlist
+import com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.SineWaveLine
@@ -112,7 +113,9 @@ fun PlaylistContainer(
     selectedPlaylistIds: Set<String> = emptySet(),
     onPlaylistLongPress: (Playlist) -> Unit = {},
     onPlaylistSelectionToggle: (Playlist) -> Unit = {},
-    playlistSelectionStateHolder: PlaylistSelectionStateHolder? = null
+    playlistSelectionStateHolder: PlaylistSelectionStateHolder? = null,
+    /** Active source filter; drives the "no matches" empty state wording. */
+    sourceFilter: PlaylistSourceFilter = PlaylistSourceFilter.ALL
 ) {
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -124,6 +127,16 @@ fun PlaylistContainer(
         }
 
         if (filteredPlaylists.isEmpty() && !playlistUiState.isLoading) {
+            val emptyTitleRes = when (sourceFilter) {
+                PlaylistSourceFilter.AI -> R.string.library_no_ai_playlists
+                PlaylistSourceFilter.NORMAL -> R.string.library_no_normal_playlists
+                PlaylistSourceFilter.ALL -> R.string.presentation_batch_e_no_playlist_created
+            }
+            val emptyHintRes = when (sourceFilter) {
+                PlaylistSourceFilter.AI -> R.string.library_no_ai_playlists_hint
+                PlaylistSourceFilter.NORMAL -> R.string.library_no_normal_playlists_hint
+                PlaylistSourceFilter.ALL -> R.string.presentation_batch_e_new_playlist_hint
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -155,12 +168,12 @@ fun PlaylistContainer(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        stringResource(R.string.presentation_batch_e_no_playlist_created),
+                        text = stringResource(emptyTitleRes),
                         style = MaterialTheme.typography.titleMedium
                     )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        stringResource(R.string.presentation_batch_e_new_playlist_hint),
+                        text = stringResource(emptyHintRes),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

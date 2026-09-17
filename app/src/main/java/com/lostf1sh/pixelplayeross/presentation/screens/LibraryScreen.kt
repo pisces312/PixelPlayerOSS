@@ -151,6 +151,7 @@ import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.offline.CloudOfflineRepository
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.data.model.StorageFilter
+import com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
 import com.lostf1sh.pixelplayeross.presentation.components.resolveMainScreenBottomGradientHeight
@@ -971,7 +972,20 @@ fun LibraryScreen(
                         }
 
                         val playlistUiState by playlistViewModel.uiState.collectAsStateWithLifecycle()
-                        val visiblePlaylists = playlistUiState.playlists
+                        val visiblePlaylists = remember(
+                            playlistUiState.playlists,
+                            playlistUiState.playlistSourceFilter
+                        ) {
+                            when (playlistUiState.playlistSourceFilter) {
+                                PlaylistSourceFilter.ALL -> playlistUiState.playlists
+                                PlaylistSourceFilter.AI -> playlistUiState.playlists
+                                    .filter { playlistViewModel.isAiGenerated(it) }
+                                    .toImmutableList()
+                                PlaylistSourceFilter.NORMAL -> playlistUiState.playlists
+                                    .filterNot { playlistViewModel.isAiGenerated(it) }
+                                    .toImmutableList()
+                            }
+                        }
                         val allSongsLazyPagingItems = libraryViewModel.songsPagingFlow.collectAsLazyPagingItems()
                         val albumsLazyPagingItems = libraryViewModel.albumsPagingFlow.collectAsLazyPagingItems()
                         val artistsLazyPagingItems = libraryViewModel.artistsPagingFlow.collectAsLazyPagingItems()
@@ -1157,7 +1171,10 @@ fun LibraryScreen(
                                             currentTabId == LibraryTabId.LIKED ||
                                             (ENABLE_FOLDERS_STORAGE_FILTER && currentTabId == LibraryTabId.FOLDERS),
                                     currentStorageFilter = playerUiState.currentStorageFilter,
-                                    onStorageFilterClick = { playerViewModel.toggleStorageFilter() }
+                                    onStorageFilterClick = { playerViewModel.toggleStorageFilter() },
+                                    showPlaylistFilterButton = currentTabId == LibraryTabId.PLAYLISTS,
+                                    currentPlaylistFilter = playlistUiState.playlistSourceFilter,
+                                    onPlaylistFilterClick = { playlistViewModel.cyclePlaylistSourceFilter() }
                                 )
                             }
                         }

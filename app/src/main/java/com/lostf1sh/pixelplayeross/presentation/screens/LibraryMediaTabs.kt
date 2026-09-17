@@ -733,6 +733,7 @@ fun LibraryPlaylistsTab(
         isSelectionMode = isSelectionMode,
         selectedPlaylistIds = selectedPlaylistIds,
         onPlaylistLongPress = onPlaylistLongPress,
-        onPlaylistSelectionToggle = onPlaylistSelectionToggle
+        onPlaylistSelectionToggle = onPlaylistSelectionToggle,
+        sourceFilter = playlistUiState.playlistSourceFilter
     )
 }

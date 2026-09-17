@@ -22,6 +22,7 @@ import com.lostf1sh.pixelplayeross.data.model.AudioOutputMode
 import com.lostf1sh.pixelplayeross.data.model.TransitionSettings
 import com.lostf1sh.pixelplayeross.data.equalizer.EqualizerPreset
 import com.lostf1sh.pixelplayeross.data.model.StorageFilter
+import com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.text.get
@@ -121,6 +122,7 @@ constructor(
         val LAST_LIBRARY_TAB_INDEX =
                 intPreferencesKey("last_library_tab_index")
         val LAST_STORAGE_FILTER = stringPreferencesKey("last_storage_filter")
+        val LAST_PLAYLIST_SOURCE_FILTER = stringPreferencesKey("last_playlist_source_filter")
         val MOCK_GENRES_ENABLED = booleanPreferencesKey("mock_genres_enabled")
         val LAST_DAILY_MIX_UPDATE = longPreferencesKey("last_daily_mix_update")
         val DAILY_MIX_SONG_IDS = stringPreferencesKey("daily_mix_song_ids")
@@ -1385,6 +1387,21 @@ constructor(
     suspend fun saveLastStorageFilter(filter: StorageFilter) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.LAST_STORAGE_FILTER] = filter.name
+        }
+    }
+
+    val lastPlaylistSourceFilterFlow: Flow<PlaylistSourceFilter> =
+        dataStore.data.map { preferences ->
+            when (preferences[PreferencesKeys.LAST_PLAYLIST_SOURCE_FILTER]) {
+                "AI" -> PlaylistSourceFilter.AI
+                "NORMAL" -> PlaylistSourceFilter.NORMAL
+                else -> PlaylistSourceFilter.ALL
+            }
+        }
+
+    suspend fun saveLastPlaylistSourceFilter(filter: PlaylistSourceFilter) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.LAST_PLAYLIST_SOURCE_FILTER] = filter.name
         }
     }
 

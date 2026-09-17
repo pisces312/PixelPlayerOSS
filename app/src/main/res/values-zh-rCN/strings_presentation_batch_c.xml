@@ -23,6 +23,14 @@
     <string name="library_storage_filter_all_songs">全部歌曲</string>
     <string name="library_storage_filter_online">云端</string>
     <string name="library_storage_filter_offline">本地</string>
+    <string name="library_playlist_filter_all">全部歌单</string>
+    <string name="library_playlist_filter_ai">AI 歌单</string>
+    <string name="library_playlist_filter_normal">普通歌单</string>
+    <string name="cd_toggle_playlist_source_filter">切换歌单来源过滤</string>
+    <string name="library_no_ai_playlists">还没有 AI 生成的歌单</string>
+    <string name="library_no_ai_playlists_hint">可以通过 AI 生成歌单功能创建。</string>
+    <string name="library_no_normal_playlists">没有普通歌单</string>
+    <string name="library_no_normal_playlists_hint">当前所有歌单都是 AI 生成的。</string>
     <string name="cd_sort_options">排序选项</string>
 
     <string name="lyrics_synced_badge">已同步</string>

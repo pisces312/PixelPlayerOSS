@@ -39,6 +39,8 @@ import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Dataset
 import androidx.compose.material.icons.rounded.PhoneAndroid
@@ -106,6 +108,9 @@ fun LibraryActionRow(
     showStorageFilterButton: Boolean = false,
     currentStorageFilter: com.lostf1sh.pixelplayeross.data.model.StorageFilter = com.lostf1sh.pixelplayeross.data.model.StorageFilter.ALL,
     onStorageFilterClick: () -> Unit = {},
+    showPlaylistFilterButton: Boolean = false,
+    currentPlaylistFilter: com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter = com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter.ALL,
+    onPlaylistFilterClick: () -> Unit = {},
     showViewModeButton: Boolean = false,
     isGridViewMode: Boolean = false,
     onViewModeClick: () -> Unit = {}
@@ -277,12 +282,12 @@ fun LibraryActionRow(
             val outerCorner = 26.dp
             
             val sortStartCorner by animateDpAsState(
-                targetValue = if (showLocateButton || showStorageFilterButton || showViewModeButton) 8.dp else outerCorner,
+                targetValue = if (showLocateButton || showStorageFilterButton || showPlaylistFilterButton || showViewModeButton) 8.dp else outerCorner,
                 label = "SortStartCorner"
             )
 
             val viewModeStartCorner by animateDpAsState(
-                targetValue = if (showLocateButton || showStorageFilterButton) 8.dp else outerCorner,
+                targetValue = if (showLocateButton || showStorageFilterButton || showPlaylistFilterButton) 8.dp else outerCorner,
                 label = "ViewModeStartCorner"
             )
 
@@ -291,7 +296,12 @@ fun LibraryActionRow(
                 targetValue = if (showLocateButton) 8.dp else outerCorner,
                 label = "FilterStartCorner"
             )
-            
+
+            val playlistFilterStartCorner by animateDpAsState(
+                targetValue = if (showStorageFilterButton) 8.dp else outerCorner,
+                label = "PlaylistFilterStartCorner"
+            )
+
             val locateEndCorner = 8.dp
 
             val gapBetweenLocateAndNext by animateDpAsState(
@@ -299,8 +309,12 @@ fun LibraryActionRow(
                 label = "GapLocate"
             )
             val gapBetweenFilterAndView by animateDpAsState(
-                targetValue = if (showStorageFilterButton) 4.dp else 0.dp,
+                targetValue = if (showStorageFilterButton || showPlaylistFilterButton) 4.dp else 0.dp,
                 label = "GapFilter"
+            )
+            val gapBetweenStorageAndPlaylistFilter by animateDpAsState(
+                targetValue = if (showStorageFilterButton) 4.dp else 0.dp,
+                label = "GapStoragePlaylistFilter"
             )
             val gapBetweenViewAndSort by animateDpAsState(
                 targetValue = if (showViewModeButton) 4.dp else 0.dp,
@@ -372,6 +386,52 @@ fun LibraryActionRow(
                              Icon(
                                 imageVector = finalIcon,
                                 contentDescription = tooltipText
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(gapBetweenStorageAndPlaylistFilter))
+
+                AnimatedVisibility(
+                    visible = showPlaylistFilterButton,
+                    enter = slideInHorizontally(initialOffsetX = { it / 2 }) + fadeIn(),
+                    exit = slideOutHorizontally(targetOffsetX = { it / 2 }) + fadeOut()
+                ) {
+                    val finalIcon = when (currentPlaylistFilter) {
+                        com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter.ALL -> Icons.Rounded.FilterList
+                        com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter.AI -> Icons.Rounded.AutoAwesome
+                        com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter.NORMAL -> Icons.Rounded.LibraryMusic
+                    }
+                    val tooltipText = when (currentPlaylistFilter) {
+                        com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter.ALL -> stringResource(R.string.library_playlist_filter_all)
+                        com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter.AI -> stringResource(R.string.library_playlist_filter_ai)
+                        com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter.NORMAL -> stringResource(R.string.library_playlist_filter_normal)
+                    }
+                    val tooltipState = rememberTooltipState()
+
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+                        tooltip = {
+                            PlainTooltip {
+                                Text(tooltipText)
+                            }
+                        },
+                        state = tooltipState
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = onPlaylistFilterClick,
+                            shape = RoundedCornerShape(
+                                topStart = playlistFilterStartCorner,
+                                bottomStart = playlistFilterStartCorner,
+                                topEnd = filterEndCorner,
+                                bottomEnd = filterEndCorner
+                            ),
+                            modifier = Modifier.size(genHeight)
+                        ) {
+                            Icon(
+                                imageVector = finalIcon,
+                                contentDescription = stringResource(R.string.cd_toggle_playlist_source_filter)
                             )
                         }
                     }
