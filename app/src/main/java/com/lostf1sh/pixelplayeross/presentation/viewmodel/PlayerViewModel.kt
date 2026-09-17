@@ -1072,6 +1072,19 @@ class PlayerViewModel @Inject constructor(
     private var mediaControllerPlaybackListener: Player.Listener? = null
     private val _isMediaControllerReady = MutableStateFlow(false)
     val isMediaControllerReady: StateFlow<Boolean> = _isMediaControllerReady.asStateFlow()
+
+    /**
+     * Source for playlist **reads** (timeline, item count, current index) — never [mediaController].
+     *
+     * While the car lyric title is published, `LyricTitlePlayer` withdraws
+     * [Player.COMMAND_GET_TIMELINE] so the AVRCP sync gate is short-circuited, and Media3 then
+     * downgrades every `MediaController`'s timeline to "current item only"
+     * (`docs/car-lyrics-avrcp-gate.md` §5.2). The engine's master player is the player the session
+     * wraps, so it always reports the real playlist, and reading it is exactly what the controller
+     * would have returned before the withdrawal. Writes keep going through the controller.
+     */
+    private val queueTimelineSource: Player
+        get() = dualPlayerEngine.masterPlayer
     private val mediaControllerListener = object : MediaController.Listener {
         override fun onCustomCommand(
             controller: MediaController,
@@ -1915,7 +1928,7 @@ class PlayerViewModel @Inject constructor(
             songIndexInQueue != -1 &&
             queueMatchesContext
         ) {
-            controller.resolveReusablePlaybackTargetIndex(
+            queueTimelineSource.resolveReusablePlaybackTargetIndex(
                 songIndexInQueue = songIndexInQueue,
                 songId = song.id,
                 isExplicitQueueTarget = indexInQueue != null
@@ -1968,7 +1981,7 @@ class PlayerViewModel @Inject constructor(
         return indices.all { this[it].id == contextSongs[it].id }
     }
 
-    private fun MediaController.resolveReusablePlaybackTargetIndex(
+    private fun Player.resolveReusablePlaybackTargetIndex(
         songIndexInQueue: Int,
         songId: String,
         isExplicitQueueTarget: Boolean = false
@@ -1987,13 +2000,13 @@ class PlayerViewModel @Inject constructor(
 
     private fun playLoadedControllerItem(controller: MediaController, targetIndex: Int) {
         val shouldSeekToStart =
-            controller.currentMediaItemIndex != targetIndex ||
+            queueTimelineSource.currentMediaItemIndex != targetIndex ||
                 controller.playbackState == Player.STATE_ENDED
 
         if (shouldSeekToStart) {
             controller.seekTo(targetIndex, 0L)
         }
-        if (controller.playbackState == Player.STATE_IDLE && controller.mediaItemCount > 0) {
+        if (controller.playbackState == Player.STATE_IDLE && queueTimelineSource.mediaItemCount > 0) {
             controller.prepare()
         }
         controller.play()
@@ -2063,6 +2076,7 @@ class PlayerViewModel @Inject constructor(
         queueUndoStateHolder.removeSongFromQueue(
             scope = viewModelScope,
             mediaController = mediaController,
+            queueSource = queueTimelineSource,
             songId = songId,
             getUiState = { _playerUiState.value },
             updateUiState = { mutation -> _playerUiState.update(mutation) }
@@ -2072,6 +2086,7 @@ class PlayerViewModel @Inject constructor(
     fun undoRemoveSongFromQueue() {
         queueUndoStateHolder.undoRemoveSongFromQueue(
             mediaController = mediaController,
+            queueSource = queueTimelineSource,
             getUiState = { _playerUiState.value },
             updateUiState = { mutation -> _playerUiState.update(mutation) }
         )
@@ -2085,9 +2100,10 @@ class PlayerViewModel @Inject constructor(
 
     fun reorderQueueItem(fromIndex: Int, toIndex: Int) {
         mediaController?.let { controller ->
-            if (fromIndex >= 0 && fromIndex < controller.mediaItemCount &&
-                toIndex >= 0 && toIndex < controller.mediaItemCount) {
-                val currentIndexBeforeMove = controller.currentMediaItemIndex
+            val queueItemCount = queueTimelineSource.mediaItemCount
+            if (fromIndex >= 0 && fromIndex < queueItemCount &&
+                toIndex >= 0 && toIndex < queueItemCount) {
+                val currentIndexBeforeMove = queueTimelineSource.currentMediaItemIndex
                     .takeIf { it != C.INDEX_UNSET }
                     ?: playbackStateHolder.stablePlayerState.value.currentMediaItemIndex
                 val updatedCurrentIndex = moveQueueIndex(currentIndexBeforeMove, fromIndex, toIndex)
@@ -2257,7 +2273,9 @@ class PlayerViewModel @Inject constructor(
     private var lastQueueUpdateJob: Job? = null
 
     private fun updateCurrentPlaybackQueueFromPlayer(playerCtrl: MediaController?) {
-        val currentMediaController = playerCtrl ?: mediaController ?: return
+        // Still gated on a controller existing: before one is connected there is no playback
+        // surface to read a queue for yet.
+        if (playerCtrl == null && mediaController == null) return
         val requestId = ++lastQueueUpdateRequestId
         lastQueueUpdateJob?.cancel()
         lastQueueUpdateJob = viewModelScope.launch {
@@ -2267,7 +2285,7 @@ class PlayerViewModel @Inject constructor(
             val mediaItems = if (isWindowed) {
                 dualPlayerEngine.getFullQueue()
             } else {
-                val timeline = currentMediaController.currentTimeline
+                val timeline = queueTimelineSource.currentTimeline
                 val windowCount = timeline.windowCount
                 val list = ArrayList<MediaItem>(windowCount)
                 val window = Timeline.Window()
@@ -2490,7 +2508,7 @@ class PlayerViewModel @Inject constructor(
         val expectedIndex = if (dualPlayerEngine.isUsingWindowedQueue()) {
             dualPlayerEngine.getCurrentAbsoluteIndex()
         } else {
-            player.currentMediaItemIndex
+            queueTimelineSource.currentMediaItemIndex
         }
         if (currentSongId == mediaItem.mediaId && currentIndex == expectedIndex) return
 
@@ -2642,7 +2660,7 @@ class PlayerViewModel @Inject constructor(
                 transitionSchedulerJob = viewModelScope.launch {
                     if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
                         val activeEotSongId = EotStateHolder.eotTargetSongId.value
-                        val previousSongId = playerCtrl.run { if (previousMediaItemIndex != C.INDEX_UNSET) getMediaItemAt(previousMediaItemIndex).mediaId else null }
+                        val previousSongId = queueTimelineSource.run { if (previousMediaItemIndex != C.INDEX_UNSET) getMediaItemAt(previousMediaItemIndex).mediaId else null }
 
                         if (isEndOfTrackTimerActive.value && activeEotSongId != null && previousSongId != null && previousSongId == activeEotSongId) {
                             playerCtrl.seekTo(0L)
@@ -2679,7 +2697,7 @@ class PlayerViewModel @Inject constructor(
                                 currentMediaItemIndex = if (dualPlayerEngine.isUsingWindowedQueue()) {
                                     dualPlayerEngine.getCurrentAbsoluteIndex()
                                 } else {
-                                    playerCtrl.currentMediaItemIndex
+                                    queueTimelineSource.currentMediaItemIndex
                                 },
                                 totalDuration = resolvedDuration,
                                 lyrics = null,
@@ -2749,7 +2767,7 @@ class PlayerViewModel @Inject constructor(
                     playbackStateHolder.updateStablePlayerState { it.copy(totalDuration = resolvedDuration) }
                     startProgressUpdates()
                 }
-                if (playbackState == Player.STATE_IDLE && playerCtrl.mediaItemCount == 0) {
+                if (playbackState == Player.STATE_IDLE && queueTimelineSource.mediaItemCount == 0) {
                     clearPreparingSongIfMatching()
                     lyricsStateHolder.cancelLoading()
                     playbackStateHolder.updateStablePlayerState {
@@ -3280,10 +3298,12 @@ class PlayerViewModel @Inject constructor(
         mediaController?.let { controller ->
             val mediaItem = buildPlaybackMediaItem(song)
 
-            val insertionIndex = if (controller.currentMediaItemIndex != C.INDEX_UNSET) {
-                (controller.currentMediaItemIndex + 1).coerceAtMost(controller.mediaItemCount)
+            val queueItemCount = queueTimelineSource.mediaItemCount
+            val currentIndex = queueTimelineSource.currentMediaItemIndex
+            val insertionIndex = if (currentIndex != C.INDEX_UNSET) {
+                (currentIndex + 1).coerceAtMost(queueItemCount)
             } else {
-                controller.mediaItemCount
+                queueItemCount
             }
 
             controller.addMediaItem(insertionIndex, mediaItem)
@@ -3869,7 +3889,7 @@ class PlayerViewModel @Inject constructor(
         val controller = mediaController ?: return
 
         try {
-            val timeline = controller.currentTimeline
+            val timeline = queueTimelineSource.currentTimeline
             val mediaItemCount = timeline.windowCount
 
             for (i in 0 until mediaItemCount) {
@@ -3929,7 +3949,7 @@ class PlayerViewModel @Inject constructor(
                     }
                 }
             } else {
-                if (controller.playbackState == Player.STATE_IDLE && controller.mediaItemCount > 0) {
+                if (controller.playbackState == Player.STATE_IDLE && queueTimelineSource.mediaItemCount > 0) {
                     controller.prepare()
                 }
                 controller.play()
@@ -4089,9 +4109,9 @@ class PlayerViewModel @Inject constructor(
 
     fun clearQueueExceptCurrent() {
         mediaController?.let { controller ->
-            val currentSongIndex = controller.currentMediaItemIndex
+            val currentSongIndex = queueTimelineSource.currentMediaItemIndex
             if (currentSongIndex == C.INDEX_UNSET) return@let
-            val indicesToRemove = (0 until controller.mediaItemCount)
+            val indicesToRemove = (0 until queueTimelineSource.mediaItemCount)
                 .filter { it != currentSongIndex }
                 .sortedDescending()
 
@@ -4390,8 +4410,8 @@ class PlayerViewModel @Inject constructor(
 
                     val controller = playbackStateHolder.mediaController
                     if (controller != null) {
-                        val currentIndex = controller.currentMediaItemIndex
-                        if (currentIndex >= 0 && currentIndex < controller.mediaItemCount) {
+                        val currentIndex = queueTimelineSource.currentMediaItemIndex
+                        if (currentIndex >= 0 && currentIndex < queueTimelineSource.mediaItemCount) {
                             val currentPosition = controller.currentPosition
                             val newMediaItem = MediaItemBuilder.build(updatedSong)
                             controller.replaceMediaItem(currentIndex, newMediaItem)
@@ -4678,8 +4698,8 @@ class PlayerViewModel @Inject constructor(
 
                 val controller = playbackStateHolder.mediaController
                 if (controller != null) {
-                    val currentIndex = controller.currentMediaItemIndex
-                    if (currentIndex >= 0 && currentIndex < controller.mediaItemCount) {
+                    val currentIndex = queueTimelineSource.currentMediaItemIndex
+                    if (currentIndex >= 0 && currentIndex < queueTimelineSource.mediaItemCount) {
                         val currentPosition = controller.currentPosition
                         val newMediaItem = MediaItemBuilder.build(updatedSong)
                         controller.replaceMediaItem(currentIndex, newMediaItem)
@@ -4949,7 +4969,7 @@ class PlayerViewModel @Inject constructor(
                         playbackStateHolder.updateStablePlayerState { it.copy(currentSong = updatedSong) }
                         val controller = playbackStateHolder.mediaController
                         if (controller != null) {
-                            val idx = controller.currentMediaItemIndex
+                            val idx = queueTimelineSource.currentMediaItemIndex
                             if (idx != C.INDEX_UNSET) {
                                 controller.replaceMediaItem(idx, MediaItemBuilder.build(updatedSong))
                             }

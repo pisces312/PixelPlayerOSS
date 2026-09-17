@@ -435,7 +435,7 @@ object SettingsRegistry {
                 subscreenRoute = Screen.SettingsCategory.createRoute("playback"),
                 type = SettingType.SWITCH,
                 keywordsStatic = listOf("car", "bluetooth", "avrcp", "lyrics", "title", "head unit", "scroll"),
-                getValue = { it.carLyricTitleEnabled },
+                getValue = { it.carLyricTitle.enabled },
                 onToggle = { viewModel, checked -> viewModel.setCarLyricTitleEnabled(checked) }
             ),
             SettingSpec(
@@ -449,6 +449,20 @@ object SettingsRegistry {
                 keywordsStatic = listOf(
                     "car", "bluetooth", "lyrics", "lead", "delay", "advance", "ahead", "sync", "title"
                 )
+            ),
+            SettingSpec(
+                id = "playback_car_lyrics_split",
+                itemKey = "item_playback_car_lyrics_split",
+                titleRes = R.string.setcat_car_lyrics_split_title,
+                subtitleRes = R.string.setcat_car_lyrics_split_subtitle,
+                category = SettingsCategory.PLAYBACK,
+                subscreenRoute = Screen.SettingsCategory.createRoute("playback"),
+                type = SettingType.SWITCH,
+                keywordsStatic = listOf(
+                    "car", "bluetooth", "lyrics", "title", "split", "cut", "segment", "long", "scroll"
+                ),
+                getValue = { it.carLyricTitle.splitLongLines },
+                onToggle = { viewModel, checked -> viewModel.setCarLyricTitleSplitLongLines(checked) }
             ),
             SettingSpec(
                 id = "playback_crossfade",

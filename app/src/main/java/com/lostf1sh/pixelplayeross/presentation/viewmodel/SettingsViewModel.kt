@@ -17,6 +17,7 @@ import com.lostf1sh.pixelplayeross.data.backup.model.ValidationError
 import com.lostf1sh.pixelplayeross.data.model.AudioOutputMode
 import com.lostf1sh.pixelplayeross.data.preferences.AppLanguage
 import com.lostf1sh.pixelplayeross.data.preferences.AppThemeMode
+import com.lostf1sh.pixelplayeross.data.preferences.CarLyricTitleSettings
 import com.lostf1sh.pixelplayeross.data.preferences.CarouselStyle
 import com.lostf1sh.pixelplayeross.data.preferences.LibraryNavigationMode
 import com.lostf1sh.pixelplayeross.data.preferences.ThemePreference
@@ -98,8 +99,7 @@ data class SettingsUiState(
     val useAnimatedLyrics: Boolean = false,
     val animatedLyricsBlurEnabled: Boolean = true,
     val animatedLyricsBlurStrength: Float = 2.5f,
-    val carLyricTitleEnabled: Boolean = false,
-    val carLyricTitleLeadMs: Int = UserPreferencesRepository.DEFAULT_CAR_LYRIC_TITLE_LEAD_MS,
+    val carLyricTitle: CarLyricTitleSettings = CarLyricTitleSettings(),
     val backupInfoDismissed: Boolean = false,
     val isDataTransferInProgress: Boolean = false,
     val restorePlan: RestorePlan? = null,
@@ -174,8 +174,7 @@ private sealed interface SettingsUiUpdate {
         val animatedLyricsBlurEnabled: Boolean,
         val animatedLyricsBlurStrength: Float,
         val songDeletionEnabled: Boolean,
-        val carLyricTitleEnabled: Boolean,
-        val carLyricTitleLeadMs: Int
+        val carLyricTitle: CarLyricTitleSettings
     ) : SettingsUiUpdate
 }
 
@@ -332,8 +331,7 @@ class SettingsViewModel @Inject constructor(
                 userPreferencesRepository.animatedLyricsBlurEnabledFlow,
                 userPreferencesRepository.animatedLyricsBlurStrengthFlow,
                 userPreferencesRepository.songDeletionEnabledFlow,
-                userPreferencesRepository.carLyricTitleEnabledFlow,
-                userPreferencesRepository.carLyricTitleLeadMsFlow
+                userPreferencesRepository.carLyricTitleSettingsFlow
             ) { values ->
                 val requestedAudioOutputMode = values[4] as AudioOutputMode
                 SettingsUiUpdate.Group2(
@@ -361,8 +359,7 @@ class SettingsViewModel @Inject constructor(
                     animatedLyricsBlurEnabled = values[14] as Boolean,
                     animatedLyricsBlurStrength = values[15] as Float,
                     songDeletionEnabled = values[16] as Boolean,
-                    carLyricTitleEnabled = values[17] as Boolean,
-                    carLyricTitleLeadMs = values[18] as Int
+                    carLyricTitle = values[17] as CarLyricTitleSettings
                 )
             }.collect { update ->
                 _uiState.update { state ->
@@ -384,8 +381,7 @@ class SettingsViewModel @Inject constructor(
                         animatedLyricsBlurEnabled = update.animatedLyricsBlurEnabled,
                         animatedLyricsBlurStrength = update.animatedLyricsBlurStrength,
                         songDeletionEnabled = update.songDeletionEnabled,
-                        carLyricTitleEnabled = update.carLyricTitleEnabled,
-                        carLyricTitleLeadMs = update.carLyricTitleLeadMs
+                        carLyricTitle = update.carLyricTitle
                     )
                 }
             }
@@ -912,6 +908,12 @@ class SettingsViewModel @Inject constructor(
     fun setCarLyricTitleLeadMs(leadMs: Int) {
         viewModelScope.launch {
             userPreferencesRepository.setCarLyricTitleLeadMs(leadMs)
+        }
+    }
+
+    fun setCarLyricTitleSplitLongLines(split: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.setCarLyricTitleSplitLongLines(split)
         }
     }
 

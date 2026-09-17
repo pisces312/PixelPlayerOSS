@@ -229,6 +229,8 @@ constructor(
         val IMMERSIVE_LYRICS_TIMEOUT = longPreferencesKey("immersive_lyrics_timeout")
         val CAR_LYRIC_TITLE_ENABLED = booleanPreferencesKey("car_lyric_title_enabled")
         val CAR_LYRIC_TITLE_LEAD_MS = intPreferencesKey("car_lyric_title_lead_ms")
+        val CAR_LYRIC_TITLE_SPLIT_LONG_LINES =
+            booleanPreferencesKey("car_lyric_title_split_long_lines")
         val USE_ANIMATED_LYRICS = booleanPreferencesKey("use_animated_lyrics")
         val ANIMATED_LYRICS_BLUR_ENABLED = booleanPreferencesKey("animated_lyrics_blur_enabled")
         val ANIMATED_LYRICS_BLUR_STRENGTH = androidx.datastore.preferences.core.floatPreferencesKey("animated_lyrics_blur_strength")
@@ -716,6 +718,42 @@ constructor(
                     leadMs.coerceIn(0, MAX_CAR_LYRIC_TITLE_LEAD_MS)
         }
     }
+
+    /**
+     * Whether a lyric line wider than the head unit's title field is cut into segments played in
+     * turn. On by default: the field truncates otherwise, so on most units the tail of a long line
+     * would simply never be shown. Off is for units that scroll a long title by themselves — there
+     * the cutting only gets in the way of the unit's own marquee.
+     */
+    val carLyricTitleSplitLongLinesFlow: Flow<Boolean> =
+            dataStore.data.map { preferences ->
+                preferences[PreferencesKeys.CAR_LYRIC_TITLE_SPLIT_LONG_LINES] ?: true
+            }
+
+    suspend fun setCarLyricTitleSplitLongLines(split: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.CAR_LYRIC_TITLE_SPLIT_LONG_LINES] = split
+        }
+    }
+
+    /**
+     * The three car lyric title settings above as one value; see [CarLyricTitleSettings] for why
+     * the individual flows stay. Built from a single `dataStore.data` read rather than by combining
+     * them, so one preferences change still produces one emission.
+     */
+    val carLyricTitleSettingsFlow: Flow<CarLyricTitleSettings> =
+            dataStore.data.map { preferences ->
+                CarLyricTitleSettings(
+                        enabled = preferences[PreferencesKeys.CAR_LYRIC_TITLE_ENABLED] ?: false,
+                        leadMs =
+                                (preferences[PreferencesKeys.CAR_LYRIC_TITLE_LEAD_MS]
+                                                ?: DEFAULT_CAR_LYRIC_TITLE_LEAD_MS)
+                                        .coerceIn(0, MAX_CAR_LYRIC_TITLE_LEAD_MS),
+                        splitLongLines =
+                                preferences[PreferencesKeys.CAR_LYRIC_TITLE_SPLIT_LONG_LINES]
+                                        ?: true
+                )
+            }
 
     val globalTransitionSettingsFlow: Flow<TransitionSettings> =
             dataStore.data.map { preferences ->

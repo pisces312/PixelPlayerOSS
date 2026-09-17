@@ -940,7 +940,7 @@ fun SettingsCategoryScreen(
                                 SwitchSettingItem(
                                     title = stringResource(R.string.setcat_car_lyrics_title),
                                     subtitle = stringResource(R.string.setcat_car_lyrics_subtitle),
-                                    checked = uiState.carLyricTitleEnabled,
+                                    checked = uiState.carLyricTitle.enabled,
                                     onCheckedChange = { settingsViewModel.setCarLyricTitleEnabled(it) },
                                     leadingIcon = { Icon(painterResource(R.drawable.rounded_directions_car_24), null, tint = MaterialTheme.colorScheme.secondary) },
                                     modifier = Modifier.settingHighlight("item_playback_car_lyrics", highlightKey)
@@ -948,7 +948,7 @@ fun SettingsCategoryScreen(
                                 SliderSettingsItem(
                                     label = stringResource(R.string.setcat_car_lyrics_lead_title),
                                     // 0–1000 ms in 100 ms steps: eleven stops, so nine ticks between them.
-                                    value = uiState.carLyricTitleLeadMs.toFloat(),
+                                    value = uiState.carLyricTitle.leadMs.toFloat(),
                                     valueRange = 0f..UserPreferencesRepository.MAX_CAR_LYRIC_TITLE_LEAD_MS.toFloat(),
                                     steps = 9,
                                     onValueChange = { settingsViewModel.setCarLyricTitleLeadMs(it.toInt()) },
@@ -957,7 +957,19 @@ fun SettingsCategoryScreen(
                                     // Gated by the switch above: with the feature off the lead has no
                                     // effect, so the slider greys out rather than disappearing, which
                                     // would leave the user guessing where the option went.
-                                    enabled = uiState.carLyricTitleEnabled
+                                    enabled = uiState.carLyricTitle.enabled
+                                )
+                                SwitchSettingItem(
+                                    title = stringResource(R.string.setcat_car_lyrics_split_title),
+                                    subtitle = stringResource(R.string.setcat_car_lyrics_split_subtitle),
+                                    checked = uiState.carLyricTitle.splitLongLines,
+                                    onCheckedChange = { settingsViewModel.setCarLyricTitleSplitLongLines(it) },
+                                    leadingIcon = { Icon(painterResource(R.drawable.rounded_lyrics_24), null, tint = MaterialTheme.colorScheme.secondary) },
+                                    modifier = Modifier.settingHighlight("item_playback_car_lyrics_split", highlightKey),
+                                    // Same gate as the slider: without lyrics in the title there is
+                                    // nothing to cut. Greys out rather than hides, for the same
+                                    // reason the slider does.
+                                    enabled = uiState.carLyricTitle.enabled
                                 )
                             }
 

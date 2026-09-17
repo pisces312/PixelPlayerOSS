@@ -175,6 +175,18 @@ class PlaybackStateHolder @Inject constructor(
         }
     }
 
+    /**
+     * Source for playlist **reads** (timeline, item count, current index) — never `mediaController`.
+     *
+     * While the car lyric title is published, `LyricTitlePlayer` withdraws
+     * [Player.COMMAND_GET_TIMELINE] so the AVRCP sync gate is short-circuited, and Media3 then
+     * downgrades every `MediaController`'s timeline to "current item only"
+     * (`docs/car-lyrics-avrcp-gate.md` §5.2). The engine's master player is the player the session
+     * wraps, so it always reports the real playlist. Writes keep going through the controller.
+     */
+    private val queueTimelineSource: Player
+        get() = dualPlayerEngine.masterPlayer
+
     private fun activeLocalPlayer(): Player {
         val controller = mediaController
         return if (controller?.isConnected == true) {
@@ -190,10 +202,10 @@ class PlaybackStateHolder @Inject constructor(
             if (updated.currentMediaItemIndex == -1) {
                 if (dualPlayerEngine.isUsingWindowedQueue()) {
                     updated.copy(currentMediaItemIndex = dualPlayerEngine.getCurrentAbsoluteIndex())
+                } else if (mediaController != null) {
+                    updated.copy(currentMediaItemIndex = queueTimelineSource.currentMediaItemIndex)
                 } else {
-                    mediaController?.let { controller ->
-                        updated.copy(currentMediaItemIndex = controller.currentMediaItemIndex)
-                    } ?: updated
+                    updated
                 }
             } else {
                 updated
@@ -535,7 +547,7 @@ class PlaybackStateHolder @Inject constructor(
     private fun reorderQueueInPlace(player: Player, desiredQueue: List<Song>): Boolean {
         if (desiredQueue.isEmpty()) return false
 
-        val currentCount = player.mediaItemCount
+        val currentCount = queueTimelineSource.mediaItemCount
         if (currentCount != desiredQueue.size) {
             Timber.tag(TAG).w(
                 "Cannot reorder queue in place: size mismatch (player=%d, desired=%d)",
@@ -546,7 +558,7 @@ class PlaybackStateHolder @Inject constructor(
         }
 
         val currentIds = MutableList(currentCount) { index ->
-            player.getMediaItemAt(index).mediaId
+            queueTimelineSource.getMediaItemAt(index).mediaId
         }
         val desiredIds = desiredQueue.map { it.id }
 
@@ -641,7 +653,10 @@ class PlaybackStateHolder @Inject constructor(
         currentIndex: Int,
         preparedSegments: PreparedQueueSegments
     ): Boolean {
-        val mediaItemCount = player.mediaItemCount
+        // The counts are read from the engine's master player, not from [player]: while the car
+        // lyric title hides the playlist from session consumers, a MediaController here would
+        // report a queue of one item and every check below would fail.
+        val mediaItemCount = queueTimelineSource.mediaItemCount
         if (currentIndex !in 0 until mediaItemCount) {
             return false
         }
@@ -658,7 +673,7 @@ class PlaybackStateHolder @Inject constructor(
             player.replaceMediaItems(0, currentIndex, preparedSegments.beforeCurrent)
         }
         player.replaceMediaItems(afterStartIndex, mediaItemCount, preparedSegments.afterCurrent)
-        return player.currentMediaItemIndex == currentIndex
+        return queueTimelineSource.currentMediaItemIndex == currentIndex
     }
 
     private fun replacePlayerQueue(
@@ -706,7 +721,7 @@ class PlaybackStateHolder @Inject constructor(
                         }
 
                         val currentMediaId = player.currentMediaItem?.mediaId ?: currentSong?.id
-                        val playerCurrentIndex = player.currentMediaItemIndex
+                        val playerCurrentIndex = queueTimelineSource.currentMediaItemIndex
                             .takeIf { it in currentSongs.indices }
                         val currentIndex = when {
                             playerCurrentIndex != null && currentMediaId != null &&

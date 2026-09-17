@@ -9,6 +9,11 @@ import org.junit.Test
 /**
  * Covers the playback-position -> lyric-line mapping shared by the lyrics sheet and the car lyric
  * title feature, plus the line -> cue flattening only the latter needs.
+ *
+ * Cue caps are in *title columns*, not characters: one CJK character is three columns and one
+ * Latin letter is one, matching what a head unit title field actually fits (ten Chinese characters
+ * or thirty letters). Every test below passes 30 explicitly rather than importing the controller's
+ * constant, so the arithmetic stays checkable by hand.
  */
 class LyricsTimelineUtilsTest {
 
@@ -18,10 +23,13 @@ class LyricsTimelineUtilsTest {
         SyncedLine(time = 7_000, line = "third")
     )
 
-    /** A 5-character line, then a 21-character one over 6 s (three cues), then the last line. */
+    /** 21 Chinese characters = 63 columns, i.e. three cues of seven characters. */
+    private val longChineseLine = "一二三四五六七八九十".repeat(2) + "一"
+
+    /** A short line, then the 21-character one over 6 s (three cues), then the last line. */
     private val cueLines = listOf(
         SyncedLine(time = 1_000, line = "short"),
-        SyncedLine(time = 4_000, line = "abcdefghijklmnopqrstu"),
+        SyncedLine(time = 4_000, line = longChineseLine),
         SyncedLine(time = 10_000, line = "final")
     )
 
@@ -79,30 +87,82 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun buildLyricCues_returnsNothingForAnEmptyTimeline() {
-        assertEquals(emptyList<LyricCue>(), buildLyricCues(emptyList(), trackDurationMs, maxCharsPerCue = 10))
+        assertEquals(emptyList<LyricCue>(), buildLyricCues(emptyList(), trackDurationMs, maxColumnsPerCue = 30))
     }
 
     @Test
     fun buildLyricCues_publishesShortLinesWhole() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
-        // 5 chars needs no cutting at all, so the line is one cue starting on its own timestamp.
+        // 5 columns needs no cutting at all, so the line is one cue starting on its own timestamp.
         assertEquals(LyricCue(sequence = 0, timeMs = 1_000L, text = "short"), cues.first())
     }
 
     @Test
+    fun buildLyricCues_fitsThirtyLatinCharactersInOneCue() {
+        val fits = buildLyricCues(
+            listOf(SyncedLine(time = 0, line = "abcdefghijklmnopqrstuvwxyzabcd")),
+            trackDurationMs = 4_000,
+            maxColumnsPerCue = 30
+        )
+
+        // 30 letters are 30 columns: exactly one full title field, so no cutting.
+        assertEquals(1, fits.size)
+        assertEquals("abcdefghijklmnopqrstuvwxyzabcd", fits.single().text)
+    }
+
+    @Test
+    fun buildLyricCues_splitsThirtyOneLatinCharactersInTwo() {
+        val cues = buildLyricCues(
+            listOf(SyncedLine(time = 0, line = "abcdefghijklmnopqrstuvwxyzabcde")),
+            trackDurationMs = 4_000,
+            maxColumnsPerCue = 30
+        )
+
+        assertEquals(listOf("abcdefghijklmnop", "qrstuvwxyzabcde"), cues.map { it.text })
+    }
+
+    @Test
+    fun buildLyricCues_countsAWideCharacterAsThreeColumns() {
+        val cues = buildLyricCues(
+            listOf(SyncedLine(time = 0, line = "一二三四五六七八九十一")),
+            trackDurationMs = 4_000,
+            maxColumnsPerCue = 30
+        )
+
+        // 11 Chinese characters are 33 columns, i.e. just past the cap: 6 + 5 characters.
+        assertEquals(listOf("一二三四五六", "七八九十一"), cues.map { it.text })
+    }
+
+    @Test
+    fun buildLyricCues_mixesScriptsOnTheSameColumnBudget() {
+        val cues = buildLyricCues(
+            listOf(SyncedLine(time = 0, line = "你好世界 hello beautiful world")),
+            trackDurationMs = 4_000,
+            maxColumnsPerCue = 30
+        )
+
+        // 12 columns of Chinese + 22 of Latin = 34; the cut lands after the Chinese because that is
+        // the nearest break character within the lookback.
+        assertEquals(listOf("你好世界", "hello beautiful world"), cues.map { it.text })
+    }
+
+    @Test
     fun buildLyricCues_splitsALongLineIntoEvenSegments() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
         val longLine = cues.filter { it.sequence in 1..3 }
 
-        // 21 chars -> ceil(21/10) = 3 segments of 7, spread evenly over the line's own 6 s.
-        assertEquals(listOf("abcdefg", "hijklmn", "opqrstu"), longLine.map { it.text })
+        // 63 columns -> ceil(63/30) = 3 segments of 7 characters, spread evenly over the line's 6 s.
+        assertEquals(
+            listOf("一二三四五六七", "八九十一二三四", "五六七八九十一"),
+            longLine.map { it.text }
+        )
         assertEquals(listOf(4_000L, 6_000L, 8_000L), longLine.map { it.timeMs })
     }
 
     @Test
     fun buildLyricCues_spacesSegmentsEvenlyWithinTheirLine() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
         val longLine = cues.filter { it.sequence in 1..3 }
 
         // The car lyric title publishes every cue early by one constant, so these gaps — and only
@@ -116,30 +176,33 @@ class LyricsTimelineUtilsTest {
     @Test
     fun buildLyricCues_spreadsTheRemainderOverTheLeadingSegments() {
         val cues = buildLyricCues(
-            listOf(SyncedLine(time = 0, line = "abcdefghijklmnopqrs")),
+            listOf(SyncedLine(time = 0, line = "甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申")),
             trackDurationMs = 4_000,
-            maxCharsPerCue = 10
+            maxColumnsPerCue = 30
         )
 
-        // 19 chars -> 2 segments, 10 then 9: never more than one character apart, never over the cap.
-        assertEquals(listOf("abcdefghij", "klmnopqrs"), cues.map { it.text })
+        // 19 characters = 57 columns -> 2 segments, 10 then 9: never more than one character apart,
+        // never over the cap.
+        assertEquals(listOf("甲乙丙丁戊己庚辛壬癸", "子丑寅卯辰巳午未申"), cues.map { it.text })
     }
 
     @Test
     fun buildLyricCues_breaksOnWhitespaceInsteadOfMidWord() {
         val cues = buildLyricCues(
-            listOf(SyncedLine(time = 0, line = "hello world foo")),
+            listOf(SyncedLine(time = 0, line = "quick brown fox jumps over lazy dog")),
             trackDurationMs = 4_000,
-            maxCharsPerCue = 10
+            maxColumnsPerCue = 30
         )
 
-        // The even cut would land inside "world"; the break character one position back wins.
-        assertEquals(listOf("hello", "world foo"), cues.map { it.text })
+        // The even cut would land inside "jumps"; the space two columns back wins. Finding it at
+        // all is what the ten-column lookback is for — three characters, as the CJK cap needs,
+        // would end the first segment mid-word.
+        assertEquals(listOf("quick brown fox", "jumps over lazy dog"), cues.map { it.text })
     }
 
     @Test
     fun buildLyricCues_usesTheTrackDurationForTheLastLine() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         // The last line has no successor to borrow an end from: 20 s track - 10 s start = 10 s.
         assertEquals(LyricCue(sequence = 4, timeMs = 10_000L, text = "final"), cues.last())
@@ -150,14 +213,28 @@ class LyricsTimelineUtilsTest {
         // `C.TIME_UNSET` is Long.MIN_VALUE, which has to be rejected by comparison: subtracting it
         // first would overflow into a positive span and stretch the line across the whole track.
         val cues = buildLyricCues(
-            listOf(SyncedLine(time = 1_000, line = "abcdefghijklmno")),
+            listOf(SyncedLine(time = 1_000, line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrst")),
             trackDurationMs = Long.MIN_VALUE,
-            maxCharsPerCue = 10
+            maxColumnsPerCue = 30
         )
 
         assertEquals(2, cues.size)
         assertEquals(1_000L, cues[0].timeMs)
         assertEquals(4_000L, cues[1].timeMs - cues[0].timeMs)
+    }
+
+    @Test
+    fun buildLyricCues_publishesEveryLineWholeWhenSplittingIsOff() {
+        val cues = buildLyricCues(
+            listOf(SyncedLine(time = 0, line = longChineseLine)),
+            trackDurationMs = 4_000,
+            maxColumnsPerCue = Int.MAX_VALUE
+        )
+
+        // The "split long lines" setting turned off: an unbounded budget must not overflow into a
+        // smaller segment count than one, nor cut at all.
+        assertEquals(1, cues.size)
+        assertEquals(longChineseLine, cues.single().text)
     }
 
     @Test
@@ -169,7 +246,7 @@ class LyricsTimelineUtilsTest {
                 SyncedLine(time = 7_000, line = "again")
             ),
             trackDurationMs = 10_000,
-            maxCharsPerCue = 10
+            maxColumnsPerCue = 30
         )
 
         // An instrumental marker still takes its turn: publishing an empty title is what restores
@@ -179,7 +256,7 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun buildLyricCues_numbersCuesInTimelineOrder() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         // The sequence is the publisher's de-duplication key, so it has to identify one cue exactly.
         assertEquals(listOf(0, 1, 2, 3, 4), cues.map { it.sequence })
@@ -191,14 +268,14 @@ class LyricsTimelineUtilsTest {
             listOf(
                 SyncedLine(
                     time = 1_000,
-                    line = "abcdefghijklmnopqrstu",
+                    line = longChineseLine,
                     // A last word far past the next line's timestamp stretches the line's own end.
-                    words = listOf(SyncedWord(time = 6_000, word = "u"))
+                    words = listOf(SyncedWord(time = 6_000, word = "一"))
                 ),
                 SyncedLine(time = 2_000, line = "next")
             ),
             trackDurationMs = 20_000,
-            maxCharsPerCue = 10
+            maxColumnsPerCue = 30
         )
 
         // Out-of-order timestamps are possible with per-word timing, and resolveCueIndex relies on
@@ -215,7 +292,7 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun resolveCueIndex_returnsMinusOneDuringTheIntro() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         // Nothing to show before the first line, which is what keeps the real title on screen.
         assertEquals(-1, resolveCueIndex(cues, position = 0))
@@ -224,7 +301,7 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun resolveCueIndex_switchesExactlyOnTheCueTimestamp() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         assertEquals(0, resolveCueIndex(cues, position = 1_000))
         assertEquals(0, resolveCueIndex(cues, position = 3_999))
@@ -236,14 +313,14 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun resolveCueIndex_keepsTheLastCueToTheEndOfTheTrack() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         assertEquals(4, resolveCueIndex(cues, position = 999_999))
     }
 
     @Test
     fun resolveCueIndex_followsSeekBackwards() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         assertEquals(3, resolveCueIndex(cues, position = 8_000))
         assertEquals(1, resolveCueIndex(cues, position = 5_000))
@@ -257,7 +334,7 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun nextCueTimeMs_beforeTheFirstCueTargetsIt() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         // Intro: the wake-up should land exactly on the first cue's timestamp.
         assertEquals(1_000L, nextCueTimeMs(cues, index = -1))
@@ -265,7 +342,7 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun nextCueTimeMs_targetsTheFollowingCue() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         // Mid-line, the next wake-up is the next *segment* of the same line, not the next line.
         assertEquals(6_000L, nextCueTimeMs(cues, index = 1))
@@ -275,7 +352,7 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun nextCueTimeMs_onTheLastCueReturnsNull() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         assertEquals(null, nextCueTimeMs(cues, index = 4))
         assertEquals(null, nextCueTimeMs(cues, index = 99))
@@ -283,7 +360,7 @@ class LyricsTimelineUtilsTest {
 
     @Test
     fun nextCueTimeMs_neverLooksBackwards() {
-        val cues = buildLyricCues(cueLines, trackDurationMs, maxCharsPerCue = 10)
+        val cues = buildLyricCues(cueLines, trackDurationMs, maxColumnsPerCue = 30)
 
         assertTrue(
             (0 until cues.lastIndex).all { index ->

@@ -141,6 +141,8 @@
     <string name="setcat_car_lyrics_subtitle">通过蓝牙把当前歌词行作为媒体标题发送，支持滚动标题的车机会显示歌词。需要同步歌词。</string>
     <string name="setcat_car_lyrics_lead_title">歌词提前量</string>
     <string name="setcat_car_lyrics_lead_subtitle">歌词标题提前发送的时长。车机每行显示偏晚时调大。</string>
+    <string name="setcat_car_lyrics_split_title">拆分长行</string>
+    <string name="setcat_car_lyrics_split_subtitle">把超出车机显示宽度的歌词切成多段依次显示。车机自己能滚动长标题时可关闭。</string>
     <string name="setcat_queue_transitions">播放队列与过渡效果</string>
     <string name="setcat_crossfade_label">歌曲淡入淡出</string>
     <string name="setcat_crossfade_desc">开启歌曲之间平滑过渡</string>

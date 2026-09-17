@@ -55,20 +55,25 @@ data class LyricCue(
 /**
  * Flattens [lines] into the ordered sequence of slices to publish.
  *
- * A line is cut into `ceil(length / maxCharsPerCue)` segments of near-equal length, spread evenly
+ * A line is cut into `ceil(width / maxColumnsPerCue)` segments of near-equal width, spread evenly
  * over that line's own duration. Splitting exists because the consumer of these titles is a head
- * unit title field that renders only a handful of characters and would otherwise truncate the
- * tail of the line; spreading evenly in time is what keeps every segment in step with the vocal.
+ * unit title field of fixed width that would otherwise truncate the tail of the line; spreading
+ * evenly in time is what keeps every segment in step with the vocal.
+ *
+ * Width is measured in title columns rather than characters (see [titleColumns]), because the
+ * field is a fixed amount of *space*, not a fixed number of glyphs: the same field that holds ten
+ * Chinese characters holds thirty Latin letters.
  *
  * @param trackDurationMs consulted for the last line only, which has no successor to borrow an
  *   end from. Pass the player duration; pass anything not greater than the last line's start when
  *   it is unknown (the player reports `C.TIME_UNSET` in that case, which is `Long.MIN_VALUE`).
- * @param maxCharsPerCue how many characters one slice may carry; must be positive.
+ * @param maxColumnsPerCue how many title columns one slice may carry; must be positive. Pass
+ *   [Int.MAX_VALUE] to publish every line whole.
  */
 fun buildLyricCues(
     lines: List<SyncedLine>,
     trackDurationMs: Long,
-    maxCharsPerCue: Int
+    maxColumnsPerCue: Int
 ): List<LyricCue> {
     if (lines.isEmpty()) return emptyList()
 
@@ -77,7 +82,7 @@ fun buildLyricCues(
 
     lines.forEachIndexed { index, line ->
         val startMs = line.time.toLong()
-        val segments = splitIntoSegments(line.line.trim(), maxCharsPerCue)
+        val segments = splitIntoSegments(line.line.trim(), maxColumnsPerCue)
         val endMs = lineEndMs(lines, index, startMs, trackDurationMs, segments.size)
         val spanMs = (endMs - startMs).coerceAtLeast(0L)
 
@@ -143,32 +148,42 @@ private fun lineEndMs(
 }
 
 /**
- * Cuts [text] into near-equal segments of at most [maxCharsPerCue] characters each. The remainder
+ * Cuts [text] into near-equal segments of at most [maxColumnsPerCue] columns each. The remainder
  * of an uneven division goes to the leading segments, so no two segments differ by more than one
- * character and none can exceed the cap.
+ * column and none of them can exceed the cap.
  */
-private fun splitIntoSegments(text: String, maxCharsPerCue: Int): List<String> {
+private fun splitIntoSegments(text: String, maxColumnsPerCue: Int): List<String> {
     if (text.isEmpty()) return listOf("")
-    val segmentCount = (text.length + maxCharsPerCue - 1) / maxCharsPerCue
-    if (segmentCount <= 1) return listOf(text)
 
-    val baseLength = text.length / segmentCount
-    val remainder = text.length % segmentCount
+    // Cumulative columns per character boundary, so a cut expressed as a column budget can be
+    // resolved to a character index. Strictly increasing: every character adds at least one.
+    val columns = IntArray(text.length + 1)
+    for (index in text.indices) {
+        columns[index + 1] = columns[index] + titleColumns(text[index])
+    }
+    val totalColumns = columns.last()
+    // Also the overflow guard for the division below: it is what makes `Int.MAX_VALUE` (splitting
+    // turned off) safe.
+    if (totalColumns <= maxColumnsPerCue) return listOf(text)
+
+    val segmentCount = (totalColumns + maxColumnsPerCue - 1) / maxColumnsPerCue
+    val baseColumns = totalColumns / segmentCount
+    val remainderColumns = totalColumns % segmentCount
 
     // Ideal cuts are cumulative and never depend on a previous adjustment, so one moved cut
     // cannot drag the rest of the line along with it.
     val idealCuts = IntArray(segmentCount - 1)
-    var running = 0
-    for (index in 0 until segmentCount - 1) {
-        running += baseLength + if (index < remainder) 1 else 0
-        idealCuts[index] = running
+    var budget = 0
+    for (index in idealCuts.indices) {
+        budget += baseColumns + if (index < remainderColumns) 1 else 0
+        idealCuts[index] = cutForColumns(columns, budget)
     }
 
     val segments = ArrayList<String>(segmentCount)
     var start = 0
     for (index in idealCuts.indices) {
         val nextIdealCut = idealCuts.getOrNull(index + 1) ?: text.length
-        val cut = breakAdjustedCut(text, idealCuts[index], nextIdealCut, start, maxCharsPerCue)
+        val cut = breakAdjustedCut(text, columns, idealCuts[index], nextIdealCut, start, maxColumnsPerCue)
         // Trimmed so a cut that landed right after a space does not publish a trailing blank; a
         // segment that is nothing but the break itself collapses to empty and is dropped by the
         // publisher, which is also what an instrumental marker does.
@@ -180,29 +195,66 @@ private fun splitIntoSegments(text: String, maxCharsPerCue: Int): List<String> {
 }
 
 /**
+ * Smallest cut index whose accumulated columns reach [columns], as a character index in
+ * `1..text.length - 1` — the upper bound keeps the final segment from coming out empty.
+ */
+private fun cutForColumns(prefixColumns: IntArray, columns: Int): Int {
+    var index = 1
+    while (index < prefixColumns.lastIndex && prefixColumns[index] < columns) index++
+    return index
+}
+
+/**
  * Pulls [idealCut] back to the nearest break character, so a word is not bisected mid-way — but
  * only as far as keeps both the segment ending here and the one starting here within
- * [maxCharsPerCue].
+ * [maxColumnsPerCue].
  *
  * The *ideal* next cut is what gets checked, not the final one: the next cut may move back as
  * well, so this is a deliberate approximation rather than a search. Erring on the side of
  * `idealCut` is always safe, because the ideal lengths already respect the cap.
+ *
+ * Both the lookback and the cap check are measured in columns: ten columns is three Chinese
+ * characters but ten Latin letters, which is what a word boundary in English needs.
  */
 private fun breakAdjustedCut(
     text: String,
+    prefixColumns: IntArray,
     idealCut: Int,
     nextIdealCut: Int,
     previousCut: Int,
-    maxCharsPerCue: Int
+    maxColumnsPerCue: Int
 ): Int {
-    val earliestCut = (idealCut - MAX_CUT_LOOKBACK_CHARS).coerceAtLeast(previousCut + 1)
+    val earliestCut =
+        cutForColumns(prefixColumns, prefixColumns[idealCut] - MAX_CUT_LOOKBACK_COLUMNS)
+            .coerceAtLeast(previousCut + 1)
     for (cut in idealCut downTo earliestCut) {
         if (!isBreakCharacter(text[cut - 1])) continue
-        if (nextIdealCut - cut > maxCharsPerCue) continue
+        if (prefixColumns[nextIdealCut] - prefixColumns[cut] > maxColumnsPerCue) continue
         return cut
     }
     return idealCut
 }
+
+/**
+ * How many columns [character] occupies in the head unit title field.
+ *
+ * The field is a fixed amount of space, and the unit this feature was measured on draws a Latin
+ * letter at about a third of a CJK character's width: ten Chinese characters fill it, thirty
+ * letters do. Counting 3 and 1 is what lets a single cap serve both scripts — and a line mixing
+ * them on the same rule, which counting characters cannot do.
+ */
+private fun titleColumns(character: Char): Int =
+    if (character.isWideTitleGlyph()) WIDE_GLYPH_COLUMNS else 1
+
+/** Full-width and East Asian wide forms, i.e. the glyphs that render at [WIDE_GLYPH_COLUMNS]. */
+private fun Char.isWideTitleGlyph(): Boolean =
+    code in 0x1100..0x115F ||   // Hangul Jamo
+        code in 0x2E80..0xA4CF ||   // CJK radicals, Kangxi, CJK ideographs, Yi
+        code in 0xAC00..0xD7A3 ||   // Hangul syllables
+        code in 0xF900..0xFAFF ||   // CJK compatibility ideographs
+        code in 0xFE30..0xFE6F ||   // CJK compatibility forms
+        code in 0xFF00..0xFF60 ||   // full-width forms (half-width katakana at 0xFF61+ stays narrow)
+        code in 0xFFE0..0xFFE6
 
 /**
  * Whether a segment may end just after [character]. Whitespace and the punctuation a phrase
@@ -215,7 +267,10 @@ private fun isBreakCharacter(character: Char): Boolean =
 /** Per-segment length when the track duration is unknown (`C.TIME_UNSET`). */
 private const val FALLBACK_CUE_DURATION_MS = 4_000L
 
-/** How far back a cut may be pulled to land on a break character. */
-private const val MAX_CUT_LOOKBACK_CHARS = 3
+/** Columns a full-width glyph takes in the title field; a narrow glyph takes exactly one. */
+private const val WIDE_GLYPH_COLUMNS = 3
+
+/** How far back a cut may be pulled to land on a break character, measured in title columns. */
+private const val MAX_CUT_LOOKBACK_COLUMNS = 10
 
 private const val BREAK_CHARACTERS = "、，。！？；：,.!?;:…—·’”)）】》」』"

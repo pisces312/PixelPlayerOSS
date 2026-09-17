@@ -1,6 +1,7 @@
 package com.lostf1sh.pixelplayeross.data.service.player
 
 import androidx.media3.common.Player
+import com.lostf1sh.pixelplayeross.data.model.SyncedLine
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.repository.MusicRepository
 import com.lostf1sh.pixelplayeross.utils.LyricCue
@@ -25,10 +26,15 @@ import timber.log.Timber
  * The override is published through [LyricTitlePlayer], which fakes a metadata-changed event
  * rather than mutating the playlist; see that class for why.
  *
- * **Segments.** A head unit renders only a handful of characters of the title, so a line longer
- * than [MAX_CHARS_PER_CUE] is published in several slices spread evenly over that line's own
- * duration; [buildLyricCues] does the cutting. Scheduling, publishing and the de-duplication key
- * all work on slices, so read "cue" below where an earlier revision of this class read "line".
+ * **Segments.** A head unit renders only a fixed width of title, so a line wider than
+ * [MAX_COLUMNS_PER_CUE] is published in several slices spread evenly over that line's own
+ * duration; [buildLyricCues] does the cutting, and it measures width rather than characters — the
+ * same field that fits ten Chinese characters fits thirty letters. Users whose head unit scrolls
+ * long titles itself can turn the cutting off entirely, in which case every line goes out whole
+ * and the unit does the scrolling.
+ *
+ * Scheduling, publishing and the de-duplication key all work on slices, so read "cue" below where
+ * an earlier revision of this class read "line".
  *
  * **Lead.** Every cue is published `leadMs` *before* its timestamp, because the path from
  * [LyricTitlePlayer.publishMetadataOverride] to pixels on the head unit costs a few hundred
@@ -77,6 +83,16 @@ class CarLyricTitleController(
     private var currentSongId: String? = null
     private var cues: List<LyricCue> = emptyList()
     private var syncOffsetMs = 0
+
+    /**
+     * Source lyrics of the loaded song, kept so the cut can be redone when the user toggles
+     * splitting: [cues] is derived, and re-deriving needs the lines it came from.
+     */
+    private var lyricLines: List<SyncedLine> = emptyList()
+    private var trackDurationMs = 0L
+
+    /** Mirrors the user's "split long lines" setting; see [MAX_COLUMNS_PER_CUE]. */
+    private var splitLongLines = true
 
     /**
      * How early every cue is published, mirrored from the user's "title lead" setting. Starts at 0 —
@@ -147,6 +163,19 @@ class CarLyricTitleController(
                 // A different lead changes which cue is active right now, so recompute instead of
                 // waiting for the next boundary — otherwise the new value would only take effect
                 // from the following line and the slider would feel broken.
+                signal()
+            }
+        }
+
+        scope.launch {
+            userPreferencesRepository.carLyricTitleSplitLongLinesFlow.collect { value ->
+                if (splitLongLines == value) return@collect
+                splitLongLines = value
+                // Re-cutting renumbers the cues, and cue N of one cut says something different
+                // from cue N of the other, so the de-duplication key has to be forgotten too —
+                // otherwise the switch would appear to do nothing until the next line.
+                lastPublishedCue = CUE_UNPUBLISHED
+                rebuildCues()
                 signal()
             }
         }
@@ -238,6 +267,8 @@ class CarLyricTitleController(
     private fun onSongChanged(player: LyricTitlePlayer, mediaId: String) {
         currentSongId = mediaId
         cues = emptyList()
+        lyricLines = emptyList()
+        trackDurationMs = 0L
         syncOffsetMs = 0
         stopScheduling()
         lyricsJob?.cancel()
@@ -266,21 +297,32 @@ class CarLyricTitleController(
         // Read here rather than up front, and on the main dispatcher: Media3 wants all player
         // access from one thread, and on the last line this duration *is* the end of the timeline,
         // so the longer the lyrics take to arrive the more likely it is to be known already.
-        val trackDurationMs = withContext(Dispatchers.Main.immediate) { player.duration }
+        val durationMs = withContext(Dispatchers.Main.immediate) { player.duration }
 
         syncOffsetMs = offset
-        cues = buildLyricCues(
-            lines = lyrics?.synced.orEmpty(),
-            trackDurationMs = trackDurationMs,
-            maxCharsPerCue = MAX_CHARS_PER_CUE
-        )
+        lyricLines = lyrics?.synced.orEmpty()
+        trackDurationMs = durationMs
+        rebuildCues()
         Timber.tag(TAG).d(
-            "car lyric title: loaded %d synced lines as %d cues for %s (offset %d ms, lead %d ms)",
-            lyrics?.synced?.size ?: 0,
+            "car lyric title: loaded %d synced lines as %d cues for %s (offset %d ms, lead %d ms, split %s)",
+            lyricLines.size,
             cues.size,
             mediaId,
             offset,
-            leadMs
+            leadMs,
+            splitLongLines
+        )
+    }
+
+    /**
+     * Re-derives [cues] from [lyricLines]. Called on load and whenever the split setting changes;
+     * a no-op on the lines side, so an unknown duration or missing lyrics just yield no cues.
+     */
+    private fun rebuildCues() {
+        cues = buildLyricCues(
+            lines = lyricLines,
+            trackDurationMs = trackDurationMs,
+            maxColumnsPerCue = if (splitLongLines) MAX_COLUMNS_PER_CUE else UNSLICED_COLUMNS
         )
     }
 
@@ -402,11 +444,15 @@ class CarLyricTitleController(
         private const val TAG = "MusicService_PixelPlayer"
 
         /**
-         * Characters per published cue. A head unit truncates its title field at roughly this many
-         * (measured at 10 on the model this was built for), so a longer line is published in
-         * several slices instead of being clipped.
+         * Title columns per published cue. The head unit truncates its title field at roughly this
+         * much *width* — measured on the model this was built for as ten Chinese characters, which
+         * is the same field thirty Latin letters fit into (`titleColumns` in `LyricsTimelineUtils`),
+         * so a wider line is published in several slices instead of being clipped.
          */
-        private const val MAX_CHARS_PER_CUE = 10
+        private const val MAX_COLUMNS_PER_CUE = 30
+
+        /** Budget large enough for any line, i.e. splitting turned off: the unit gets whole lines. */
+        private const val UNSLICED_COLUMNS = Int.MAX_VALUE
 
         /** [publish] keys, chosen so they cannot collide with a real cue sequence. */
         private const val CUE_UNPUBLISHED = -2

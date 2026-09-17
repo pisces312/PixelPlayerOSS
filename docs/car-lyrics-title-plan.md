@@ -2,6 +2,7 @@
 
 > 状态：**已完整实现**（真实歌词 + 蓝牙 A2DP 门控 + 设置开关，默认关闭），已在模拟器上端到端验证（见 §9）。
 > 相关代码：`data/service/player/LyricTitlePlayer.kt`、`data/service/player/CarLyricTitleController.kt`、`data/service/MusicService.kt`、`utils/LyricsTimelineUtils.kt`
+> 姊妹文档：`docs/car-lyrics-avrcp-gate.md` —— 车机标题「卡住」的根因（蓝牙进程的 2 秒同步闸门）与短路方案，本文不含该内容。
 
 ## 1. 需求与来源
 
@@ -201,20 +202,24 @@ player.replaceMediaItem(index, item.buildUpon()
 
 `data/service/player/CarLyricTitleController.kt`。单独成类而不是塞进 `MusicService`，是因为它有自己的跨歌状态（当前歌曲、cue 列表、上次推送的 cue 序号、下一个唤醒任务），放进 Service 字段会继续膨胀那个已有 30+ 播放状态字段的类。
 
-#### 片段（cue）拆分：车机一个标题只显示 10 个字（2026-09-16 新增）
+#### 片段（cue）拆分：车机一个标题的宽度是有限的（2026-09-16 新增，2026-09-17 改为按宽度计量）
 
-车机 title 字段的渲染宽度只够 **10 个字符**，整行发过去尾部会被直接截掉。所以歌词加载后先摊平成 **cue 列表**再调度：
+车机 title 字段的渲染**宽度**有限，整行发过去尾部会被直接截掉。实机观测：那台车机同一条标题栏放得下 **10 个汉字**，但因为西文字体明显更瘦，放得下 **约 30 个拉丁字母**。所以计量单位不能用字符数，要用**列数**（汉字/全角 = 3 列，其余 = 1 列），一个 30 列的上限同时服务两种文字，混排也落在同一条规则上。歌词加载后先摊平成 **cue 列表**再调度：
 
 | 项 | 规则 | 常量 / 位置 |
 |---|---|---|
-| 段数 | `n = ceil(字数 / 10)`，无上限 | `MAX_CHARS_PER_CUE = 10`（控制器 companion） |
-| 段内字数 | 尽量均衡，各段差 ≤1；余数给前几段 | `LyricsTimelineUtils.splitIntoSegments` |
-| 切点 | 距理想切点 3 个字符内若有空格/标点就在那里切，避免把英文单词切两半；与「段不超 10 字」冲突时退回理想切点 | `MAX_CUT_LOOKBACK_CHARS = 3` |
+| 列宽 | 汉字与全角形式（U+1100 Hangul Jamo / U+2E80–A4CF / U+AC00–D7A3 / U+F900–FAFF / U+FE30–FE6F / U+FF00–FF60 / U+FFE0–FFE6）= 3 列，其余 = 1 列 | `LyricsTimelineUtils.titleColumns` / `WIDE_GLYPH_COLUMNS = 3` |
+| 段数 | `n = ceil(总列数 / 30)`，无上限 | `MAX_COLUMNS_PER_CUE = 30`（控制器 companion） |
+| 段宽 | 尽量均衡，各段差 ≤1 列；余数给前几段 | `LyricsTimelineUtils.splitIntoSegments` |
+| 切点 | 距理想切点 **10 列**内若有空格/标点就在那里切，避免把英文单词切两半；与「段不超 30 列」冲突时退回理想切点 | `MAX_CUT_LOOKBACK_COLUMNS = 10` |
+| 关闭拆分 | 设置里关掉「拆分长行」时预算取 `Int.MAX_VALUE` ⇒ 每行只出 1 个 cue（`buildLyricCues` 在除法前先做 `总列数 <= 预算` 的提前返回，兼作溢出保护） | `UNSLICED_COLUMNS` |
 | 每段时刻 | 第 k 段 = `行起点 + k × 行长 / n`，**等分**（不按字数比例，也不用逐字时间戳） | `buildLyricCues` |
 | 行长 | 下一行时间戳 − 本行起点（逐字时间戳晚于下一行时按 `resolveLineEndTimeMs` 延后）；**末行**用 `player.duration − 行起点`，`C.TIME_UNSET` 时按 4s/段兜底 | `lineEndMs` |
 | 空行 | 仍生成一个空文本 cue → 推送 null → 恢复真实曲名（前奏与间奏都被它覆盖） | — |
 
-**去重键从「文本」改成「cue 序号」**：长行拆出的两段文字可能一模一样（叠句），只比文本会静默吞掉第二段。
+为什么回看距离也从 3 个字符改成 10 列：英文单词更长，按「3 个字符」回看常常够不到空格，切点会落在单词中间——而 10 列在中文侧正好是 3 个汉字（与旧行为一致），在英文侧是 10 个字母（够用）。这条改动有单测固定（`buildLyricCues_breaksOnWhitespaceInsteadOfMidWord` 的切点落在 `jumps` 内部，靠 10 列回看退到 `fox` 后的空格）。
+
+**去重键从「文本」改成「cue 序号」**：长行拆出的两段文字可能一模一样（叠句），只比文本会静默吞掉第二段。反过来，**重置切法（开关「拆分长行」）时必须把序号键一并作废**（`lastPublishedCue = CUE_UNPUBLISHED`）——新旧切法的第 5 号 cue 内容不同，沿用旧键会让开关看起来没生效。
 
 #### 提前量：只在整曲开头加一次（2026-09-16 新增）
 
@@ -345,15 +350,17 @@ Media3 **没有位置回调**，`getCurrentPosition()` 只能采样，所以"完
 
 | # | 文件 | 变更 |
 |---|---|---|
-| 1 | `data/preferences/UserPreferencesRepository.kt` | `PreferencesKeys.CAR_LYRIC_TITLE_ENABLED`（key `car_lyric_title_enabled`）→ `carLyricTitleEnabledFlow` → `setCarLyricTitleEnabled()` |
-| 2 | `presentation/viewmodel/SettingsViewModel.kt` | `SettingsUiState.carLyricTitleEnabled` / `.carLyricTitleLeadMs`、`SettingsUiUpdate.Group2` 两个字段、combine 流列表**末尾**追加（`values[17]` 开关、`values[18]` 提前量）、`state.copy()`、两个 setter |
-| 3 | `presentation/screens/SettingsCategoryScreen.kt` | PLAYBACK 分类新增 `设置子节「车载蓝牙」` + `SwitchSettingItem` + 联动的 `SliderSettingsItem`（0–1000 ms、`steps = 9`、`enabled = uiState.carLyricTitleEnabled`），highlight key `item_playback_car_lyrics` / `item_playback_car_lyrics_lead` |
-| 4 | `presentation/settings/search/SettingsRegistry.kt` | 两条 `SettingSpec`：`playback_car_lyrics`（SWITCH，关键词 `car / bluetooth / avrcp / lyrics / title / head unit / scroll`）与 `playback_car_lyrics_lead`（NAVIGABLE_CARD，关键词含 `lead / delay / advance`） |
-| 5 | `res/values/strings_settings.xml` + `res/values-zh-rCN/strings_settings.xml` | `setcat_car_lyrics_section` / `_title` / `_subtitle` / `_lead_title` / `_lead_subtitle`，中英成对 |
+| 1 | `data/preferences/UserPreferencesRepository.kt` | `PreferencesKeys.CAR_LYRIC_TITLE_ENABLED`（key `car_lyric_title_enabled`）→ `carLyricTitleEnabledFlow` → `setCarLyricTitleEnabled()`；`CAR_LYRIC_TITLE_LEAD_MS`；`CAR_LYRIC_TITLE_SPLIT_LONG_LINES`（key `car_lyric_title_split_long_lines`，**默认 true**，2026-09-17） |
+| 2 | `presentation/viewmodel/SettingsViewModel.kt` | `SettingsUiState.carLyricTitleEnabled` / `.carLyricTitleLeadMs` / `.carLyricTitleSplitLongLines`、`SettingsUiUpdate.Group2` 三个字段、combine 流列表**末尾**追加（`values[17]` 开关、`values[18]` 提前量、`values[19]` 拆分长行）、`state.copy()`、三个 setter |
+| 3 | `presentation/screens/SettingsCategoryScreen.kt` | PLAYBACK 分类新增 `设置子节「车载蓝牙」` + `SwitchSettingItem` + 联动的 `SliderSettingsItem`（0–1000 ms、`steps = 9`、`enabled = uiState.carLyricTitleEnabled`）+ 「拆分长行」`SwitchSettingItem`（同一门控），highlight key `item_playback_car_lyrics` / `item_playback_car_lyrics_lead` / `item_playback_car_lyrics_split` |
+| 4 | `presentation/settings/search/SettingsRegistry.kt` | 三条 `SettingSpec`：`playback_car_lyrics`（SWITCH，关键词 `car / bluetooth / avrcp / lyrics / title / head unit / scroll`）、`playback_car_lyrics_lead`（NAVIGABLE_CARD，关键词含 `lead / delay / advance`）与 `playback_car_lyrics_split`（SWITCH，关键词含 `split / cut / segment / long`） |
+| 5 | `res/values/strings_settings.xml` + `res/values-zh-rCN/strings_settings.xml` | `setcat_car_lyrics_section` / `_title` / `_subtitle` / `_lead_title` / `_lead_subtitle` / `_split_title` / `_split_subtitle`，中英成对 |
 | 6 | `res/drawable/rounded_directions_car_24.xml` | 新增图标（Material Symbols Rounded `directions_car`） |
 | 7 | `presentation/screens/SettingsComponents.kt` | `SliderSettingsItem` 新增 `enabled: Boolean = true`（默认值，既有 4 个调用点不受影响）：置灰时 label / 数值 / 滑块一起降 alpha，滑块本身 `Slider(enabled = false)` |
 
 位置：**设置 → 播放 → 车载蓝牙 → 标题显示歌词**。放在 PLAYBACK 而不是 APPEARANCE 的「歌词页面」子节下，因为这是输出通道行为，与「耳机重连续播」同类。
+
+**「拆分长行」（2026-09-17 新增）**：位置在同一子节的最后，**默认开**。开 = 把超过 30 列的歌词行切成多段依次发送；关 = 整行发出去，交给车机自己处理（能跑马灯滚动的车机会滚，会截断的车机会丢掉尾部）。它是给「车机能滚长标题」这一类设备留的逃生口——手机侧无法探测车机到底滚不滚，而这个判断用户一眼就能做。
 
 **提前量做成设置项**（2026-09-16 最终定稿，推翻了当天早些时候的「只留代码常量」）：位置就在上面那个开关的正下方，**设置 → 播放 → 车载蓝牙 → 歌词提前量**，0–1 s、每 0.1 s 一档，开关关闭时**置灰**（不隐藏）。取舍与理由见 §6.3「提前量」小节——一句话：它确实描述车而不是偏好，但**换车是真实场景**，而这个数用户能感知、也能自己判断方向（"歌词总是慢半拍" → 调大），为它重新构建一次 APK 才是更大的成本。
 
@@ -363,7 +370,7 @@ Media3 **没有位置回调**，`getCurrentPosition()` 只能采样，所以"完
 
 | 层级 | 目的 | 方法 |
 |---|---|---|
-| L1 单测 | 行解析与拆段正确性 | `resolveCurrentLineIndex`（行间空隙、seek 回跳、超末行、空列表）、`buildLyricCues`（拆段字数与时刻、标点优先不切词、末行兜底）、`resolveCueIndex` / `nextCueTimeMs`（前奏、边界、末 cue）；共 27 例 |
+| L1 单测 | 行解析与拆段正确性 | `resolveCurrentLineIndex`（行间空隙、seek 回跳、超末行、空列表）、`buildLyricCues`（列宽计量、拆段字数与时刻、标点优先不切词、末行兜底、关闭拆分的整行输出）、`resolveCueIndex` / `nextCueTimeMs`（前奏、边界、末 cue）；共 32 例 |
 | L2 状态可见性 | **最接近车机视角，零成本** | `adb shell dumpsys media_session \| grep -A 25 com.lostf1sh`，看 `metadata: ... title=...` |
 | L3 AVRCP 协议真相 | 是否被车机误判为换曲 | 开发者选项启用"蓝牙 HCI 信息收集日志" → 连蓝牙设备播放 → `adb pull /sdcard/btsnoop_hci.log` → Wireshark（原生解析 AVRCP）过滤 `btavrcp`，观察 `Track Changed`(0x02) 与 `Now playing changed`(0x09) 的次数与间隔 |
 | L4 端到端显示 | 肉眼确认 | Windows SMTC（笔记本当车机）/ Android Auto DHU（走 USB+MediaBrowser，非 AVRCP）/ 真车机 |
@@ -547,6 +554,21 @@ adb shell "run-as com.lostf1sh.pixelplayeross.debug sqlite3 databases/pixelplaye
 1. **少数边界需要两次 tick**：定时器按墙钟到点，而模拟器的媒体时钟略微滞后，于是到点时 `position` 还没跨过边界 → 触发 `MIN_WAKE_UP_DELAY_MS`（100ms）那次短排程，100ms 后发布。表现为每行 1–2 次唤醒，仍比 500ms 轮询少 3–6 倍。真机以音频时钟为准，该现象应消失。
 2. **事件源覆盖不到的一格**：当路由变化**不产生设备增删事件**时（例如本测试用的 `settings` 标志，或"在已连接的多个输出之间切换"），若此刻**播放正在推进**，靠看门狗（≤5s）自愈；若此刻已暂停/播完（没有任何已排程的定时器），则要等下一个播放事件才会重算。真实场景的蓝牙连/断都走 `AudioDeviceCallback` → 立刻 `signal()`，不受影响。**`AudioDeviceCallback` 这条路径在本模拟器上无法验证**（没有 A2DP 设备可连），是本轮唯一未覆盖的分支。
 
+### 9.5 列宽计量 + 「拆分长行」开关：通过（2026-09-17）
+
+环境：`pixel6` AVD（x86_64, android-34）、debug `0.4.2-pisces.1`、**arm64-v8a 产物直接安装**（不再需要 universal，见 AGENTS.md）、debug 路由标志 `pixelplayer_car_lyric_title_force_a2dp`。歌词仍走 Room 注入（不动文件）：一行 40 个拉丁字母、一行 21 个汉字、一行 5 个字母。
+
+| 场景 | 观察 | 结论 |
+|---|---|---|
+| 拆分开（默认） | 日志 `active: 6 cues`；标题依次为 `abcdefghijklmnopqrstu` → `vwxyzabcdefghijklmnop` → 中文 7 字 ×3（`一二三四五六七` / `八九十一二三四` / `五六七八九十一`）→ `short line` | **英文 40 字母 = 20+20**（旧实现是 10×4，被切四段且每段只占半行宽）；**中文 21 字 = 7×3，与改前完全一致** |
+| 拆分关 | 标题 = **整行** `abcdefghijklmnopqrstuvwxyzabcdefghijklmnop`（1 个 cue） | 关闭后不再切片，整行交给车机 |
+| 开关即时生效 | 播放位置停在 0（模拟器音频管线 `BUFFERING`）时切开关，标题立刻从整行变回 `abcdefghijklmnopqrstu`，日志 `active: 6 cues` | `rebuildCues()` + 序号键复位生效——不必等换歌或下一行 |
+| 反向验证门控 | 删掉路由标志 → `bluetooth output inactive` → `idle: bluetooth output not active`，标题回到 `Night Tone` | 门控未受影响 |
+
+**设置项接线**：设置搜索输入 `car` 同时命中「标题显示歌词」「歌词提前量」「拆分长行」三条，开关 `checked="true"`（默认开），主开关关闭时它与滑杆一起置灰。
+
+**本轮一个未定论的环境现象（记录备查）**：中途出现过约 2 分钟「控制器完全无日志」——进程存活、Activity 是 `ResumedActivity`、MediaSession 的 metadata 仍在更新、无 `FATAL`、无 `car lyric title: tick failed`；`am force-stop` 重启进程后恢复，此后一路正常。当时的使用方式是 `cmd media_session dispatch play/next` + 刚启动就恢复历史队列（不是 UI 点播）。**未定位根因**，也**未在改动前的 APK 上复现过**（本轮没跑旧版本对照），所以既不能认定与本改动有关、也不能排除。真机复核时留意「标题是否会在中途停住不动」；若出现，先看 logcat 里 `car lyric title` 行是否断流（断流 = tick 没跑；不断流 = tick 在跑但判定为 idle 或无变化）。
+
 ### 复现步骤
 
 ```bash
@@ -623,10 +645,13 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 4. **调试逃生口**：`pixelplayer_car_lyric_title_force_a2dp` 只在 debuggable 构建读取，release 忽略。不建议放开给 release。**改这个标志不会触发任何事件**（它不是设备增删），所以删除标志后最多等一个看门狗周期（≤5s）才恢复真实标题；若此刻已暂停/播完，需要手动触发一次播放事件（如 `adb shell cmd media_session dispatch previous`）让它立刻重算。
 5. **云端曲目的歌词**：Navidrome 有 `getLyrics` 但未接入 `LyricsRepository`，Jellyfin 无该接口 → 云端曲目基本拿不到歌词，会走"保持原标题"的降级路径。想支持的话要先把服务端歌词接进 `LyricsRepository`。
 6. **无同步歌词的歌**：只有 `plain` 歌词不会启用（没有时间轴就无法定位当前行）。若将来想做"整段歌词滚动"，那是另一套切片机制。
-7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。边界算术那部分已经能测了——`utils/LyricsTimelineUtils.kt` 的纯函数现有 27 例单测（2026-09-16）覆盖：`resolveCurrentLineIndex` 的空时间轴 / 首行前 / 区间映射 / 末行保持 / seek 回跳 / 逐字时间待定；`buildLyricCues` 的短行 1 段 / 21 字 3 段 / 余数分配 / 空格优先不切词 / 段间隔等分 / 末行 `trackDuration` 与 `C.TIME_UNSET` 兜底 / 空行保留 / 逐字时间戳导致的乱序 / 序号连续；`resolveCueIndex` 的前奏 -1 / 边界切换 / seek 回跳 / 末 cue 保持；`nextCueTimeMs` 的空表 / 首 cue 前 / 逐段推进 / 末 cue / 单调性。剩下的控制器单测需要注入时钟与协程调度器，暂未做。
+7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。边界算术那部分已经能测了——`utils/LyricsTimelineUtils.kt` 的纯函数现有 32 例单测（2026-09-17）覆盖：`resolveCurrentLineIndex` 的空时间轴 / 首行前 / 区间映射 / 末行保持 / seek 回跳 / 逐字时间待定；`buildLyricCues` 的 30 字母整行不拆 / 31 字母拆两段 / 11 汉字拆两段（按 3 列计） / 中英混排落在同一条列预算上 / 短行 1 段 / 21 字 3 段 / 余数分配 / 空格优先不切词（10 列回看） / 段间隔等分 / 末行 `trackDuration` 与 `C.TIME_UNSET` 兜底 / `Int.MAX_VALUE` 预算下的整行输出 / 空行保留 / 逐字时间戳导致的乱序 / 序号连续；`resolveCueIndex` 的前奏 -1 / 边界切换 / seek 回跳 / 末 cue 保持；`nextCueTimeMs` 的空表 / 首 cue 前 / 逐段推进 / 末 cue / 单调性。剩下的控制器单测需要注入时钟与协程调度器，暂未做。
 8. **`AudioDeviceCallback` 路径未在模拟器验证**：模拟器没有可供连/断的 A2DP 设备。真机或任何蓝牙音频设备（耳机/音箱）都能覆盖这条分支。
 9. **Media3 自带的每 3s 周期位置刷新**（已定案，不动）：`MediaSessionImpl` 在播放/加载中会排一次位置刷新，**默认开启，且与本功能的设置开关无关**——它是框架既有行为，在未改动的上游版本里同样存在。未播放时没有，关闭开关也照旧。详见 §6.3 的定案表与"为什么不做零定时器"。
 10. **（历史）2026-09-15 那轮调研未改动任何 Kotlin 代码**：当轮的 §6.3 定案、门控矩阵与 §11.9 均为源码核实 + 模拟器实测的结论。2026-09-16 的 cue 拆分与提前量**已落地**，见 §6.3 两个新增小节与下面两条。
 11. **提前量的默认值仍是待验证初值**：`UserPreferencesRepository.DEFAULT_CAR_LYRIC_TITLE_LEAD_MS = 500`，唯一依据是下游链路 0.3–1.0 s 这个量级。真机若确认别的值更合适，改这个默认常量即可（只影响从未调过滑杆的设备）；用户在设置里选过的值存在 `car_lyric_title_lead_ms` 里，优先于默认值。**注意默认值只在这一处定义**——控制器里没有常量，它读的是偏好流（`leadMs` 字段初值为 0，即"不提前"，是流首次发射前的安全方向）。
-12. **下游刷新时机仍未实测**：`lead` 要补偿的究竟是"手机发通知 → 车机重绘"的全链路还是其中一段，只有真车能确认。`btsnoop` 能看到 `GetElementAttributes` 的响应时刻，但看不到车机把它画到屏上的时刻，所以**耳朵 + 车机是唯一判据**。此外 `MAX_CHARS_PER_CUE = 10` 也是实机观测值（车机 title 字段宽度），换车可能需要复核。
-13. **中文文案补全**（2026-09-16，独立于车机歌词）：`values-zh-rCN/` 此前缺 `strings_import.xml`（57 条）与 `strings_logs.xml`（12 条）**两个完整文件**，另有 `strings.xml` 35 / `strings_settings.xml` 19 / `strings_components.xml` 10 / `strings_presentation_batch_g.xml` 2 / `strings_screens.xml` 1 条缺失，共 136 条已补齐。**有意保留英文的**：`setcat_language_*` 与 `language_zh_rCN`（`translatable="false"`，语言名要显示各自语言）、`app_name` / `accounts_listenbrainz_title` / `screen_subsonic_dashboard_title` / `*_logo`（品牌）、`lrclib_uri` / `about_link_source_subtitle` / `ai_base_url_placeholder`（URI）、`backup_file_name_format` / `playlist_export_folder_display`（**真实路径与文件名模板，翻译会改变实际落盘位置**）、`ai_api_key_label` / `ai_base_url_label` / `stats_slice_top_1|2_3`（技术术语，且 `API Key` 已被 `ai_error_unauthorized` 引用）。
+12. **下游刷新时机仍未实测**：`lead` 要补偿的究竟是"手机发通知 → 车机重绘"的全链路还是其中一段，只有真车能确认。`btsnoop` 能看到 `GetElementAttributes` 的响应时刻，但看不到车机把它画到屏上的时刻，所以**耳朵 + 车机是唯一判据**。此外 `MAX_COLUMNS_PER_CUE = 30`（= 10 个汉字 = 约 30 个拉丁字母，3 列/汉字）也是实机观测值（车机 title 字段宽度），换车可能需要复核——复核方法就是关掉「拆分长行」看整行是否被截断，或直接调这个常量。
+13. **（2026-09-17）列宽计量与「拆分长行」开关**：旧实现按**字符数**拆（`MAX_CHARS_PER_CUE = 10`），对英文等于每段只发 10 个字母、白白浪费三分之二的标题宽度，一行 40 字母被切成 4 段。现改为按**显示列**（汉字 3 列、其余 1 列、上限 30 列），中文行为不变、英文每段 30 字母；回看距离同步改为 10 列。同轮加入设置项「拆分长行」（默认开）作为逃生口。模拟器端到端已验（§9.5），**未做**车机侧实测：新列宽是否真的正好填满宽度、关闭拆分后该车机是滚动还是截断，只有真车能定。
+14. **控制器 tick 中途断流（未定位，2026-09-17 记录）**：见 §9.5 末尾。模拟器上出现过一次「进程/会话都正常但控制器一条日志都不出」，`force-stop` 后恢复；无法判定根因，也无法判定是否与本次改动相关。真机若复现「歌词标题停住不动」，这是第一个要看的线索。
+15. **（2026-09-17）车机标题「卡住」= 蓝牙进程的 AVRCP「元数据同步」闸门**：现象是车机标题长时间停住、安静 2 秒后跳到当前行。根因不在我方（发布是 fire-and-forget、不等 ack），而在 AOSP 蓝牙的 `MediaPlayerWrapper.trySendMediaUpdate()`：它要求「当前队列项 == 当前元数据」才转发，不满足就撤掉待发的 2 秒重试定时器并 `return`；我们的功能按设计改 Title，于是每次变更都踩中，**变更间隔 < 2 秒就永久饿死**（这也解释了上一版放宽列宽后更容易卡：一行 2 段 ⇒ 间隔正好压到 2 秒以下）。**绕过不需要改蓝牙**：闸门在 `activeQueueItemId == -1` 时短路，而这个值由 media3 决定 ⇒ 在 `LyricTitlePlayer` 上按需摘掉 `COMMAND_GET_TIMELINE` 即可（media3 官方支持的做法，且不掉任何按钮能力）。**代价**：窗口内 media3 的 `MediaController` 只见「当前曲目」（timeline 被 `getCurrentTimelineWithCommandCheck()` 降级），本仓库有 6 处队列读取会静默退化；App 内**歌词显示不受影响**。完整根因、源码坐标、实施方案与验证计划见 **`docs/car-lyrics-avrcp-gate.md`**。**方案尚未落地。**
+16. **中文文案补全**（2026-09-16，独立于车机歌词）：`values-zh-rCN/` 此前缺 `strings_import.xml`（57 条）与 `strings_logs.xml`（12 条）**两个完整文件**，另有 `strings.xml` 35 / `strings_settings.xml` 19 / `strings_components.xml` 10 / `strings_presentation_batch_g.xml` 2 / `strings_screens.xml` 1 条缺失，共 136 条已补齐。**有意保留英文的**：`setcat_language_*` 与 `language_zh_rCN`（`translatable="false"`，语言名要显示各自语言）、`app_name` / `accounts_listenbrainz_title` / `screen_subsonic_dashboard_title` / `*_logo`（品牌）、`lrclib_uri` / `about_link_source_subtitle` / `ai_base_url_placeholder`（URI）、`backup_file_name_format` / `playlist_export_folder_display`（**真实路径与文件名模板，翻译会改变实际落盘位置**）、`ai_api_key_label` / `ai_base_url_label` / `stats_slice_top_1|2_3`（技术术语，且 `API Key` 已被 `ai_error_unauthorized` 引用）。

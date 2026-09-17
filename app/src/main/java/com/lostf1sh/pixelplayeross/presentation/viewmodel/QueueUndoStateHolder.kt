@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.presentation.viewmodel
 
+import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.utils.MediaItemBuilder
@@ -14,9 +15,18 @@ import kotlinx.coroutines.launch
 class QueueUndoStateHolder @Inject constructor() {
     private var queueItemUndoTimerJob: Job? = null
 
+    /**
+     * Removes [songId] from the playing queue, keeping the data needed to put it back.
+     *
+     * @param queueSource player to **read** the queue from — the engine's master player, never
+     *   [mediaController]: while the car lyric title hides the playlist from session consumers, a
+     *   controller sees a single-item queue (`docs/car-lyrics-avrcp-gate.md` §5.2) and no song but
+     *   the current one would be found. Writes still go through the controller.
+     */
     fun removeSongFromQueue(
         scope: CoroutineScope,
         mediaController: MediaController?,
+        queueSource: Player,
         songId: String,
         getUiState: () -> PlayerUiState,
         updateUiState: (((PlayerUiState) -> PlayerUiState) -> Unit),
@@ -24,8 +34,8 @@ class QueueUndoStateHolder @Inject constructor() {
         val controller = mediaController ?: return
         
         var indexToRemove = -1
-        for (i in 0 until controller.mediaItemCount) {
-            if (controller.getMediaItemAt(i).mediaId == songId) {
+        for (i in 0 until queueSource.mediaItemCount) {
+            if (queueSource.getMediaItemAt(i).mediaId == songId) {
                 indexToRemove = i
                 break
             }
@@ -63,6 +73,7 @@ class QueueUndoStateHolder @Inject constructor() {
 
     fun undoRemoveSongFromQueue(
         mediaController: MediaController?,
+        queueSource: Player,
         getUiState: () -> PlayerUiState,
         updateUiState: (((PlayerUiState) -> PlayerUiState) -> Unit),
     ) {
@@ -73,7 +84,7 @@ class QueueUndoStateHolder @Inject constructor() {
 
         mediaController?.let { controller ->
             val mediaItem = MediaItemBuilder.build(song)
-            val insertAt = index.coerceAtMost(controller.mediaItemCount)
+            val insertAt = index.coerceAtMost(queueSource.mediaItemCount)
             controller.addMediaItem(insertAt, mediaItem)
         }
 
