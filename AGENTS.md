@@ -29,7 +29,8 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 - Gradle 9.6.1（wrapper 已改腾讯云镜像）、AGP 9.3.1、Kotlin 2.4.10、KSP 2.3.10、JDK 21（JBR）。
 - compileSdk = targetSdk = 37，minSdk = 30；版本号在 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE`
   （**以该文件为准，本文不抄写具体值** —— 每发一版就变，抄在这里必然过期）。
-- Media3 1.10.1、Room 2.8.4（**数据库 schema 版本以 `PixelPlayerDatabase.kt` 的 `version` 为准，本文不抄写**；
+- Media3 1.11.0（`libs.versions.toml` 的 `media3Session` / `media3Transformer` **保持一致**，不要只升其中一个）、
+  Room 2.8.4（**数据库 schema 版本以 `PixelPlayerDatabase.kt` 的 `version` 为准，本文不抄写**；
   任何实体变更都要把 `version` +1 并新增 migration）、Hilt、OkHttp/Retrofit、TagLib + JAudioTagger 元数据。
 - 依赖仓库为官方 `google()` / `mavenCentral()`（首次构建较慢，无国内镜像）。
 
@@ -168,6 +169,10 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 1. `PlayerViewModel` 型参数**一律不写默认值**（现在全仓 `grep 'PlayerViewModel = hiltViewModel()'` 为 0），
    调用点显式传入，让编译器强制接线。
    `PlaylistViewModel` / `SettingsViewModel` / `EqualizerViewModel` 等的默认值**保留** —— 它们没有清理单例状态的行为。
+   **已知例外（待修）**：`ExternalPlayerActivity.kt` 仍独立持有第二个实例（`by viewModels()`），
+   是上面第 1 条约束的现存违反案例，修复方案见 `docs/implementation-review-0.4.2-critical-verdict.md` §1.3。
+   **注意 owner 协议挡不住冷启顺序**：首个 owner 若恰好是短命 VM，它死亡时 owner 匹配、照样拆 holder ——
+   所以 owner 校验只是纵深防御，**不能替代消除第二 owner**。
 2. **新增屏幕 / 覆盖层要接进传递链**：`AppNavigation` 的 `composable(route)` → `ScreenWrapper` → 目标 composable；
    播放器覆盖层走 `UnifiedPlayerOverlaysLayer.kt` 的 host → `UnifiedPlayerQueueLayer` → `QueueBottomSheet`。
 3. **新增 `@Singleton` StateHolder 照抄 `SearchStateHolder` 的所有权校验**：`initialize(owner, scope)` /
@@ -179,6 +184,12 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 
 ## 关键架构速查
 
+- **听歌统计的唯一驱动方是 `MusicService`，不是 `PlayerViewModel`**（后者只有注入/暴露/`initialize`/`onCleared` 四处引用）：
+  `MusicService` 给 `engine.masterPlayer` 挂 listener → `syncLocalListeningStatsFromPlayer` → `ListeningStatsTracker`
+  → `finalizeCurrentSession` → JSON + Room engagement → 最近播放 UI 与 AI 选歌。**要过滤某类播放，只改这一处即四处同时生效。**
+- **Quick play（外部一次性预览）不计入统计**：标记 `MediaItemBuilder.EXTRA_QUICK_PLAY` 随 MediaItem 流动，
+  在 `syncLocalListeningStatsFromPlayer` 开头拦截。**不要用 `EXTERNAL_EXTRA_FLAG` 代替** —— 它由 media id 前缀反推，
+  MediaStore 索引到的文件 id 是纯数字，该 flag 为 false（而这正是从文件管理器打开的常见情形）。
 - **删除歌曲**：所有 UI 的 `onDeleteFromDevice` 最终都走 `PlayerViewModel.deleteSelectedFromDevice`（批量）/ `deleteFromDevice`（单曲）—— 拦截删除只需改这两处。`removeSongFromLibrary` 是"仅移出曲库、不删文件"。
 - **五星评分**：入口 `SongInfoBottomSheet`（Info/Edit 两页）→ `EditSongSheet`，写**音频文件内嵌标签**（`SongMetadataEditor`，读键 `RATING` / `POPULARIMETER`），不是数据库字段；云端曲目无法写入。
 - **设备能力**：`DeviceCapabilitiesScreen` 展示解码器支持（`supportedCodecs` / `isDecoderAvailable`）。

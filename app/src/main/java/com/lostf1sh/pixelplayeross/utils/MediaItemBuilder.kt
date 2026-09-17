@@ -102,6 +102,19 @@ object MediaItemBuilder {
     const val EXTERNAL_EXTRA_FILE_PATH = EXTERNAL_EXTRA_PREFIX + "FILE_PATH"
     const val EXTERNAL_EXTRA_NAVIDROME_ID = EXTERNAL_EXTRA_PREFIX + "NAVIDROME_ID"
 
+    /**
+     * Marks a media item as belonging to a Quick play session — the throwaway preview opened
+     * via "open with" from a file manager. Such playback must stay out of listening stats,
+     * recently played and AI song sampling, because the song is not part of the user library.
+     *
+     * Read at the single choke point: `MusicService.syncLocalListeningStatsFromPlayer`.
+     *
+     * Note: do not use [EXTERNAL_EXTRA_FLAG] for this. That one is derived from the media id
+     * prefix and stays false whenever MediaStore indexes the file — which is the common case
+     * for locally opened audio.
+     */
+    const val EXTRA_QUICK_PLAY = "com.lostf1sh.pixelplayeross.QUICK_PLAY"
+
     fun build(song: Song): MediaItem {
         return MediaItem.Builder()
             .setMediaId(song.id)

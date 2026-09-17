@@ -349,6 +349,18 @@ class MusicService : MediaSessionService() {
         forceNewSession: Boolean = false
     ) {
         val mediaItem = player.currentMediaItem
+
+        // Quick play previews songs that deliberately stay outside the user library, so they
+        // must not reach listening stats, recently played or AI song sampling. This is the only
+        // choke point feeding ListeningStatsTracker, hence the single check here.
+        // See MediaItemBuilder.EXTRA_QUICK_PLAY.
+        if (mediaItem?.mediaMetadata?.extras
+                ?.getBoolean(MediaItemBuilder.EXTRA_QUICK_PLAY, false) == true
+        ) {
+            listeningStatsTracker.onPlaybackStopped()
+            return
+        }
+
         val songId = mediaItem?.mediaId?.takeIf { it.isNotBlank() }
         if (songId == null) {
             if (

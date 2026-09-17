@@ -2917,7 +2917,16 @@ class PlayerViewModel @Inject constructor(
             _sheetState.value = PlayerSheetState.COLLAPSED
             _isSheetVisible.value = true
 
-            internalPlaySongs(queueSongs, externalResult.song, context.getString(R.string.external_queue_label), null)
+            // Quick play: the song is deliberately kept out of the library, so it must also stay
+            // out of listening stats / recently played / AI sampling. The flag travels on every
+            // queue item and is honoured in MusicService.syncLocalListeningStatsFromPlayer.
+            internalPlaySongs(
+                songsToPlay = queueSongs,
+                startSong = externalResult.song,
+                queueName = context.getString(R.string.external_queue_label),
+                playlistId = null,
+                quickPlay = true
+            )
             showPlayer()
         }
     }
@@ -2973,7 +2982,8 @@ class PlayerViewModel @Inject constructor(
     private suspend fun preparePlaybackQueueSegments(
         songsToPlay: List<Song>,
         startSongId: String,
-        playlistId: String?
+        playlistId: String?,
+        quickPlay: Boolean = false
     ): PreparedPlaybackQueueSegments = withContext(Dispatchers.Default) {
         val currentIndex = songsToPlay
             .indexOfFirst { it.id == startSongId }
@@ -2981,11 +2991,11 @@ class PlayerViewModel @Inject constructor(
             ?: 0
 
         val beforeCurrent = List(currentIndex) { index ->
-            buildPlaybackMediaItem(songsToPlay[index], playlistId)
+            buildPlaybackMediaItem(songsToPlay[index], playlistId, quickPlay)
         }
         val afterStartIndex = currentIndex + 1
         val afterCurrent = List((songsToPlay.size - afterStartIndex).coerceAtLeast(0)) { offset ->
-            buildPlaybackMediaItem(songsToPlay[afterStartIndex + offset], playlistId)
+            buildPlaybackMediaItem(songsToPlay[afterStartIndex + offset], playlistId, quickPlay)
         }
 
         PreparedPlaybackQueueSegments(
@@ -3035,7 +3045,7 @@ class PlayerViewModel @Inject constructor(
 
 
 
-    private suspend fun internalPlaySongs(songsToPlay: List<Song>, startSong: Song, queueName: String = "None", playlistId: String? = null) {
+    private suspend fun internalPlaySongs(songsToPlay: List<Song>, startSong: Song, queueName: String = "None", playlistId: String? = null, quickPlay: Boolean = false) {
         if (songsToPlay.isEmpty()) {
             clearPreparingSongIfMatching()
             return
@@ -3064,7 +3074,7 @@ class PlayerViewModel @Inject constructor(
         }
         _isSheetVisible.value = true
 
-        val startMediaItem = buildResolvedPlaybackMediaItem(effectiveStartSong, playlistId)
+        val startMediaItem = buildResolvedPlaybackMediaItem(effectiveStartSong, playlistId, quickPlay)
 
         val playSongsAction = {
             dualPlayerEngine.cancelNext()
@@ -3081,7 +3091,8 @@ class PlayerViewModel @Inject constructor(
                     val preparedSegments = preparePlaybackQueueSegments(
                         songsToPlay = songsToPlay,
                         startSongId = effectiveStartSong.id,
-                        playlistId = playlistId
+                        playlistId = playlistId,
+                        quickPlay = quickPlay
                     )
                     withContext(Dispatchers.Main.immediate) {
                         attachPreparedQueueSegmentsIfCurrent(
@@ -3105,8 +3116,9 @@ class PlayerViewModel @Inject constructor(
     private suspend fun buildResolvedPlaybackMediaItem(
         song: Song,
         playlistId: String? = null,
+        quickPlay: Boolean = false,
     ): MediaItem {
-        val mediaItem = buildPlaybackMediaItem(song, playlistId)
+        val mediaItem = buildPlaybackMediaItem(song, playlistId, quickPlay)
         return dualPlayerEngine.resolveMediaItem(mediaItem)
     }
 
@@ -3278,14 +3290,19 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    private fun buildPlaybackMediaItem(song: Song, playlistId: String? = null): MediaItem {
+    private fun buildPlaybackMediaItem(song: Song, playlistId: String? = null, quickPlay: Boolean = false): MediaItem {
         val baseItem = MediaItemBuilder.build(song)
-        if (playlistId == null) {
+        if (playlistId == null && !quickPlay) {
             return baseItem
         }
 
         val mergedExtras = Bundle(baseItem.mediaMetadata.extras ?: Bundle()).apply {
-            putString("playlistId", playlistId)
+            if (playlistId != null) {
+                putString("playlistId", playlistId)
+            }
+            if (quickPlay) {
+                putBoolean(MediaItemBuilder.EXTRA_QUICK_PLAY, true)
+            }
         }
 
         return baseItem.buildUpon()
