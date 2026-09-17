@@ -11,10 +11,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -270,21 +272,24 @@ fun BottomToggleRow(
                             onRatingSelected?.invoke(stars)
                             ratingExpanded = false
                         },
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        starSize = 36.dp,
-                        selectedTint = pillContentColor,
-                        unselectedTint = pillContentColor.copy(alpha = 0.45f)
-                    )
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = stringResource(R.string.player_rating_collapse_cd),
-                        tint = pillContentColor,
+                        // Centered when the six capped cells don't fill the pill's width.
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .clickable { ratingExpanded = false }
-                            .padding(6.dp)
+                            .weight(1f)
+                            .wrapContentWidth(Alignment.CenterHorizontally),
+                        selectedTint = pillContentColor,
+                        unselectedTint = pillContentColor.copy(alpha = 0.45f),
+                        trailingContent = {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = stringResource(R.string.player_rating_collapse_cd),
+                                tint = pillContentColor,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .clickable { ratingExpanded = false }
+                                    .padding(4.dp)
+                            )
+                        }
                     )
                 }
             }

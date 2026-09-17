@@ -29,6 +29,7 @@ process is visible while it thinks and can be read back from a saved mix afterwa
 - Listening stats are computed on demand and cached per calendar period. Opening the page no longer rewrites and fsyncs the whole playback history, nor runs three full aggregations, which is what made audio stutter over Bluetooth while entering it. Finalizing a session remains the single place the file is written.
 
 ### Fixed
+- The expanded rating row no longer crushes its fifth star on narrow screens: the five stars and the close button are laid out as equal-width square cells that shrink uniformly when width runs out, with tighter 2 dp gaps, and the close button now occupies one of the cells so every control keeps the same tap target.
 - AI generation failed with network unreachable whenever thinking was enabled. The AI client was built from the app-wide HTTP client and only raised its call timeout, so the 8 second read timeout survived every request, and a model that stays silent while it thinks was cut off by it and classified as a network failure even though the request had been reaching the provider all along. Streaming keeps the connection busy, so the misclassification cannot happen any more.
 - Deleting an AI playlist crashed its confirmation dialog: the title passed a plurals id to stringResource(), which resolves ids through getString() and was guaranteed to throw.
 - Deleting a playlist left its song rows behind, because that table declares no foreign key to playlists. Both rows are now deleted in one transaction, and the songs themselves are untouched.
