@@ -1,4 +1,3 @@
-import java.util.Properties
 import javax.inject.Inject
 import com.android.build.api.variant.FilterConfiguration
 import org.gradle.api.DefaultTask
@@ -45,33 +44,26 @@ abstract class CopyAssetFile : DefaultTask() {
     }
 }
 
-// Release signing credentials are read from keystore.properties when it exists, and fall
-// back to the KEY_* environment variables otherwise (see AGENTS.md > 签名与发布). The env
-// path keeps plaintext passwords off disk entirely. providers.environmentVariable() is used
-// instead of System.getenv() so the values are declared configuration-cache inputs.
-val keystoreProperties = Properties().apply {
-    val propFile = rootProject.file("keystore.properties")
-    if (propFile.exists()) {
-        propFile.inputStream().use { load(it) }
-    }
+// Release signing credentials come from the KEY_* environment variables, and from nowhere else
+// (see AGENTS.md > 签名与发布). Refusing to read a keystore.properties file is the point: no
+// plaintext password can be picked up off the working tree on any machine, this one or CI, and
+// nothing here is an undeclared build input. providers.environmentVariable() is used instead of
+// System.getenv() so the values stay configuration-cache inputs.
+val signingValue: (String) -> String? = { envName ->
+    providers.environmentVariable(envName).orNull?.takeIf { it.isNotBlank() }
 }
 
-val signingValue: (String, String) -> String? = { propertyKey, envName ->
-    keystoreProperties.getProperty(propertyKey)?.takeIf { it.isNotBlank() }
-        ?: providers.environmentVariable(envName).orNull?.takeIf { it.isNotBlank() }
-}
-
-val releaseSigningStoreFile = rootProject.file(
-    signingValue("storeFile", "KEY_STORE_LOCATION") ?: "vz-pixelplay.jks"
-)
-val releaseSigningStorePassword = signingValue("storePassword", "KEY_STORE_PASSWORD")
-val releaseSigningKeyAlias = signingValue("keyAlias", "KEY_ALIAS")
-val releaseSigningKeyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+// null when KEY_STORE_LOCATION is unset, which is what leaves `hasReleaseSigningConfig` false
+// and yields an unsigned release APK instead of a failed build.
+val releaseSigningStoreFile = signingValue("KEY_STORE_LOCATION")?.let { rootProject.file(it) }
+val releaseSigningStorePassword = signingValue("KEY_STORE_PASSWORD")
+val releaseSigningKeyAlias = signingValue("KEY_ALIAS")
+val releaseSigningKeyPassword = signingValue("KEY_PASSWORD")
 val disableReleaseSigning = providers.gradleProperty("pixelplayer.disableReleaseSigning")
     .getOrElse("false")
     .toBoolean()
 val hasReleaseSigningConfig = !disableReleaseSigning &&
-    releaseSigningStoreFile.isFile &&
+    releaseSigningStoreFile?.isFile == true &&
     releaseSigningStorePassword != null &&
     releaseSigningKeyAlias != null &&
     releaseSigningKeyPassword != null
@@ -145,7 +137,7 @@ android {
     signingConfigs {
         if (hasReleaseSigningConfig) {
             create("release") {
-                storeFile = releaseSigningStoreFile
+                storeFile = checkNotNull(releaseSigningStoreFile)
                 storePassword = checkNotNull(releaseSigningStorePassword)
                 keyAlias = checkNotNull(releaseSigningKeyAlias)
                 keyPassword = checkNotNull(releaseSigningKeyPassword)

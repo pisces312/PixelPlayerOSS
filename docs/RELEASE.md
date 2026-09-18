@@ -1,6 +1,9 @@
 # Release Checklist
 
-PixelPlayerOSS releases are shipped from `main` after the release candidate passes local checks and a basic device smoke test.
+PixelPlayerOSS releases are tagged from `main` — `main` is the release starting point, not the
+only branch development happens on. Feature branches are merged into `main` before a release
+is cut, otherwise the tag would miss their work. Every release candidate then passes the local
+checks below and a basic device smoke test.
 
 ## Versioning
 
@@ -37,20 +40,28 @@ JAVA_HOME=/usr/lib/jvm/java-21-openjdk ./gradlew :app:assembleRelease -Ppixelpla
 
 ## Signing
 
-Release signing is driven by an untracked `keystore.properties` file at the repository root.
+Release signing is driven by `KEY_*` environment variables and nothing else. No
+`keystore.properties` file is read, so no plaintext password ever has to touch the disk:
 
-Supported keys:
-
-```properties
-storeFile=/absolute/or/repo-relative/path/to/release.jks
-storePassword=...
-keyAlias=...
-keyPassword=...
+```sh
+export KEY_STORE_LOCATION=/absolute/path/to/release.jks
+export KEY_STORE_PASSWORD=...
+export KEY_ALIAS=...
+export KEY_PASSWORD=...
 ```
 
-`storeFile` is optional when the release keystore is available as `vz-pixelplay.jks` at the repository root. `storePassword`, `keyAlias`, and `keyPassword` are required for signing. If signing properties or the keystore file are missing, release builds are unsigned. CI workflows create temporary CI signing keys for artifacts; those are not official release keys.
+`KEY_STORE_LOCATION` is resolved against the repository root when it is relative. If any of
+the four is unset, or the keystore file does not exist, release builds come out **unsigned
+rather than failing** — always confirm with
+`apksigner verify --print-certs -v <apk>`. There is no fallback to a properties file, and no
+keystore is ever committed.
 
-For F-Droid-compatible unsigned verification builds, pass `-Ppixelplayer.disableReleaseSigning=true` even when local signing files exist.
+CI does not sign anything in this fork: the build workflows in `.github/workflows/` are kept
+disabled and have never run here, so they are not a reference for how signing works — see the
+`CI` note under "签名与发布" in `AGENTS.md`. Releasing is a local build followed by a local
+`gh release create`.
+
+For F-Droid-compatible unsigned verification builds, pass `-Ppixelplayer.disableReleaseSigning=true` even when the environment variables are set.
 
 ## Device Smoke Test
 
@@ -66,7 +77,7 @@ Install the release candidate and verify:
 
 ## Publishing
 
-1. Ensure `main` is clean and pushed.
+1. Merge the feature branch being released into `main`, then ensure `main` is clean and pushed.
 2. Create a tag: `git tag v<APP_VERSION_NAME>`.
 3. Push the tag: `git push origin v<APP_VERSION_NAME>`.
 4. Create a GitHub release from the tag.

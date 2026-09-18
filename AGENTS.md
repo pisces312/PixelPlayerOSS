@@ -18,21 +18,24 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 
 ## 分支
 
-- `main`：本 fork 唯一的开发与发布分支。仓库只有 `pisces312` 一名维护者，
-  新功能**直接提交到 `main`**，不要求先开功能分支（2026-09-11 起取代早先
-  「`main` 不日常开发、一律经 `pisces/port` 中转」的做法）。每功能一个 commit，英文 message。
-- `pisces/port`：遗留的移植集成分支，提交已全部并入 `main`（`main` 是它的直接后代）。
-  仍可用于长期并行开发，但不再是必需的中转站。
+- `main`：**不是唯一的开发分支，而是发版起点** —— release 一般从 `main` 打 tag 构建。
+  日常开发可以直接提交到 `main`，也可以开特性分支，开不开按需决定（2026-09-11 起不再要求
+  经 `pisces/port` 中转）。每功能一个 commit，英文 message。
+- 特性分支上的改动**发版前要先并回 `main`**，否则从 `main` 打出的 tag 会缺内容。
 
 ## 技术栈与版本
 
-- Gradle 9.6.1（wrapper 已改腾讯云镜像）、AGP 9.3.1、Kotlin 2.4.10、KSP 2.3.10、JDK 21（JBR）。
+- Gradle 9.6.1（wrapper 已改腾讯云镜像）、AGP 9.4.0、Kotlin 2.4.20、KSP 2.3.12、JDK 21（JBR）。
 - compileSdk = targetSdk = 37，minSdk = 30；版本号在 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE`
   （**以该文件为准，本文不抄写具体值** —— 每发一版就变，抄在这里必然过期）。
 - Media3 1.11.0（`libs.versions.toml` 的 `media3Session` / `media3Transformer` **保持一致**，不要只升其中一个）、
-  Room 2.8.4（**数据库 schema 版本以 `PixelPlayerDatabase.kt` 的 `version` 为准，本文不抄写**；
+  Room 2.8.5（**数据库 schema 版本以 `PixelPlayerDatabase.kt` 的 `version` 为准，本文不抄写**；
   任何实体变更都要把 `version` +1 并新增 migration）、Hilt、OkHttp/Retrofit、TagLib + JAudioTagger 元数据。
 - 依赖仓库为官方 `google()` / `mavenCentral()`（首次构建较慢，无国内镜像）。
+- **Compose 栈由 `material3` 锚定**：它当前钉在 `1.5.0-alpha27`。升它的 alpha 号会经传递依赖
+  拖动整条 Compose 栈（`alpha28` 会把栈从 `1.12.1` stable 顶进 `1.13.0-alpha01`），
+  而 `composeBom` 与显式声明的 `composeUi` / `foundation` / `animation` **取较高者**、
+  必须同批改。动之前先读 `docs/dependency-upgrade-2026-09.md` §9 / §10。
 
 ## 目标设备与屏幕尺寸（UI 布局前提）
 
@@ -90,7 +93,8 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
   属既有测试设计问题，与构建配置无关。
 - **APK 命名**：`pixelplayeross-<abi>-<APP_VERSION_NAME>-<buildtype>.apk`（`androidComponents.onVariants` 设置 `outputFileName`），
   例 `pixelplayeross-arm64-v8a-0.3.0-debug.apk`。改命名规则改 `app/build.gradle.kts`。
-- 签名走 `keystore.properties`（或 `pixelplayer.disableReleaseSigning=true` 跳过），勿提交密钥。详见下方「签名与发布」。
+- 签名**只读 `KEY_*` 环境变量**（或 `pixelplayer.disableReleaseSigning=true` 跳过）；
+  仓库里没有、也不该有任何 keystore 文件。详见下方「签名与发布」。
 - `GRADLE_USER_HOME=D:\dev\.gradle`；wrapper 的 Gradle 发行版走腾讯云镜像。
 
 ## 签名与发布（自用 fork）
@@ -105,30 +109,37 @@ PixelPlayerOSS — Android 音乐播放器（100% Kotlin，Jetpack Compose + Mat
 | `KEY_ALIAS` | 密钥别名（`pisces312`） |
 | `KEY_PASSWORD` | 密钥口令 |
 
-`app/build.gradle.kts` 的签名块优先读仓库根的 `keystore.properties`（已 gitignore、不入库），
-**文件不存在时回退到上表的环境变量**（走 `providers.environmentVariable(...)`，配置缓存可跟踪）。
-因此本机发版**不需要在任何文件里落盘口令**，环境变量在就能直接构建：
+`app/build.gradle.kts` 的签名块**只读上表的环境变量**（走 `providers.environmentVariable(...)`，
+是声明过的配置缓存输入），**没有任何文件读取路径** —— `KEY_STORE_LOCATION` 未设置时
+`hasReleaseSigningConfig` 为 false，产物是未签名 APK 而不是构建失败。因此本机发版
+**根本不涉及落盘口令**，环境变量在就能直接构建：
 
 ```bash
-./gradlew :app:assembleRelease --no-configuration-cache
+./gradlew :app:assembleRelease
 ```
 
-只有在环境变量拿不到、又必须用文件时才生成 `keystore.properties`（注意 `storeFile` 必须正斜杠）：
+配置缓存是开启的（`gradle.properties` 的 `org.gradle.configuration-cache=true`）。环境变量路径
+已正确声明，**不需要 `--no-configuration-cache`** —— 2026-09-18 之前之所以要加这个 flag，
+是为了绕开 `keystore.properties`（`Properties().load(File)`）这个未声明输入，该读取路径已删除。
 
-```bash
-STORE_FWD=$(printf '%s' "$KEY_STORE_LOCATION" | tr '\\' '/')
-printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-  "$STORE_FWD" "$KEY_STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > keystore.properties
-```
+**`keystore.properties` 和 `.jks` 都不该出现在仓库里**：`.gitignore` 已覆盖，实际也不存在。
+看到它们说明环境变量没生效，别当成"缺签名文件"去补。
 
-四个坑（都踩过）：
+### CI：本 fork 保持禁用（2026-09-18 定）
 
-- **`storeFile` 必须正斜杠**（写进 `keystore.properties` 时）：`Properties.load()` 把 `\` 当转义符，
-  `D:\a\b` 解析成 `D:ab`，路径失效 → `hasReleaseSigningConfig` 为 false → **BUILD SUCCESSFUL
-  但 APK 完全没签名**。只有 `tr '\\' '/'` 在本机可靠（bash 的 `${VAR//\\//}` 与 `sed` 都会漏转）。
-  走环境变量回退时无此问题。
-- **用 `keystore.properties` 时改了它必须 `--no-configuration-cache` 重跑**：`Properties().load(File)`
-  是未声明输入，配置缓存不会跟踪其变化，会沿用旧的签名判定。环境变量路径已用 `providers` 声明，无此坑。
+`.github/workflows/` 的 `nightly-apk.yml` / `pr-build.yml` 沿用上游，**在本 fork 一直禁用、从未跑过**
+（fork 默认不启用 schedule，`gh api repos/pisces312/PixelPlayerOSS/actions/runs` → `total_count=0`）。
+**继续保持禁用，不要为它们做适配**；它们另有三处与本 fork 不符，真要启用得先补齐：
+
+1. `runs-on: blacksmith-4vcpu-ubuntu-2404` —— 本 fork 没有这个 runner（`pr-build.yml` 即因此从未成功）；
+2. 期望产物 `app-arm64-v8a-release.apk` —— 本 fork 的 `outputFileName` 是 `pixelplayeross-<abi>-<版本>-<buildtype>.apk`；
+3. 签名凭据落盘成 `keystore.properties` —— 该读取路径已删除，需改成写 `$GITHUB_ENV` 的 `KEY_*`。
+
+因此**签名机制的真相只有 `app/build.gradle.kts` + `KEY_*` 环境变量一处**：别照 workflow 反推本机怎么签，
+也别拿 CI 的运行状态判断签名是否生效（本 fork 只有本地发版这一条路）。
+
+两个坑：
+
 - **构建成功 ≠ 已签名**，唯一可信判据是
   `apksigner verify --print-certs -v <apk>` → `Verifies` + `v2 scheme: true` + `CN=pisces312`
   （只有 v2、没有 v1 是正常的）；`aapt2 dump badging` 核对 `versionName` / `versionCode` / `native-code`。
