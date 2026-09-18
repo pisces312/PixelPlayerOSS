@@ -296,7 +296,14 @@ session 是通过 `Player.Listener.onAvailableCommandsChanged` 得知命令集�
 
 **顺序**：在 `publishMetadataOverride` 里**先**摘/恢复命令、**再**派发 metadata 事件。先摘命令时，session 重算发出的那次 `sendMediaUpdate` 因数据未变会被蓝牙的 `newData.equals(mCurrentData)` 去重掉（`MediaPlayerWrapper:369-377`），随后 metadata 事件到达时判据已是同步 ⇒ 一次就发到位，不留中间态。
 
-### 6.4 代码骨架（设计稿，尚未落地）
+### 6.4 代码骨架（**已落地** `77e0e196`）
+
+实际实现（`data/service/player/LyricTitlePlayer.kt`）与下面骨架一致，两点差异记录在案：
+
+1. 实际**同时**覆盖了 `isCommandAvailable(command)`——骨架只列了 `getAvailableCommands()`。`ForwardingPlayer` 的默认实现是 `super.isCommandAvailable(...)`，不覆盖就会让「命令集里没有、单查却说有」的答案并存（`LyricTitlePlayer.kt:79-91` 的注释即为此）。
+2. 实际是**先** `setTimelineHidden(true)` **再**取 `mediaMetadata` 派发（`publishMetadataOverride` 里判断与顺序同骨架），即骨架已经写明的「先命令，后 metadata」——这里只是确认落地时没有走反。
+
+字段名落地为 `timelineHidden`（骨架里叫 `queueHidden`），语义相同。验证结果见 `docs/avrcp-emulator-verification.md` §4。
 
 ```kotlin
 // LyricTitlePlayer.kt
