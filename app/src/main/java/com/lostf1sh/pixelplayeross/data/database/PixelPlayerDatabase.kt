@@ -29,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AiCacheEntity::class,
         AiUsageEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 abstract class PixelPlayerDatabase : RoomDatabase() {

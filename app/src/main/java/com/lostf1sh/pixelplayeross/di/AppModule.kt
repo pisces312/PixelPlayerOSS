@@ -36,6 +36,7 @@ import com.lostf1sh.pixelplayeross.data.database.MIGRATION_7_8
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_8_9
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_9_10
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_10_11
+import com.lostf1sh.pixelplayeross.data.database.MIGRATION_11_12
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.OfflineTrackDao
 import com.lostf1sh.pixelplayeross.data.database.PixelPlayerDatabase
@@ -151,6 +152,7 @@ object AppModule {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
+                MIGRATION_11_12,
             )
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
 

@@ -28,6 +28,12 @@ data class AudioMetadata(
     val trackNumber: Int?,
     val discNumber: Int?,
     val year: Int?,
+    /**
+     * Full release date resolved from the tag, standardized as `yyyy-MM-dd`.
+     * Null when the tag carries no year-month-day combination (year alone is NOT enough;
+     * callers derive the `yyyy-01-01` fallback themselves via [deriveReleaseDateValue]).
+     */
+    val releaseDate: String? = null,
     val bitrate: Int?,
     val sampleRate: Int?,
     val artwork: AudioMetadataArtwork?,
@@ -63,6 +69,34 @@ data class AudioMetadataArtwork(
     val bytes: ByteArray,
     val mimeType: String?
 )
+
+/**
+ * Parses a raw date tag value (ID3v2.4 TDRC / Vorbis DATE / MP4 ©day, e.g. `1998`, `1998-05`,
+ * `1998-05-12`, `1998-05-12T10:30:00`) into a standardized `yyyy-MM-dd` string.
+ *
+ * Returns null unless year, month AND day are all present and valid — a year-only tag is not a
+ * release date; callers derive the `yyyy-01-01` fallback from [AudioMetadata.year] instead.
+ */
+internal fun parseReleaseDateTag(raw: String?): String? {
+    val value = raw?.trim().takeUnless { it.isNullOrEmpty() } ?: return null
+    val match = Regex("^(\\d{4})\\D(\\d{1,2})\\D(\\d{1,2})").find(value) ?: return null
+    val (year, month, day) = match.destructured
+    val y = year.toInt()
+    val m = month.toInt()
+    val d = day.toInt()
+    if (m !in 1..12 || d !in 1..31) return null
+    return "%04d-%02d-%02d".format(y, m, d)
+}
+
+/**
+ * Resolves the final `songs.release_date` value from a full tag date and/or a release year.
+ * Year-only tags fall back to January 1st of that year (user decision #2); files with neither
+ * get the `'0'` sentinel meaning "read once, no date information available".
+ */
+internal fun deriveReleaseDateValue(fullDate: String?, year: Int?): String {
+    parseReleaseDateTag(fullDate)?.let { return it }
+    return if (year != null && year > 0) "%04d-01-01".format(year) else "0"
+}
 
 object AudioMetadataReader {
 
@@ -122,6 +156,10 @@ object AudioMetadataReader {
                 val discNumber = discString?.substringBefore('/')?.toIntOrNull()
                 val year = propertyMap["DATE"]?.firstOrNull()?.takeIf { it.isNotBlank() }?.take(4)?.toIntOrNull()
                     ?: propertyMap["YEAR"]?.firstOrNull()?.takeIf { it.isNotBlank() }?.toIntOrNull()
+                val releaseDate = parseReleaseDateTag(
+                    propertyMap["DATE"]?.firstOrNull()?.takeIf { it.isNotBlank() }
+                        ?: propertyMap["YEAR"]?.firstOrNull()?.takeIf { it.isNotBlank() }
+                )
                 val replayGainTrackGainDb = extractReplayGainDb(
                     propertyMap = propertyMap,
                     keys = listOf("REPLAYGAIN_TRACK_GAIN", "REPLAYGAIN_TRACK_GAIN_DB", "R128_TRACK_GAIN")
@@ -182,6 +220,7 @@ object AudioMetadataReader {
                     trackNumber = trackNumber ?: fallback?.trackNumber,
                     discNumber = discNumber ?: fallback?.discNumber,
                     year = year ?: fallback?.year,
+                    releaseDate = releaseDate ?: fallback?.releaseDate,
                     bitrate = bitrate ?: fallback?.bitrate,
                     sampleRate = sampleRate ?: fallback?.sampleRate,
                     artwork = artwork ?: fallback?.artwork,
@@ -236,6 +275,9 @@ object AudioMetadataReader {
                 ?.substringBefore('/')?.toIntOrNull()
             val year = tag?.getFirst(FieldKey.YEAR)?.takeIf { it.isNotBlank() }
                 ?.take(4)?.toIntOrNull()
+            val releaseDate = parseReleaseDateTag(
+                tag?.getFirst(FieldKey.YEAR)?.takeIf { it.isNotBlank() }
+            )
             val rating = if (readCustomMetadata) {
                 val actualTagFamily = when (tag) {
                     is AbstractID3v2Tag, is WavTag -> MetadataTagFamily.ID3
@@ -280,6 +322,7 @@ object AudioMetadataReader {
                 trackNumber = trackNumber,
                 discNumber = discNumber,
                 year = year,
+                releaseDate = releaseDate,
                 bitrate = bitrate,
                 sampleRate = sampleRate,
                 artwork = artwork,

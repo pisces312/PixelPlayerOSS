@@ -299,3 +299,17 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         db.addColumnIfMissing("playlists", "ai_thinking", "`ai_thinking` TEXT")
     }
 }
+
+/**
+ * v11 -> v12: full release date for the Years tab "by release date" sort.
+ *
+ * `songs.release_date` is standardized `yyyy-MM-dd` (year-only tags become `yyyy-01-01`).
+ * Three states: NULL = file never read (backfill pending), "0" = read once but no date info,
+ * otherwise the date itself. MediaStore only exposes the year, so existing rows start as NULL
+ * and the next sync's backfill pass resolves them from file tags.
+ */
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.addColumnIfMissing("songs", "release_date", "`release_date` TEXT")
+    }
+}

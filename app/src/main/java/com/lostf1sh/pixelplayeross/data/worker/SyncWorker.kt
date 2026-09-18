@@ -24,6 +24,7 @@ import com.lostf1sh.pixelplayeross.data.database.serializeArtistRefs
 import com.lostf1sh.pixelplayeross.data.diagnostics.AdvancedPerformanceDiagnostics
 import com.lostf1sh.pixelplayeross.data.model.ArtistRef
 import com.lostf1sh.pixelplayeross.data.media.AudioMetadataReader
+import com.lostf1sh.pixelplayeross.data.media.deriveReleaseDateValue
 import com.lostf1sh.pixelplayeross.data.media.normalizeArtistMetadataValues
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
@@ -340,6 +341,13 @@ constructor(
                             crossRefs = emptyList()
                         )
                     }
+
+                    // Backfill pass (docs/year-release-date-sort-plan.md §4.3): resolve
+                    // release_date for songs whose file was never read. Read-once semantics:
+                    // every resolved row gets a date, the year fallback, or the "0" sentinel,
+                    // so subsequent syncs never re-read the same file header.
+                    runCatching { backfillReleaseDates() }
+                        .onFailure { Timber.tag(TAG).w(it, "Release-date backfill pass failed") }
 
                     if (rescanRequired) {
                         userPreferencesRepository.clearArtistSettingsRescanRequired()
@@ -1012,6 +1020,7 @@ constructor(
                                     genre = if (localSong.genreUserEdited) localSong.genre else scannedMediaStoreSong.entity.genre,
                                     trackNumber = if (localSong.trackNumber != 0) localSong.trackNumber else scannedMediaStoreSong.entity.trackNumber,
                                     discNumber = localSong.discNumber ?: scannedMediaStoreSong.entity.discNumber,
+                                    releaseDate = scannedMediaStoreSong.entity.releaseDate ?: localSong.releaseDate,
                                     albumArtUriString = scannedMediaStoreSong.entity.albumArtUriString,
                                     titleUserEdited = localSong.titleUserEdited,
                                     artistUserEdited = localSong.artistUserEdited,
@@ -1081,6 +1090,10 @@ constructor(
         var trackNumber = raw.trackNumber
         var discNumber = raw.discNumber
         var year = raw.year
+        // Candidate release date from this scan. Stays null when the file was not actually
+        // read (augment skipped / read failed) — the caller then keeps the existing DB value,
+        // and the backfill pass resolves NULL rows later. Never clobber with null here.
+        var releaseDate: String? = null
         var genre: String? = genreMap[raw.id] ?: raw.genre
 
         val shouldAugmentMetadata = shouldReadEmbeddedMetadata(
@@ -1115,6 +1128,9 @@ constructor(
                         if (meta.trackNumber != null) trackNumber = meta.trackNumber
                         if (meta.discNumber != null) discNumber = meta.discNumber
                         if (meta.year != null) year = meta.year
+                        // File was read successfully: always leave a trace (date / year fallback
+                        // / "0" sentinel) so the backfill query never re-reads this file.
+                        releaseDate = deriveReleaseDateValue(meta.releaseDate, meta.year ?: raw.year)
                     }
                 } catch (e: Exception) {
                     Timber.tag(TAG).w(e, "Failed to read metadata via TagLib for ${raw.filePath}")
@@ -1140,6 +1156,7 @@ constructor(
                 trackNumber = trackNumber,
                 discNumber = discNumber,
                 year = year,
+                releaseDate = releaseDate,
                 dateAdded =
                         raw.dateAdded.let { seconds ->
                             if (seconds > 0) TimeUnit.SECONDS.toMillis(seconds)
@@ -1154,6 +1171,67 @@ constructor(
             ),
             artistValues = artistValues
         )
+    }
+
+    /**
+     * Resolves `release_date` for songs whose file has never been read (column still NULL).
+     *
+     * Read-once semantics: each processed row ends up with a standardized date, the
+     * `yyyy-01-01` year fallback, or the "0" sentinel (no date info / file missing / read
+     * failure), so the backfill query stops matching it on subsequent syncs. Files that
+     * change later re-enter via date_modified -> isSongUnchanged -> metadata augment.
+     */
+    private suspend fun backfillReleaseDates() {
+        val stubs = musicDao.getSongsMissingReleaseDate()
+        if (stubs.isEmpty()) return
+
+        Timber.tag(TAG).i("Release-date backfill: resolving ${stubs.size} songs from file tags...")
+        var resolvedCount = 0
+        stubs.chunked(500).forEach { batch ->
+            // MediaStore YEAR covers files whose tag carries neither a full date nor a year.
+            val msYearById = queryMediaStoreYears(batch.map { it.id })
+            batch.forEach { stub ->
+                val msYear = msYearById[stub.id]
+                val value = if (msYear == null && !java.io.File(stub.filePath).exists()) {
+                    "0"
+                } else {
+                    try {
+                        val meta = AudioMetadataReader.read(java.io.File(stub.filePath), readArtwork = false)
+                        deriveReleaseDateValue(meta?.releaseDate, meta?.year ?: msYear)
+                    } catch (e: Exception) {
+                        Timber.tag(TAG).w(e, "Release-date backfill failed for ${stub.filePath}")
+                        msYear?.let { if (it > 0) "%04d-01-01".format(it) else null } ?: "0"
+                    }
+                }
+                musicDao.updateSongReleaseDate(stub.id, value)
+                resolvedCount++
+            }
+        }
+        Timber.tag(TAG).i("Release-date backfill finished: resolved=$resolvedCount/${stubs.size}")
+    }
+
+    private fun queryMediaStoreYears(ids: List<Long>): Map<Long, Int> {
+        if (ids.isEmpty()) return emptyMap()
+        val result = mutableMapOf<Long, Int>()
+        try {
+            contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.YEAR),
+                "${MediaStore.Audio.Media._ID} IN (${ids.joinToString(",")})",
+                null,
+                null
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
+                while (cursor.moveToNext()) {
+                    val year = cursor.getInt(yearCol)
+                    if (year > 0) result[cursor.getLong(idCol)] = year
+                }
+            }
+        } catch (e: Exception) {
+            Timber.tag(TAG).w(e, "Release-date backfill: MediaStore year query failed")
+        }
+        return result
     }
 
     /**

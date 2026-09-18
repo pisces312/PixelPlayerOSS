@@ -30,6 +30,11 @@ data class Song(
     val trackNumber: Int = 0,
     val discNumber: Int? = null,
     val year: Int = 0,
+    /**
+     * Release date, standardized `yyyy-MM-dd` (year-only tags become `yyyy-01-01`).
+     * NULL = file never read; "0" = read once, no date information available.
+     */
+    val releaseDate: String? = null,
     val dateAdded: Long = 0,
     val dateModified: Long = 0,
     val mimeType: String?,

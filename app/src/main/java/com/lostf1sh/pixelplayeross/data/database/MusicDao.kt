@@ -1651,6 +1651,12 @@ interface MusicDao {
             CASE WHEN :sortOrder = 'year_song_rating_low' THEN favorites.rating END ASC,
             CASE WHEN :sortOrder = 'year_song_last_played' THEN song_engagements.last_played_timestamp END DESC,
             CASE WHEN :sortOrder = 'year_song_last_played_asc' THEN song_engagements.last_played_timestamp END ASC,
+            -- release-date sort: rows without a date (NULL = never read, '0' = no date info)
+            -- sink to the bottom in both directions; 'yyyy-MM-dd' sorts lexicographically.
+            CASE WHEN :sortOrder IN ('year_song_release_date_asc', 'year_song_release_date_desc')
+                 THEN (songs.release_date IS NULL OR songs.release_date = '0') END ASC,
+            CASE WHEN :sortOrder = 'year_song_release_date_asc' THEN songs.release_date END ASC,
+            CASE WHEN :sortOrder = 'year_song_release_date_desc' THEN songs.release_date END DESC,
             songs.title COLLATE NOCASE ASC,
             songs.id ASC
     """)
@@ -1660,6 +1666,16 @@ interface MusicDao {
         applyDirectoryFilter: Boolean,
         sortOrder: String
     ): Flow<List<SongEntity>>
+
+    /** Local songs whose release date has never been resolved from the file tag (backfill pass). */
+    @Query("""
+        SELECT id, file_path FROM songs
+        WHERE release_date IS NULL AND source_type = 0 AND file_path != ''
+    """)
+    suspend fun getSongsMissingReleaseDate(): List<SongReleaseDateStub>
+
+    @Query("UPDATE songs SET release_date = :value WHERE id = :songId")
+    suspend fun updateSongReleaseDate(songId: Long, value: String?)
 
     @Query("""
         SELECT * FROM songs

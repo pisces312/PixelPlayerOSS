@@ -80,6 +80,11 @@ data class SongEntity(
     @ColumnInfo(name = "track_number", defaultValue = "0") val trackNumber: Int = 0,
     @ColumnInfo(name = "disc_number", defaultValue = "null") val discNumber: Int? = null,
     @ColumnInfo(name = "year", defaultValue = "0") val year: Int = 0,
+    /**
+     * Release date, standardized `yyyy-MM-dd` (year-only tags become `yyyy-01-01`).
+     * NULL = file never read (backfill pending); "0" = read once, no date info available.
+     */
+    @ColumnInfo(name = "release_date") val releaseDate: String? = null,
     @ColumnInfo(name = "date_added", defaultValue = "0") val dateAdded: Long = System.currentTimeMillis(),
     @ColumnInfo(name = "mime_type") val mimeType: String? = null,
     @ColumnInfo(name = "bitrate") val bitrate: Int? = null,
@@ -122,6 +127,7 @@ private fun SongEntity.toSongInternal(artists: List<ArtistRef>): Song {
         discNumber = this.discNumber,
         dateAdded = this.dateAdded,
         year = this.year,
+        releaseDate = this.releaseDate,
         navidromeId = if (this.contentUriString.startsWith("navidrome://")) {
             this.contentUriString.removePrefix("navidrome://")
         } else null,
@@ -216,6 +222,7 @@ fun Song.toEntity(filePathFromMediaStore: String, parentDirFromMediaStore: Strin
         parentDirectoryPath = parentDirFromMediaStore,
         dateAdded = this.dateAdded,
         year = this.year,
+        releaseDate = this.releaseDate,
         mimeType = this.mimeType,
         bitrate = this.bitrate,
         sampleRate = this.sampleRate,
@@ -230,6 +237,12 @@ data class SongSummary(
     @ColumnInfo(name = "artist_name") val artistName: String,
     @ColumnInfo(name = "album_name") val albumName: String,
     val duration: Long
+)
+
+/** Lightweight projection for the release-date backfill pass. */
+data class SongReleaseDateStub(
+    val id: Long,
+    @ColumnInfo(name = "file_path") val filePath: String
 )
 
 fun Song.toEntityWithoutPaths(): SongEntity {
@@ -253,6 +266,7 @@ fun Song.toEntityWithoutPaths(): SongEntity {
         parentDirectoryPath = "",
         dateAdded = this.dateAdded,
         year = this.year,
+        releaseDate = this.releaseDate,
         mimeType = this.mimeType,
         bitrate = this.bitrate,
         sampleRate = this.sampleRate,

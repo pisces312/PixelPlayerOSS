@@ -40,6 +40,22 @@ class SortOptionTest {
         assertEquals(SortOption.LikedSongDateLikedAsc, SortOption.LikedSongDateLiked.flipDirection())
         assertEquals(SortOption.FolderSongCountAsc, SortOption.FolderSongCountDesc.flipDirection())
         assertEquals(SortOption.SongDefaultOrder, SortOption.SongDefaultOrder.flipDirection())
+        assertEquals(
+            SortOption.YearSongReleaseDateDesc,
+            SortOption.YearSongReleaseDateAsc.flipDirection()
+        )
+        assertEquals(
+            SortOption.YearSongReleaseDateAsc,
+            SortOption.YearSongReleaseDateDesc.flipDirection()
+        )
+    }
+
+    @Test
+    fun `year release date sort is part of the year detail options`() {
+        assertEquals(
+            listOf(SortOption.YearSongReleaseDateAsc, SortOption.YearSongReleaseDateDesc),
+            SortOption.YEAR_SONGS.filter { it.methodKey == "year_song_release_date" }
+        )
     }
 
     @Test

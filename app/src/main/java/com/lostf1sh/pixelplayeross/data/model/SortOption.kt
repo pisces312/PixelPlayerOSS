@@ -462,6 +462,20 @@ sealed class SortOption(
         methodKey = "year_song_last_played",
         direction = SortDirection.Ascending
     )
+    object YearSongReleaseDateAsc : SortOption(
+        storageKey = "year_song_release_date_asc",
+        displayName = "Release Date (Oldest First)",
+        methodLabel = "Release Date",
+        methodKey = "year_song_release_date",
+        direction = SortDirection.Ascending
+    )
+    object YearSongReleaseDateDesc : SortOption(
+        storageKey = "year_song_release_date_desc",
+        displayName = "Release Date (Newest First)",
+        methodLabel = "Release Date",
+        methodKey = "year_song_release_date",
+        direction = SortDirection.Descending
+    )
 
     val canFlipDirection: Boolean
         get() = direction != null && flipDirection().storageKey != storageKey
@@ -590,7 +604,9 @@ sealed class SortOption(
                 YearSongRatingHigh,
                 YearSongRatingLow,
                 YearSongLastPlayed,
-                YearSongLastPlayedAsc
+                YearSongLastPlayedAsc,
+                YearSongReleaseDateAsc,
+                YearSongReleaseDateDesc
             )
         }
 

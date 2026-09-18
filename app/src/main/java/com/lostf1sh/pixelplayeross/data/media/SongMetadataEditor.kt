@@ -462,6 +462,13 @@ class SongMetadataEditor(
                 )
             }
 
+            // Sync release_date in the DB (docs/year-release-date-sort-plan.md §5.1): MediaStore
+            // only exposes YEAR, so a full DATE written through the custom-field editor — or a
+            // date deleted from the tag — never flows back through incremental sync. Re-read the
+            // edited file once and update the column directly (date / yyyy-01-01 fallback / "0").
+            runCatching { syncReleaseDateAfterEdit(songId, finalFilePath) }
+                .onFailure { Timber.tag(TAG).w(it, "release_date sync after edit failed for songId: $songId") }
+
             val mediaStoreSuccess = updateMediaStoreMetadata(
                 songId = songId,
                 title = newTitle,
@@ -537,6 +544,29 @@ class SongMetadataEditor(
                 errorMessage = e.localizedMessage ?: "Unknown error occurred"
             )
         }
+    }
+
+    /**
+     * Re-reads the release date from the just-edited file and updates the DB column directly.
+     * The file was already confirmed written at this point; failures here must not fail the
+     * whole edit, so callers wrap this in runCatching.
+     */
+    private suspend fun syncReleaseDateAfterEdit(songId: Long, filePath: String) {
+        val file = File(filePath)
+        val meta = if (file.exists()) {
+            try {
+                AudioMetadataReader.read(file, readArtwork = false)
+            } catch (e: Exception) {
+                Timber.tag(TAG).w(e, "METADATA_EDIT: release_date re-read failed for $filePath")
+                null
+            }
+        } else {
+            null
+        }
+        val currentYear = musicDao.getSongsByIdsListSimple(listOf(songId)).firstOrNull()?.year
+        val value = deriveReleaseDateValue(meta?.releaseDate, meta?.year ?: currentYear)
+        musicDao.updateSongReleaseDate(songId, value)
+        Timber.tag(TAG).d("METADATA_EDIT: release_date for songId $songId set to '$value'")
     }
 
     /**
