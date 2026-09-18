@@ -148,7 +148,7 @@ class CarLyricTitleController(
                         // boundary, otherwise the head unit would keep the last lyric line on
                         // screen.
                         stopScheduling()
-                        publish(player = playerProvider(), cue = null)
+                        publish(player = playerProvider(), cue = null, reason = "toggle off")
                     }
                     Timber.tag(TAG).d("car lyric title: toggle %s", if (value) "on" else "off")
                 }
@@ -219,14 +219,14 @@ class CarLyricTitleController(
         if (!enabled) {
             reportState("idle: toggle off")
             stopScheduling()
-            publish(player, null)
+            publish(player, null, reason = "toggle off")
             return@withContext
         }
 
         if (!refreshBluetoothOutput()) {
             reportState("idle: bluetooth output not active")
             stopScheduling()
-            publish(player, null)
+            publish(player, null, reason = "output is not bluetooth")
             return@withContext
         }
 
@@ -234,7 +234,7 @@ class CarLyricTitleController(
         if (mediaId == null) {
             reportState("idle: nothing playing")
             stopScheduling()
-            publish(player, null)
+            publish(player, null, reason = "nothing playing")
             return@withContext
         }
 
@@ -247,7 +247,7 @@ class CarLyricTitleController(
         if (cues.isEmpty()) {
             reportState("idle: no synced lyrics for song $mediaId")
             stopScheduling()
-            publish(player, null)
+            publish(player, null, reason = "no synced lyrics")
             return@withContext
         }
 
@@ -256,7 +256,13 @@ class CarLyricTitleController(
         val positionMs = player.currentPosition + syncOffsetMs + leadMs
         val index = resolveCueIndex(cues, positionMs)
         reportState("active: ${cues.size} cues")
-        publish(player, cues.getOrNull(index))
+        publish(
+            player,
+            cues.getOrNull(index),
+            // An index of -1 is the intro; past it a cue without text can only be a marker line
+            // that stands for an instrumental stretch.
+            reason = if (index < 0) "before the first line" else "instrumental stretch"
+        )
         scheduleNextWakeUp(player, positionMs, index)
     }
 
@@ -272,7 +278,7 @@ class CarLyricTitleController(
         syncOffsetMs = 0
         stopScheduling()
         lyricsJob?.cancel()
-        publish(player, null)
+        publish(player, null, reason = "song changed, lyrics not loaded yet")
         lyricsJob = scope.launch {
             loadLyrics(player, mediaId)
             // Lyrics arriving is what makes scheduling possible again.
@@ -444,12 +450,18 @@ class CarLyricTitleController(
 
     /**
      * Replaces the exposed title with [cue]'s text, or restores the real metadata when there is no
-     * cue to show (the intro before the first line, or a line that carries no lyrics).
+     * cue to show (the intro before the first line, a marker line that stands for an instrumental
+     * stretch, or one of the idle branches).
      *
      * De-duplicated on the cue's sequence rather than its text: a long line split in two can yield
      * two cues that read alike, and a text key would silently swallow the second one.
+     *
+     * @param reason which decision is handing the title back to the track. Only logged, and only
+     *   when there is no text to publish: this fallback is otherwise invisible — the title simply
+     *   reappears — which makes a report of "it goes back to the song name" impossible to attribute
+     *   to one of the six or so paths that can do it.
      */
-    private fun publish(player: LyricTitlePlayer?, cue: LyricCue?) {
+    private fun publish(player: LyricTitlePlayer?, cue: LyricCue?, reason: String = "") {
         if (player == null) return
         val key = cue?.sequence ?: CUE_TRACK_TITLE
         if (key == lastPublishedCue) return
@@ -460,6 +472,8 @@ class CarLyricTitleController(
         )
         if (line != null) {
             Timber.tag(TAG).d("car lyric title: %s", line)
+        } else {
+            Timber.tag(TAG).d("car lyric title: back to the track title (%s)", reason)
         }
     }
 
