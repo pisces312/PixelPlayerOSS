@@ -2,7 +2,7 @@
 
 > 用途：不连真车就能端到端验证「车机标题」链路。
 > 姊妹文档：`docs/car-lyrics-avrcp-gate.md`（闸门原理与绕过方案）、`docs/car-lyrics-title-plan.md`（功能本体）。
-> 最近一次实测：2026-09-17，pixel6 AVD（API 34）+ 本仓库 debug `0.4.2-pisces.1`。
+> 最近一次实测：2026-09-18（驻留上限与缓冲态，见 `car-lyrics-title-plan.md` §9.6）；此前 2026-09-17，pixel6 AVD（API 34）+ 本仓库 debug `0.4.2-pisces.1`。
 
 ## 0. 为什么模拟器够用
 
@@ -183,7 +183,7 @@ active item id=-1 | description=short line
 |---|---|---|
 | **UI 交互偶发无响应** | pixel6 AVD 有时点了没反应 | `am force-stop` 后重开；UI 自动化测试（instrumented）基本点不动，**只做数据库/会话类验证** |
 | **音频管线停在 BUFFERING** | `position` 不推进、`dumpsys` 状态停在 BUFFERING | 不影响 metadata 推送验证；反而可利用 position 固定在 0 做「同位置切开关」对照实验 |
-| **约 2 分钟日志断流** | 控制器一条日志都不出，进程存活、无 FATAL、MediaSession 仍在更新 | 未定位根因（疑似模拟器调度节流）。`force-stop` 后恢复。真机若出现「标题停住」，先按 `car-lyrics-title-plan.md` §9.5 判据区分是哪一侧 |
+| **约 2 分钟日志断流** | 控制器一条日志都不出，进程存活、无 FATAL、MediaSession 仍在更新 | 未定位根因（疑似模拟器调度节流）。`force-stop` 后恢复。**2026-09-18 增补**：本功能侧已消掉一条「断流后永不恢复」的机理——旧代码在 `!player.isPlaying`（缓冲 / 抑制，`playWhenReady` 仍为 true，位置会自己继续走）时直接 `stopScheduling()`，此后只能等播放事件；现已改为按看门狗兜底（判据与实测见 `car-lyrics-title-plan.md` §9.6 的 ③，`next wake in 5000 ms` 会连续出现）。真机若出现「标题停住」，先按该判据区分是哪一侧 |
 | **歌曲播完就恢复真实曲名** | 采样太晚只看到 `Night Tone` | 采样要在播放开始后 2 秒内起步；45 s 的曲子最后一行是 `short line` |
 | **封面报错噪音** | `Unable to load bitmap` / `Artwork URI has not been granted` | 来自 SystemUI 取封面，与本功能无关，别误判 |
 | **debug 才有的东西** | release 跑 R8，tag 名字不变但 ProGuard 会改类名 | 验证一律用 debug；**别给 debug 开 minify** |

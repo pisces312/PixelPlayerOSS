@@ -571,15 +571,36 @@ adb shell "run-as com.lostf1sh.pixelplayeross.debug sqlite3 databases/pixelplaye
 
 **本轮一个未定论的环境现象（记录备查）**：中途出现过约 2 分钟「控制器完全无日志」——进程存活、Activity 是 `ResumedActivity`、MediaSession 的 metadata 仍在更新、无 `FATAL`、无 `car lyric title: tick failed`；`am force-stop` 重启进程后恢复，此后一路正常。当时的使用方式是 `cmd media_session dispatch play/next` + 刚启动就恢复历史队列（不是 UI 点播）。**未定位根因**，也**未在改动前的 APK 上复现过**（本轮没跑旧版本对照），所以既不能认定与本改动有关、也不能排除。真机复核时留意「标题是否会在中途停住不动」；若出现，先看 logcat 里 `car lyric title` 行是否断流（断流 = tick 没跑；不断流 = tick 在跑但判定为 idle 或无变化）。
 
+### 9.6 每段驻留上限 + 唤醒键 / 缓冲态：通过（2026-09-18）
+
+环境同 §9.5，另：主开关与「拆分长行」均为**开**，`lead` 为默认 500 ms（偏好里没有 `car_lyric_title_lead_ms`，即从未拖过滑杆）。注入两行歌词（Room）：
+
+```
+[00:00.00]abcdefghijklmnopqrstuvwxyzabcdefghijklmnop   20+20 字母 → 2 段
+[00:20.00]0123456789abcdefghijklmnopqrstuvwxyz          2 段，末行跨度 = 45.0 − 20 = 25.0 s
+```
+
+| 断言 | 观察（logcat `MusicService_PixelPlayer`，2026-09-18 00:46:08 起） | 结论 |
+|---|---|---|
+| ① 每段驻留封顶 4 s | `08.062` 发第 1 段 → `12.351` 发第 2 段（**4.29 s**）；中间三条 `next wake` 依次 `5000` → `3500` → `100` ms | 生效。`3500 = 4000 − 500(lead)` 正是「第 2 段边界 = 行起点 + 4 s」；**旧公式**此行跨度 20 s ⇒ 边界在 10 s 位置，残差会是 9500 ms（被看门狗截成 5000 再重排），实际看到的是 3500 |
+| ② 末行（跨度最大）同样封顶 | 第 2 行两段间隔 **4.86 s**（`28.329` → `33.187`） | 旧公式该段落在 32.5 s 位置（跨度 25 s ÷ 2）。多出的 0.86 s 来自模拟器音频管线停顿后的重排（同段内有 `next wake in 618 ms` 的重排行），不是公式误差 |
+| ③ 缓冲态不再丢定时器 | 第 1 段与第 2 段之间连续三条 `next wake in 5000 ms (cue 1, lead 500 ms)`（`12.351` / `17.425` / `22.446`），间隔恰好 5 s 且 cue 序号不变 | 这三条只可能出自 `stalled` 分支（位置冻结 ⇒ 残差算不出，按看门狗兜底）。改前此处会 `stopScheduling()` 后**彻底安静**，与 §9.5 记录的那次「约 2 分钟无日志」机理吻合——但**本轮没有复现该现象本身**，所以只算「给已知现象提供了一条可解释路径」，不算定论 |
+| ④ 蓝牙侧未受连带影响 | `media update timeout` 计数 **0**；`trySendMediaUpdate(): Metadata has been updated` 正常；`active item id=-1` 保持 | 闸门短路未回退（与 `avrcp-emulator-verification.md` §4 一致） |
+
+**顺带观察（不是缺陷）**：进程重启后歌词是异步加载的，第 1 段在 position ≈ 3.65 s 才发出，于是第 2 段只隔 **0.8 s** 就跟着出现（边界是绝对时刻，不因迟发出而顺延）。真机上表现为「刚上车接续播放时前两句一闪而过」。
+
+**未验证**：改动 ② 的运行时表现（播放中拖「歌词提前量」滑杆应立即重排）。运行时验证需要在播放过程中改 DataStore 偏好，而外部改文件 DataStore 不会重读、改完重启进程又会重建整个 cue 状态，等于测不到「中途改」；模拟器 UI 自动化又基本点不动（`avrcp-emulator-verification.md` §5）。**代码层依据**：`WakeUp` 已含 `leadMs` / `syncOffsetMs`，键不等即重排。真机验收时顺手拖一下滑杆即可，判据是当场出现新的 `next wake in … (cue K, lead L ms)`。
+
 ### 复现步骤
 
 ```bash
-# 1. 模拟器是 x86_64，arm64-only 的 APK 装不上，必须构 universal
-#    （会清掉同目录的 arm64 产物，验证完记得重建 arm64）
-./gradlew :app:assembleDebug -Ppixelplayer.enableAbiSplits=false
+# 1. 构建（2026-09-18 更正）：模拟器虽是 x86_64，但本机 AVD 装了 arm64 转译，**默认的
+#    arm64-v8a 产物直接可装**（AGENTS.md 已实测确认）。不要再用 -Ppixelplayer.enableAbiSplits=false
+#    —— 那会顺手清掉同目录的 arm64 产物，还得重构建一遍。
+./gradlew :app:assembleDebug
 
 # 2. 装 & 授权 & 启动
-adb install -r -d app/build/outputs/apk/debug/pixelplayeross-universal-*.apk
+adb install -r -d app/build/outputs/apk/debug/pixelplayeross-arm64-v8a-*-debug.apk
 adb shell pm grant com.lostf1sh.pixelplayeross.debug android.permission.READ_MEDIA_AUDIO
 adb shell monkey -p com.lostf1sh.pixelplayeross.debug -c android.intent.category.LAUNCHER 1
 
