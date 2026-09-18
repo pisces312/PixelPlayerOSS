@@ -215,11 +215,13 @@ player.replaceMediaItem(index, item.buildUpon()
 | 关闭拆分 | 设置里关掉「拆分长行」时预算取 `Int.MAX_VALUE` ⇒ 每行只出 1 个 cue（`buildLyricCues` 在除法前先做 `总列数 <= 预算` 的提前返回，兼作溢出保护） | `UNSLICED_COLUMNS` |
 | 每段时刻 | 第 k 段 = `行起点 + k × min(行长 ÷ 段数, 4s)`，**等分**（不按字数比例，也不用逐字时间戳） | `buildLyricCues` / `SEGMENT_DWELL_LIMIT_MS` |
 | 行长 | 下一行时间戳 − 本行起点（逐字时间戳晚于下一行时按 `resolveLineEndTimeMs` 延后）；**末行**用 `player.duration − 行起点`，`C.TIME_UNSET` 时按 `SEGMENT_DWELL_LIMIT_MS`（4s）/段兜底 | `lineEndMs` |
-| 空行 | 仍生成一个空文本 cue → 推送 null → 恢复真实曲名（前奏与间奏都被它覆盖） | — |
+| 空行（裸时间戳行） | 视为「上一句唱完」的记号，默认**不产生 cue**；只有它到下一条**有文字**的行（制作信息行也算）间隔 ≥ **6s**、或后面再无文字时，才产一个空文本 cue → 推送 null → 恢复真实曲名 | `standsForAGap` / `BLANK_GAP_LIMIT_MS = 6s` |
 
 为什么回看距离也从 3 个字符改成 10 列：英文单词更长，按「3 个字符」回看常常够不到空格，切点会落在单词中间——而 10 列在中文侧正好是 3 个汉字（与旧行为一致），在英文侧是 10 个字母（够用）。这条改动有单测固定（`buildLyricCues_breaksOnWhitespaceInsteadOfMidWord` 的切点落在 `jumps` 内部，靠 10 列回看退到 `fox` 后的空格）。
 
 **「行长」不是「这句词唱了多久」，所以每段要封顶（2026-09-18）**：上面的「行长」是这一行**占据的时间区间**——行尾换气、间奏、尾奏都算在里面，末行更是 `曲长 − 行起点`（可能几十秒）。等分后第二段就落进空档，听感是「唱完了才换字」。于是每段驻留改为 `min(行长 ÷ 段数, 4s)`：末行两段的第二段最晚 +4s（旧值可达十几秒），行尾有大空档的行由「空档中点」提前到 +4s。密词行（等分 ≤ 4s）**逐位不变**，单段行天然不受影响（只用 index 0），最后一段自然驻留到下一行。上限复用 `lineEndMs` 的未知时长兜底值——两者语义本就同源（一段最多在屏上待多久），于是「时长未知」那条兜底路径变成新规则的特例，行为逐位不变。单测见 `buildLyricCues_capsTheDwellOfALineFollowedByAGap` / `..._capsTheDwellOfTheLastLineAtTheTrackTail` / `..._capsOnlyWhenASegmentWouldOutlastTheLimit`。**上限不做成设置项**（量小、不值得走五步接线，也就不暴露给用户）。
+
+**空行是「唱完」的记号，不是「回到曲名」的指令（2026-09-18）**：LRC 在几乎每一句唱完处都写一个裸时间戳行（`[00:34.34]`，无文字）——一个真实文件是 105 行里 44 个空行。旧实现把空行当「清屏」⇒ 每句之间推一次 null ⇒ 车机标题在歌词与曲名之间来回闪（用户报「一直跳回标题」）。现在只有「到下一条有文字的行 ≥ 6s」的空行才算真空档（前奏 / 间奏 / 尾奏），其余整条跳过、屏幕停在上一句。**被跳过的空行仍然是上一行的结束时刻**（`lineEndMs` 用原始 `lines`，不因跳过而改变跨度）——这是本次最容易写错的一处，已用 `buildLyricCues_stillEndsALineAtTheBlankMarkerItSkips` 钉死。完整规则、判据与**真实歌词验证方法**见 **`docs/car-lyrics-blank-markers.md`**。
 
 **去重键从「文本」改成「cue 序号」**：长行拆出的两段文字可能一模一样（叠句），只比文本会静默吞掉第二段。反过来，**重置切法（开关「拆分长行」）时必须把序号键一并作废**（`lastPublishedCue = CUE_UNPUBLISHED`）——新旧切法的第 5 号 cue 内容不同，沿用旧键会让开关看起来没生效。
 
@@ -591,6 +593,17 @@ adb shell "run-as com.lostf1sh.pixelplayeross.debug sqlite3 databases/pixelplaye
 
 **未验证**：改动 ② 的运行时表现（播放中拖「歌词提前量」滑杆应立即重排）。运行时验证需要在播放过程中改 DataStore 偏好，而外部改文件 DataStore 不会重读、改完重启进程又会重建整个 cue 状态，等于测不到「中途改」；模拟器 UI 自动化又基本点不动（`avrcp-emulator-verification.md` §5）。**代码层依据**：`WakeUp` 已含 `leadMs` / `syncOffsetMs`，键不等即重排。真机验收时顺手拖一下滑杆即可，判据是当场出现新的 `next wake in … (cue K, lead L ms)`。
 
+### 9.7 空行标记阈值：通过（2026-09-18）
+
+数据来源与方法是本轮新增的部分，完整写在 **`docs/car-lyrics-blank-markers.md`**（含离线「抽真实歌词跑规则对照」与在线「模拟器装 debug 包跑管线」两条路径）。结论摘要：
+
+| 指标（`如愿-王菲`，105 行 = 44 空行 + 61 有文字行） | 改前 | 改后 |
+|---|---|---|
+| cue 总数 | 130 | 89 |
+| 回退真实曲名的次数 | **44** | **3** |
+
+三处保留的回退都是真空档：`19.51 s`（后面 12.01 s 无文字，前奏）、`1:29.82`（30.56 s，间奏）、`3:12.93`（6.20 s）；其余 41 个换气空行（间隔 0.5–2.4 s）全部跳过。4:20 之后的制作名单区原本每 0.15 s 闪一次曲名（16 次）→ 0。
+
 ### 复现步骤
 
 ```bash
@@ -668,7 +681,7 @@ adb shell settings delete global pixelplayer_car_lyric_title_force_a2dp
 4. **调试逃生口**：`pixelplayer_car_lyric_title_force_a2dp` 只在 debuggable 构建读取，release 忽略。不建议放开给 release。**改这个标志不会触发任何事件**（它不是设备增删），所以删除标志后最多等一个看门狗周期（≤5s）才恢复真实标题；若此刻已暂停/播完，需要手动触发一次播放事件（如 `adb shell cmd media_session dispatch previous`）让它立刻重算。
 5. **云端曲目的歌词**：Navidrome 有 `getLyrics` 但未接入 `LyricsRepository`，Jellyfin 无该接口 → 云端曲目基本拿不到歌词，会走"保持原标题"的降级路径。想支持的话要先把服务端歌词接进 `LyricsRepository`。
 6. **无同步歌词的歌**：只有 `plain` 歌词不会启用（没有时间轴就无法定位当前行）。若将来想做"整段歌词滚动"，那是另一套切片机制。
-7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。边界算术那部分已经能测了——`utils/LyricsTimelineUtils.kt` 的纯函数现有 32 例单测（2026-09-17）覆盖：`resolveCurrentLineIndex` 的空时间轴 / 首行前 / 区间映射 / 末行保持 / seek 回跳 / 逐字时间待定；`buildLyricCues` 的 30 字母整行不拆 / 31 字母拆两段 / 11 汉字拆两段（按 3 列计） / 中英混排落在同一条列预算上 / 短行 1 段 / 21 字 3 段 / 余数分配 / 空格优先不切词（10 列回看） / 段间隔等分 / 末行 `trackDuration` 与 `C.TIME_UNSET` 兜底 / `Int.MAX_VALUE` 预算下的整行输出 / 空行保留 / 逐字时间戳导致的乱序 / 序号连续；`resolveCueIndex` 的前奏 -1 / 边界切换 / seek 回跳 / 末 cue 保持；`nextCueTimeMs` 的空表 / 首 cue 前 / 逐段推进 / 末 cue / 单调性。剩下的控制器单测需要注入时钟与协程调度器，暂未做。
+7. **控制器没有单测**：`CarLyricTitleController` 依赖 `Player` + 协程 + 真实时间，目前靠 §9.4 的日志验证。边界算术那部分已经能测了——`utils/LyricsTimelineUtils.kt` 的纯函数现有 38 例单测（2026-09-18）覆盖：`resolveCurrentLineIndex` 的空时间轴 / 首行前 / 区间映射 / 末行保持 / seek 回跳 / 逐字时间待定；`buildLyricCues` 的 30 字母整行不拆 / 31 字母拆两段 / 11 汉字拆两段（按 3 列计） / 中英混排落在同一条列预算上 / 短行 1 段 / 21 字 3 段 / 余数分配 / 空格优先不切词（10 列回看） / 段间隔等分 / 末行 `trackDuration` 与 `C.TIME_UNSET` 兜底 / `Int.MAX_VALUE` 预算下的整行输出 / 空行标记（换气跳过 / 长空档保留 / 结尾空行 / 跳过后仍终止上一行跨度） / 逐字时间戳导致的乱序 / 序号连续；`resolveCueIndex` 的前奏 -1 / 边界切换 / seek 回跳 / 末 cue 保持；`nextCueTimeMs` 的空表 / 首 cue 前 / 逐段推进 / 末 cue / 单调性。剩下的控制器单测需要注入时钟与协程调度器，暂未做。
 8. **`AudioDeviceCallback` 路径未在模拟器验证**：模拟器没有可供连/断的 A2DP 设备。真机或任何蓝牙音频设备（耳机/音箱）都能覆盖这条分支。
 9. **Media3 自带的每 3s 周期位置刷新**（已定案，不动）：`MediaSessionImpl` 在播放/加载中会排一次位置刷新，**默认开启，且与本功能的设置开关无关**——它是框架既有行为，在未改动的上游版本里同样存在。未播放时没有，关闭开关也照旧。详见 §6.3 的定案表与"为什么不做零定时器"。
 10. **（历史）2026-09-15 那轮调研未改动任何 Kotlin 代码**：当轮的 §6.3 定案、门控矩阵与 §11.9 均为源码核实 + 模拟器实测的结论。2026-09-16 的 cue 拆分与提前量**已落地**，见 §6.3 两个新增小节与下面两条。

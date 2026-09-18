@@ -2,7 +2,7 @@
 
 > 用途：不连真车就能端到端验证「车机标题」链路。
 > 姊妹文档：`docs/car-lyrics-avrcp-gate.md`（闸门原理与绕过方案）、`docs/car-lyrics-title-plan.md`（功能本体）。
-> 最近一次实测：2026-09-18（驻留上限与缓冲态，见 `car-lyrics-title-plan.md` §9.6）；此前 2026-09-17，pixel6 AVD（API 34）+ 本仓库 debug `0.4.2-pisces.1`。
+> 最近一次实测：2026-09-18（同日两次：驻留上限与缓冲态见 `car-lyrics-title-plan.md` §9.6；空行标记阈值见 `car-lyrics-blank-markers.md` §6.1，用设备上的真实 mp3 播完整曲）；此前 2026-09-17，pixel6 AVD（API 34）+ 本仓库 debug `0.4.2-pisces.1`。
 
 ## 0. 为什么模拟器够用
 
