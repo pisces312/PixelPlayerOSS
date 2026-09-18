@@ -28,7 +28,8 @@ import timber.log.Timber
  *
  * **Segments.** A head unit renders only a fixed width of title, so a line wider than
  * [MAX_COLUMNS_PER_CUE] is published in several slices spread evenly over that line's own
- * duration; [buildLyricCues] does the cutting, and it measures width rather than characters — the
+ * duration, capped at 4 s apart so a gap or the track tail cannot push a slice into silence;
+ * [buildLyricCues] does the cutting, and it measures width rather than characters — the
  * same field that fits ten Chinese characters fits thirty letters. Users whose head unit scrolls
  * long titles itself can turn the cutting off entirely, in which case every line goes out whole
  * and the unit does the scrolling.
@@ -52,7 +53,8 @@ import timber.log.Timber
  * published cue instead of two per second, and **no** wake-up at all while paused, disabled, or
  * without synced lyrics. The watchdog cap is the self-healing fallback a fixed poll gets for free:
  * if an event we depend on never arrives, the title still catches up within
- * [WATCHDOG_INTERVAL_MS].
+ * [WATCHDOG_INTERVAL_MS]. Buffering is the one case that takes the cap as-is — the position is
+ * frozen, so there is no residual to derive and the interval is simply waited out again.
  *
  * Player events (seek, play/pause, track change, speed change, load completion) all just [signal] a
  * recompute through [Player.Listener.onEvents]; the service signals too for Bluetooth device
@@ -112,10 +114,8 @@ class CarLyricTitleController(
     /** Pending wake-up for the next cue; null while paused or past the last cue. */
     private var boundaryJob: Job? = null
 
-    /** Identifies what [boundaryJob] is waiting for, so repeated signals cannot re-arm it. */
-    private var armedCueIndex: Int? = null
-    private var armedBoundaryMs: Long? = null
-    private var armedSpeed = 1f
+    /** What [boundaryJob] is waiting for, so repeated signals cannot re-arm it. See [WakeUp]. */
+    private var armedWakeUp: WakeUp? = null
 
     /** Wrapper the event listener is currently attached to; the service replaces it on swaps. */
     private var attachedPlayer: Player? = null
@@ -327,18 +327,37 @@ class CarLyricTitleController(
     }
 
     /**
+     * The identity of one pending wake-up: everything [scheduleNextWakeUp]'s deadline is derived
+     * from, other than the live position. A key that leaves one of them out makes the residual wait
+     * for the next boundary instead of following the change — which is exactly how dragging the
+     * "title lead" slider used to do nothing until the following line. Kept as a type rather than a
+     * set of loose fields so adding an input cannot silently omit it from the key.
+     */
+    private data class WakeUp(
+        val cueIndex: Int,
+        val boundaryMs: Long,
+        val speed: Float,
+        val leadMs: Int,
+        val syncOffsetMs: Int,
+        val stalled: Boolean
+    )
+
+    /**
      * Arms the single pending wake-up, for the moment [index] stops being the active cue. Also the
      * watchdog: capping the delay at [WATCHDOG_INTERVAL_MS] means a missed event or a very sparse
      * lyric still gets refreshed instead of leaving the title stale forever.
      *
      * Idempotent for one transition: a burst of player events (startup, crossfade) asks for a
      * recompute over and over, and re-arming each time would cancel and relaunch the timer
-     * needlessly. Skipping is safe because the deadline for a given (cue, boundary, speed) is
-     * absolute — the residual is re-derived from the live position when the timer fires anyway.
+     * needlessly. Skipping is safe because the deadline for a given [WakeUp] is absolute — the
+     * residual is re-derived from the live position when the timer fires anyway.
      */
     private fun scheduleNextWakeUp(player: Player, positionMs: Long, index: Int) {
-        // Paused: nothing advances on its own, and onEvents signals us when playback resumes.
-        if (!player.isPlaying) {
+        // Paused. Nothing advances on its own, and resuming always arrives as an event, so there is
+        // nothing to wake up for. Buffering is not this: `playWhenReady` stays true there, the
+        // position moves on again by itself, and the timer is the only thing that notices when the
+        // recovery event never comes (see `stalled` below).
+        if (!player.playWhenReady) {
             stopScheduling()
             return
         }
@@ -349,23 +368,28 @@ class CarLyricTitleController(
         // Lyric timestamps are wall-clock, so a time-stretched player reaches them proportionally
         // later. The previous fixed-interval poll was immune to this by construction.
         val speed = player.playbackParameters.speed.takeIf { it > 0f } ?: 1f
+        val stalled = !player.isPlaying
 
-        if (boundaryJob?.isActive == true &&
-            armedCueIndex == index &&
-            armedBoundaryMs == boundaryMs &&
-            armedSpeed == speed
-        ) {
+        val wakeUp = WakeUp(index, boundaryMs, speed, leadMs, syncOffsetMs, stalled)
+        if (boundaryJob?.isActive == true && armedWakeUp == wakeUp) {
             return
         }
 
         boundaryJob?.cancel()
-        armedCueIndex = index
-        armedBoundaryMs = boundaryMs
-        armedSpeed = speed
+        armedWakeUp = wakeUp
 
-        val remainingMs = ((boundaryMs - positionMs) / speed)
-            .toLong()
-            .coerceIn(MIN_WAKE_UP_DELAY_MS, WATCHDOG_INTERVAL_MS)
+        // A stalled player has a frozen position, so "the residual" is a guess that would repeat
+        // itself; the watchdog interval is the honest answer. It only has to be short enough to
+        // catch a recovery that signalled nothing, and a recovery that does signal re-arms from the
+        // real position because `stalled` is part of the key.
+        val remainingMs =
+            if (stalled) {
+                WATCHDOG_INTERVAL_MS
+            } else {
+                ((boundaryMs - positionMs) / speed)
+                    .toLong()
+                    .coerceIn(MIN_WAKE_UP_DELAY_MS, WATCHDOG_INTERVAL_MS)
+            }
 
         boundaryJob = scope.launch {
             delay(remainingMs)
@@ -384,8 +408,7 @@ class CarLyricTitleController(
     private fun stopScheduling() {
         boundaryJob?.cancel()
         boundaryJob = null
-        armedCueIndex = null
-        armedBoundaryMs = null
+        armedWakeUp = null
     }
 
     private fun ensureListenerAttached(player: LyricTitlePlayer) {
