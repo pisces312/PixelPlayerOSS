@@ -224,6 +224,56 @@ class LyricsTimelineUtilsTest {
     }
 
     @Test
+    fun buildLyricCues_capsTheDwellOfALineFollowedByAGap() {
+        val cues = buildLyricCues(
+            listOf(
+                SyncedLine(time = 0, line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnop"),
+                SyncedLine(time = 20_000, line = "next")
+            ),
+            trackDurationMs = 40_000,
+            maxColumnsPerCue = 30
+        )
+
+        // 40 letters are two cues, and the line's span is 20 s because that is where the next line
+        // starts — but the gap after the words is silence, so the second cue follows the first
+        // after 4 s rather than after 10 s.
+        assertEquals(listOf(0L, 4_000L), cues.take(2).map { it.timeMs })
+    }
+
+    @Test
+    fun buildLyricCues_capsTheDwellOfTheLastLineAtTheTrackTail() {
+        val cues = buildLyricCues(
+            listOf(SyncedLine(time = 10_000, line = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnop")),
+            trackDurationMs = 40_000,
+            maxColumnsPerCue = 30
+        )
+
+        // Nothing follows the last line, so its span runs to the end of the track — 30 s, most of it
+        // tail. The second cue must not wait for it: that is the case where the uncapped arithmetic
+        // pushed a half-line a dozen seconds away from the vocal.
+        assertEquals(listOf(10_000L, 14_000L), cues.map { it.timeMs })
+    }
+
+    @Test
+    fun buildLyricCues_capsOnlyWhenASegmentWouldOutlastTheLimit() {
+        fun timesFor(spanMs: Int) = buildLyricCues(
+            listOf(
+                SyncedLine(time = 0, line = longChineseLine),
+                SyncedLine(time = spanMs, line = "next")
+            ),
+            trackDurationMs = 60_000,
+            maxColumnsPerCue = 30
+        ).take(3).map { it.timeMs }
+
+        // 63 columns are three cues; 12 s spread over them is exactly 4 s each, so the cap is a
+        // no-op and the even division stands.
+        assertEquals(listOf(0L, 4_000L, 8_000L), timesFor(12_000))
+        // One millisecond more and the even share would be 4_033 / 8_066 — spreading the excess over
+        // the first two cues is what the cap exists to prevent.
+        assertEquals(listOf(0L, 4_000L, 8_000L), timesFor(12_100))
+    }
+
+    @Test
     fun buildLyricCues_publishesEveryLineWholeWhenSplittingIsOff() {
         val cues = buildLyricCues(
             listOf(SyncedLine(time = 0, line = longChineseLine)),

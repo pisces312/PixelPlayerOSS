@@ -56,9 +56,10 @@ data class LyricCue(
  * Flattens [lines] into the ordered sequence of slices to publish.
  *
  * A line is cut into `ceil(width / maxColumnsPerCue)` segments of near-equal width, spread evenly
- * over that line's own duration. Splitting exists because the consumer of these titles is a head
- * unit title field of fixed width that would otherwise truncate the tail of the line; spreading
- * evenly in time is what keeps every segment in step with the vocal.
+ * over that line's own duration but no further apart than [SEGMENT_DWELL_LIMIT_MS]. Splitting
+ * exists because the consumer of these titles is a head unit title field of fixed width that would
+ * otherwise truncate the tail of the line; spreading evenly in time is what keeps every segment in
+ * step with the vocal.
  *
  * Width is measured in title columns rather than characters (see [titleColumns]), because the
  * field is a fixed amount of *space*, not a fixed number of glyphs: the same field that holds ten
@@ -85,11 +86,17 @@ fun buildLyricCues(
         val segments = splitIntoSegments(line.line.trim(), maxColumnsPerCue)
         val endMs = lineEndMs(lines, index, startMs, trackDurationMs, segments.size)
         val spanMs = (endMs - startMs).coerceAtLeast(0L)
+        // An equal share of the line's span, but never more than [SEGMENT_DWELL_LIMIT_MS]: the span
+        // is the interval the line *occupies*, which trailing silence, an instrumental gap or the
+        // tail of the track inflates far past how long the words are actually sung. Uncapped, the
+        // second half of a line followed by a gap — worst of all the last line — waits out the
+        // silence instead of following the vocal.
+        val dwellMs = (spanMs / segments.size).coerceAtMost(SEGMENT_DWELL_LIMIT_MS)
 
         segments.forEachIndexed { segmentIndex, segment ->
             cues += LyricCue(
                 sequence = sequence++,
-                timeMs = startMs + spanMs * segmentIndex / segments.size,
+                timeMs = startMs + dwellMs * segmentIndex,
                 text = segment
             )
         }
@@ -126,7 +133,7 @@ fun nextCueTimeMs(cues: List<LyricCue>, index: Int): Long? {
 /**
  * End of the line at [index]. A line with a successor ends where that successor starts (see
  * [resolveLineEndTimeMs] for the per-word exception); the final line has nobody to borrow from and
- * falls back to [trackDurationMs], or to [FALLBACK_CUE_DURATION_MS] per segment when the track
+ * falls back to [trackDurationMs], or to one [SEGMENT_DWELL_LIMIT_MS] per segment when the track
  * duration is unknown.
  *
  * `C.TIME_UNSET` is `Long.MIN_VALUE`, which **must** be rejected by comparison: subtracting it
@@ -144,7 +151,7 @@ private fun lineEndMs(
     if (next != null) return resolveLineEndTimeMs(lines[index], next.time)
 
     if (trackDurationMs > startMs) return trackDurationMs
-    return startMs + FALLBACK_CUE_DURATION_MS * segmentCount
+    return startMs + SEGMENT_DWELL_LIMIT_MS * segmentCount
 }
 
 /**
@@ -264,8 +271,14 @@ private fun Char.isWideTitleGlyph(): Boolean =
 private fun isBreakCharacter(character: Char): Boolean =
     character.isWhitespace() || character in BREAK_CHARACTERS
 
-/** Per-segment length when the track duration is unknown (`C.TIME_UNSET`). */
-private const val FALLBACK_CUE_DURATION_MS = 4_000L
+/**
+ * How long one segment of a split line stays on screen, at most.
+ *
+ * It is both the share of a line's span when that span is short enough and the ceiling when it is
+ * not, which is also what the unknown-duration fallback in [lineEndMs] is built from: with no
+ * track duration to borrow an end from, every segment simply gets this much.
+ */
+private const val SEGMENT_DWELL_LIMIT_MS = 4_000L
 
 /** Columns a full-width glyph takes in the title field; a narrow glyph takes exactly one. */
 private const val WIDE_GLYPH_COLUMNS = 3

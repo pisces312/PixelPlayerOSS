@@ -213,11 +213,13 @@ player.replaceMediaItem(index, item.buildUpon()
 | 段宽 | 尽量均衡，各段差 ≤1 列；余数给前几段 | `LyricsTimelineUtils.splitIntoSegments` |
 | 切点 | 距理想切点 **10 列**内若有空格/标点就在那里切，避免把英文单词切两半；与「段不超 30 列」冲突时退回理想切点 | `MAX_CUT_LOOKBACK_COLUMNS = 10` |
 | 关闭拆分 | 设置里关掉「拆分长行」时预算取 `Int.MAX_VALUE` ⇒ 每行只出 1 个 cue（`buildLyricCues` 在除法前先做 `总列数 <= 预算` 的提前返回，兼作溢出保护） | `UNSLICED_COLUMNS` |
-| 每段时刻 | 第 k 段 = `行起点 + k × 行长 / n`，**等分**（不按字数比例，也不用逐字时间戳） | `buildLyricCues` |
-| 行长 | 下一行时间戳 − 本行起点（逐字时间戳晚于下一行时按 `resolveLineEndTimeMs` 延后）；**末行**用 `player.duration − 行起点`，`C.TIME_UNSET` 时按 4s/段兜底 | `lineEndMs` |
+| 每段时刻 | 第 k 段 = `行起点 + k × min(行长 ÷ 段数, 4s)`，**等分**（不按字数比例，也不用逐字时间戳） | `buildLyricCues` / `SEGMENT_DWELL_LIMIT_MS` |
+| 行长 | 下一行时间戳 − 本行起点（逐字时间戳晚于下一行时按 `resolveLineEndTimeMs` 延后）；**末行**用 `player.duration − 行起点`，`C.TIME_UNSET` 时按 `SEGMENT_DWELL_LIMIT_MS`（4s）/段兜底 | `lineEndMs` |
 | 空行 | 仍生成一个空文本 cue → 推送 null → 恢复真实曲名（前奏与间奏都被它覆盖） | — |
 
 为什么回看距离也从 3 个字符改成 10 列：英文单词更长，按「3 个字符」回看常常够不到空格，切点会落在单词中间——而 10 列在中文侧正好是 3 个汉字（与旧行为一致），在英文侧是 10 个字母（够用）。这条改动有单测固定（`buildLyricCues_breaksOnWhitespaceInsteadOfMidWord` 的切点落在 `jumps` 内部，靠 10 列回看退到 `fox` 后的空格）。
+
+**「行长」不是「这句词唱了多久」，所以每段要封顶（2026-09-18）**：上面的「行长」是这一行**占据的时间区间**——行尾换气、间奏、尾奏都算在里面，末行更是 `曲长 − 行起点`（可能几十秒）。等分后第二段就落进空档，听感是「唱完了才换字」。于是每段驻留改为 `min(行长 ÷ 段数, 4s)`：末行两段的第二段最晚 +4s（旧值可达十几秒），行尾有大空档的行由「空档中点」提前到 +4s。密词行（等分 ≤ 4s）**逐位不变**，单段行天然不受影响（只用 index 0），最后一段自然驻留到下一行。上限复用 `lineEndMs` 的未知时长兜底值——两者语义本就同源（一段最多在屏上待多久），于是「时长未知」那条兜底路径变成新规则的特例，行为逐位不变。单测见 `buildLyricCues_capsTheDwellOfALineFollowedByAGap` / `..._capsTheDwellOfTheLastLineAtTheTrackTail` / `..._capsOnlyWhenASegmentWouldOutlastTheLimit`。**上限不做成设置项**（量小、不值得走五步接线，也就不暴露给用户）。
 
 **去重键从「文本」改成「cue 序号」**：长行拆出的两段文字可能一模一样（叠句），只比文本会静默吞掉第二段。反过来，**重置切法（开关「拆分长行」）时必须把序号键一并作废**（`lastPublishedCue = CUE_UNPUBLISHED`）——新旧切法的第 5 号 cue 内容不同，沿用旧键会让开关看起来没生效。
 
