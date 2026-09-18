@@ -2,11 +2,14 @@ package com.lostf1sh.pixelplayeross.data.backup.module
 
 import android.content.Context
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.lostf1sh.pixelplayeross.data.backup.restore.PendingSongRef
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.SongSummary
+import com.lostf1sh.pixelplayeross.data.model.AI_MIX_SOURCE
 import com.lostf1sh.pixelplayeross.data.model.Playlist
+import com.lostf1sh.pixelplayeross.data.model.SERENDIPITY_SOURCE
 import com.lostf1sh.pixelplayeross.data.preferences.PlaylistPreferencesRepository
 import com.lostf1sh.pixelplayeross.data.preferences.UserPreferencesRepository
 import io.mockk.coEvery
@@ -14,6 +17,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -69,6 +73,26 @@ class PlaylistsModuleHandlerTest {
 
     private fun assertNoPending() {
         coVerify(exactly = 1) { userRepo.setPlaylistRestorePending(null) }
+    }
+
+    @Test
+    fun `export includes AI and Serendipity playlists alongside local ones`() = runTest {
+        coEvery { playlistRepo.getPlaylistsOnce() } returns listOf(
+            Playlist("p1", "Local", listOf("10")),
+            Playlist("p2", "Ai Mix", listOf("10"), source = AI_MIX_SOURCE, aiPrompt = "chill"),
+            Playlist("p3", "Serendipity", listOf("10"), source = SERENDIPITY_SOURCE),
+            Playlist("p4", "Jellyfin", listOf("10"), source = "JELLYFIN")
+        )
+        coEvery { musicDao.getAllLocalSongSummaries() } returns emptyList()
+        coEvery { playlistRepo.playlistSongOrderModesFlow } returns flowOf(emptyMap())
+        coEvery { playlistRepo.playlistsSortOptionFlow } returns flowOf("name_az")
+
+        val json = handler.export()
+
+        val exportedIds = JsonParser.parseString(json)
+            .asJsonObject.getAsJsonArray("playlists")
+            .map { it.asJsonObject.get("id").asString }
+        assertEquals(listOf("p1", "p2", "p3"), exportedIds)
     }
 
     @Test

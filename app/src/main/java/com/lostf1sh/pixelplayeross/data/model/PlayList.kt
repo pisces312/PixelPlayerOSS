@@ -46,6 +46,18 @@ data class Playlist(
     val aiThinking: String? = null
 )
 
+/** Marks a playlist produced by the AI mix flow. Lives in the data layer so backup and other data-side consumers can reference it. */
+const val AI_MIX_SOURCE = "AI"
+
+/**
+ * Marks a playlist produced by Serendipity.
+ *
+ * Its own value rather than [AI_MIX_SOURCE] so the two can be told apart later (usage, filters),
+ * while AI-mix listings deliberately accept both — a mix the user generated is worth offering
+ * again whichever button produced it.
+ */
+const val SERENDIPITY_SOURCE = "AI_SERENDIPITY"
+
 enum class PlaylistShapeType {
     Circle,
     SmoothRect,

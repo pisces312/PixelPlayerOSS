@@ -5,7 +5,9 @@ import android.util.Base64
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import com.lostf1sh.pixelplayeross.data.model.AI_MIX_SOURCE
 import com.lostf1sh.pixelplayeross.data.model.Playlist
+import com.lostf1sh.pixelplayeross.data.model.SERENDIPITY_SOURCE
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylistSource
 import com.lostf1sh.pixelplayeross.data.backup.model.BackupSection
@@ -291,9 +293,16 @@ class PlaylistsModuleHandler @Inject constructor(
     companion object {
         private const val TAG = "PlaylistsModuleHandler"
 
-        /** Playlist sources that are backed up. Cloud-sourced playlists are excluded. */
+        /**
+         * Playlist sources that are backed up. Cloud-sourced playlists are excluded; AI mixes
+         * ([AI_MIX_SOURCE] / [SERENDIPITY_SOURCE]) are local playlists carrying their ai_* fields,
+         * so they travel with the rest.
+         */
         private fun isBackedUpPlaylistSource(source: String): Boolean =
-            source == "LOCAL" || isSmartPlaylistSource(source)
+            source == "LOCAL" ||
+                source == AI_MIX_SOURCE ||
+                source == SERENDIPITY_SOURCE ||
+                isSmartPlaylistSource(source)
 
         const val LEGACY_USER_PLAYLISTS_KEY = "user_playlists_json_v1"
         const val LEGACY_PLAYLIST_ORDER_MODES_KEY = "playlist_song_order_modes"

@@ -6,8 +6,10 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lostf1sh.pixelplayeross.data.DailyMixManager
+import com.lostf1sh.pixelplayeross.data.model.AI_MIX_SOURCE
 import com.lostf1sh.pixelplayeross.data.model.Playlist
 import com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter
+import com.lostf1sh.pixelplayeross.data.model.SERENDIPITY_SOURCE
 import com.lostf1sh.pixelplayeross.data.model.SmartPlaylistRule
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.model.SortOption
@@ -248,17 +250,6 @@ class PlaylistViewModel @Inject constructor(
          * Shared by the describe flow and Serendipity; it is the first chip in AI_MIX_LENGTHS.
          */
         const val DEFAULT_AI_MIX_LENGTH = 15
-        /** Marks a playlist produced by the AI mix flow. */
-        const val AI_MIX_SOURCE = "AI"
-
-        /**
-         * Marks a playlist produced by Serendipity.
-         *
-         * Its own value rather than "AI" so the two can be told apart later (usage, filters), while
-         * [recentAiMixes] deliberately accepts both — a mix the user generated is worth offering
-         * again whichever button produced it.
-         */
-        const val SERENDIPITY_SOURCE = "AI_SERENDIPITY"
 
         fun sanitizeFileName(name: String): String {
             val sanitized = name.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").trim('_')

@@ -78,6 +78,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.lostf1sh.pixelplayeross.R
+import com.lostf1sh.pixelplayeross.data.model.AI_MIX_SOURCE
+import com.lostf1sh.pixelplayeross.data.model.SERENDIPITY_SOURCE
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.data.ai.AiLibrarySampleMode
 import com.lostf1sh.pixelplayeross.data.ai.serendipity.SerendipityTimeOfDay
@@ -665,8 +667,8 @@ fun HomeScreen(
                         prompt = prompt,
                         startPlayback = startPlayback,
                         source =
-                                if (aiEntryIsSerendipity) PlaylistViewModel.SERENDIPITY_SOURCE
-                                else PlaylistViewModel.AI_MIX_SOURCE
+                                if (aiEntryIsSerendipity) SERENDIPITY_SOURCE
+                                else AI_MIX_SOURCE
                     )
                     playlistViewModel.resetAiPlaylistPreview()
                     playlistViewModel.closeSerendipity()
