@@ -2502,7 +2502,15 @@ class PlayerViewModel @Inject constructor(
 
     private fun syncDisplayedMediaItemIfChanged(player: Player) {
 
-        val mediaItem = player.currentMediaItem ?: return
+        // Truth source is the in-process engine, not the controller snapshot:
+        // controller events are dispatched asynchronously by the session, so the
+        // snapshot can lag one transition behind. Reading a stale snapshot here
+        // used to cancel the pending (correct) onMediaItemTransition write and
+        // revert `currentSong` to the previous track while the new one played.
+        // The engine (masterPlayer) applies setMediaItem synchronously, so its
+        // currentMediaItem is never older than the controller's view.
+        val enginePlayer = dualPlayerEngine.masterPlayer
+        val mediaItem = enginePlayer.currentMediaItem ?: player.currentMediaItem ?: return
         val currentSongId = playbackStateHolder.stablePlayerState.value.currentSong?.id
         val currentIndex = playbackStateHolder.stablePlayerState.value.currentMediaItemIndex
         val expectedIndex = if (dualPlayerEngine.isUsingWindowedQueue()) {
@@ -2519,10 +2527,10 @@ class PlayerViewModel @Inject constructor(
         resetLyricsSearchState()
 
         val song = resolveSongFromMediaItem(mediaItem)
-        val currentPosition = player.currentPosition.coerceAtLeast(0L)
+        val currentPosition = enginePlayer.currentPosition.coerceAtLeast(0L)
         val resolvedDuration = if (song != null) {
             playbackStateHolder.resolveDurationForPlaybackState(
-                reportedDurationMs = player.duration,
+                reportedDurationMs = enginePlayer.duration,
                 songDurationHintMs = song.duration.coerceAtLeast(0L),
                 currentPositionMs = currentPosition
             )
@@ -2537,8 +2545,8 @@ class PlayerViewModel @Inject constructor(
                 totalDuration = resolvedDuration,
                 lyrics = null,
                 isLoadingLyrics = song != null,
-                isPlaying = player.isPlaying,
-                playWhenReady = player.playWhenReady
+                isPlaying = enginePlayer.isPlaying,
+                playWhenReady = enginePlayer.playWhenReady
             )
         }
         syncPlaybackPositionFromPlayer(mediaItem.mediaId, currentPosition)
