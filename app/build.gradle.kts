@@ -409,6 +409,10 @@ dependencies {
         implementation(libs.jdom2)
         implementation(libs.jose4j)
         implementation(libs.apache.httpclient)
+        // `glance-appwidget` -> `compose-remote` asks for `graphics-path:1.1.0-rc01`. Gradle only
+        // picks the highest *request* in the graph and never promotes a release candidate to the
+        // released version on its own, so pin the stable line here.
+        implementation(libs.androidx.graphics.path)
     }
 }
 

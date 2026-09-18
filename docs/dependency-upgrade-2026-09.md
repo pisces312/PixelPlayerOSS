@@ -17,6 +17,10 @@
 3. **material3 是全栈锚点，不能单独动**：`1.5.0-alpha25` 拉 Compose `1.12.0-beta01`，
    而 `1.5.0-alpha28` 拉 **Compose `1.13.0-alpha01`**。升 material3 的 alpha 号 = 整条 Compose 栈
    掉进 alpha。**建议本次保持 `1.5.0-alpha25` 不动**（详见 §3）。
+   > **2026-09-18 复核后修订**：这个结论只对了「不能随便动」这一半。逐版读源码后找到了
+   > **`alpha27`** 这条中间路 —— 它请求的仍是 Compose `1.12.0-beta01`（被显式声明顶住，栈留在 stable），
+   > 所以**不必停在 alpha25**。已按 §9.4 的档 A 升到 `alpha27`，执行结果见 §10。
+   > 同理「§3 里 material3 那一行」以 §9.3 的逐版实测表为准。
 4. 6 个纯 CVE 约束库（netty / bouncycastle / commons-lang3 / jdom2 / jose4j / httpclient）
    在 `app/src/main` 里 **零引用**（`grep` 实测），升它们对代码零影响。
 5. 建议拆 **3 个提交**（Compose+库 / 工具链 / Coil 3），Coil 3 可以独立评估、独立延后。
@@ -246,3 +250,210 @@ A 与 B 可以合成一个提交（都不动源码），但不建议和 C 混 �
    以后升 Compose，**两者必须同批改**。
 
 ---
+
+## 9. 预发布版专项核查（2026-09-18，写于「先给方案」阶段 —— 当时的执行结论见 §10）
+
+> 触发：核对「除 media3 外，其他原本是 alpha/beta 的库是否都升到了正式版」。
+> 结论：**§3/§8 的 26 行改动只收口了 Compose 栈的 beta**，其余预发布项分文未动 ——
+> 其中 1 项确实可升（material3）、1 项已是最新（glance）、1 项是死条目（composeTesting）、
+> 2 项可加约束升（compose-remote / graphics-path）、1 组由第三方库固定（jetbrains compose）。
+
+### 9.1 两个问题的直接回答
+
+**① material3 现在跑哪版？** —— `1.5.0-alpha25`，**本次没升**（`gradle/libs.versions.toml:33`）。
+上游最高可用 `1.5.0-alpha28`（Google Maven 的 `<latest>` / `<release>` 均指向它）。
+
+**② 其他预发布库升了吗？** —— 没有，一个都没动。`releaseRuntimeClasspath` 上共 5 组
+「最终解析即为预发布」的坐标（用 `:app:dependencies` 输出的箭头值判定，非 toml 声明值）：
+
+| # | 坐标 | 实际解析 | 上游最新 | 来源 | 判定 |
+|---|---|---|---|---|---|
+| 1 | `androidx.compose.material3:{material3, -android, -ripple, -ripple-android}` | `1.5.0-alpha25` | `1.5.0-alpha28` | **自身声明**（`material3`） | **可升**，见 §9.4 |
+| 2 | `androidx.glance:{glance, -appwidget, -appwidget-proto, -appwidget-external-protobuf, -material3}` | `1.3.0-alpha02` | `1.3.0-alpha02` | **自身声明**（`glance`） | **已是最新**（1.3.0 线至今只有 alpha01/alpha02，无 stable） |
+| 3 | `androidx.compose.remote:{remote-core, remote-creation, -creation-android, -creation-core}` | `1.0.0-alpha14` | `1.0.0-alpha19` | 传递：**glance-appwidget** | 可升（需加约束） |
+| 4 | `androidx.graphics:graphics-path` | `1.1.0-rc01` | **`1.1.0`（正式版已发布）** | 传递：glance-appwidget → compose-remote | 可升（需加约束） |
+| 5 | `org.jetbrains.compose.material3:material3`、`org.jetbrains.compose.ui:ui-backhandler(-android)` | `1.9.0-beta03` | — | 传递：**`wavy-slider:2.2.0`**（该库已最新） | **不可单独升** |
+
+另有 **1 项已经解决**：Compose 栈（`ui` / `foundation` / `animation` / `runtime` / `ui-text` /
+`ui-util` / `foundation-layout` / `material-ripple`）升级前**实际解析为 `1.12.0-beta01`**，
+本次已收口到 **`1.12.1` stable** —— 这是上次唯一真正「beta → stable」的项。
+
+### 9.2 预发布为什么会在 classpath 上（来源链，实测）
+
+```
+androidx.glance:glance-appwidget:1.3.0-alpha02
+  ├── androidx.compose.remote:remote-creation → -creation-android → remote-core   1.0.0-alpha14
+  └── androidx.compose.remote:* → androidx.graphics:graphics-path                 1.1.0-rc01
+ir.mahozad.multiplatform:wavy-slider:2.2.0
+  ├── org.jetbrains.compose.material3:material3                                   1.9.0-beta03
+  └── org.jetbrains.compose.ui:ui-backhandler(-android)                           1.9.0-beta03
+```
+
+- **`glance-appwidget` 是唯一的「预发布放大器」**：它把 `compose-remote (alpha)` 和
+  `graphics-path (rc)` 一起拖进 release classpath。而 glance 自身最新只有 `1.3.0-alpha02`
+  ⇒ **靠升 glance 消化不掉这两项**，只能加显式约束。
+- `graphics-path` 是「被动卡在 rc」的典型：**stable `1.1.0` 已发布**，但图里没有任何一方请求它
+  （`ui-graphics:1.12.1` 只请求 `1.0.1`，`compose-remote` 请求 `1.1.0-rc01`，取较高者得 rc01）。
+  Gradle 不会自动升到 stable，只会取图中最高请求值。
+
+### 9.3 material3 各候选版本的实测差异
+
+> 方法：下载 `androidx.compose.material3:material3-android:<v>-sources.jar` 逐行核对 + 读 AAR 的 pom
+> 传递依赖。**不是 changelog 推断**。
+
+| 项 | alpha25（当前） | alpha26 | alpha27 | alpha28 |
+|---|---|---|---|---|
+| 自身请求的 Compose | `1.12.0-beta01` | `1.12.0-beta01` | `1.12.0-beta01` | **`1.13.0-alpha01`** |
+| 本项目 Compose 栈实际解析 | **1.12.1 stable** | 1.12.1 stable | 1.12.1 stable | **1.13.0-alpha01**（整栈进 alpha） |
+| `ToggleButtonDefaults.toggleButtonColors()` | 存在 | 存在 | **改名 `colors()`**（旧名 0 处） | 同 27 |
+| 旧 member `ExposedDropdownMenu` | 正常 member（3 重载） | **HIDDEN 弃用** + 顶层扩展函数 | 同 26 | 同 26 |
+| `TopAppBarDefaults.enterAlwaysScrollBehavior(state=)` | 存在 | — | **存在 ✓** | **存在 ✓** |
+| `TopAppBarDefaults.exitUntilCollapsedScrollBehavior(state=)` | 存在 | — | **存在 ✓** | **存在 ✓** |
+| 基础 `ToggleButton(checked, onCheckedChange, …)` | 存在 | — | — | **存在 ✓**（仅移除其它旧重载） |
+| 无状态 `Slider` / `RangeSlider` | — | — | — | **弃用**（稳定重载=普通告警；`@ExperimentalMaterial3Api` 旧重载=HIDDEN） |
+| 对本项目的收益 | — | BottomAppBar 转 stable、ExposedDropdownMenu 小屏高度崩溃修复 | + `TimeInputDefaults`、`SelectableDropdownMenuItem`、ToggleButton 新 overload | + expressive TimePicker 大字体 AM/PM 截断修复、ScrollField focus ring |
+
+**受影响的代码点（已实测定位，共 3 行）**：
+
+| 改动 | 文件:行 | 规模 |
+|---|---|---|
+| `ToggleButtonDefaults.toggleButtonColors(...)` → `colors(...)`（alpha27 起） | `SearchScreen.kt:1235` | 1 行 |
+| 新增 `import androidx.compose.material3.ExposedDropdownMenu`（alpha26 起为顶层扩展函数） | `PlaylistCreationDialogs.kt`、`AiSettingsScreen.kt` | 2 行（调用点共 5 处，均在 `ExposedDropdownMenuBox` scope 内） |
+
+**已排除、不受影响的项**（逐条 grep 实测）：`LocalMotionScheme`（0 引用，项目用
+`MotionScheme.expressive()`）、`SearchBarScrollBehavior` 的 offset 变量（`SearchScreen` 未访问）、
+`BottomAppBar`（3 文件，仅注解变冗余）、`Carousel`（项目为 standalone 自研实现
+`RoundedParallaxCarousell.kt`，不引 material3 版本）、`SecureTextField` / `ScrollField`（0 引用）、
+`rich→vibrant` 重命名（项目只用基础 `TimePicker`）、`ShortNavigationBar` / `WideNavigationRail`（未用）、
+`ExposedDropdownMenu` 被删的 2 个重载（项目用的是保留签字形式）。
+
+### 9.4 方案
+
+**档 A（推荐）—— 只动 material3：`alpha25` → `alpha27`**
+
+- Compose 栈**保持 `1.12.1` stable**（alpha27 请求的 `1.12.0-beta01` 被显式声明顶住）
+- 改动面：`libs.versions.toml` **1 行** + **3 行代码**（1 处改名 + 2 行 import）
+- 拿到 alpha26 + alpha27 的全部修复与新 API，且**不把 Compose 拖进 alpha**
+- 不选 alpha28：它会把整条 Compose 栈顶到 `1.13.0-alpha01`，等于把刚收口到 stable 的
+  Compose 重新打开（要上就必须同批改 `composeUi`/`foundation`/`animation` 声明，
+  否则 toml 与实际解析再次「说谎」—— 见 §8.3 第 3 条）
+
+**档 B（可选，与 A 独立）—— 消化「被动卡住」的项**
+
+在 `app/build.gradle.kts` 的 `constraints { }` 中加：
+
+```
+androidx.graphics:graphics-path:1.1.0                  // rc01 → stable（纯收益）
+androidx.compose.remote:remote-core:1.0.0-alpha19      // alpha14 → alpha19（仍是 alpha，收益有限）
+```
+
+建议**只加 `graphics-path` 那一条**；`compose-remote` 只是「换成更新的 alpha」，
+留到 glance 出 stable 时一并解决。
+
+**档 C（不推荐）—— material3 → `alpha28`**：代价见 §9.3 第 1/2 行 + 12 个文件新增 `Slider`
+弃用告警；收益（TimePicker 大字体修复等）对本项目均为边缘项。
+
+**档 D（顺手澄清）—— `composeTesting = "1.0.0-alpha03"` 是死条目**
+
+该 version 声明在 `libs.versions.toml:72`，**全文件仅此一处、无任何 library 引用**
+（实测）。测试依赖实际走 `platform(libs.androidx.compose.bom)` +
+`androidx-ui-test-junit4` / `androidx-ui-test-manifest`（`version.ref = "composeUi"` = 1.12.1）。
+⇒ 它既不是「待升级的 alpha」也不影响产物；建议删除以免后续误判（独立话题，可单独处理）。
+
+### 9.5 若执行档 A，验证清单
+
+1. `./gradlew :app:compileDebugKotlin` —— 先看编译是否只剩弃用告警
+2. `:app:testDebugUnitTest` —— 786 例基线不变
+3. `:app:lintDebug` —— 仍为 4 errors 基线
+4. 模拟器 smoke 重点：**搜索页筛选 `ToggleButton`** 与 **AI 设置 / 歌单创建弹窗的
+   `ExposedDropdownMenuBox`**（两处即改动点）
+5. 复核 `:app:dependencies --configuration releaseRuntimeClasspath`：Compose 仍 `1.12.1`、
+   material3 为 `1.5.0-alpha27`
+
+### 9.6 明确不动的项
+
+| 项 | 理由 |
+|---|---|
+| `glance 1.3.0-alpha02` | 已是上游最新（`<latest>` = `<release>` = 1.3.0-alpha02），无 stable 可落 |
+| `org.jetbrains.compose.*:1.9.0-beta03` | 由第三方 `wavy-slider:2.2.0`（已最新）固定，非本项目可控 |
+| Coil 2.7.0 | 见 §3 Tier 3，另立任务 |
+
+## 10. 档 A + 档 B 执行结果（2026-09-18，已落地）
+
+§9 是「先给方案」阶段写的，**本节是执行后的实测结论**。执行范围 = 档 A（material3
+`alpha25` → `alpha27`）+ 档 B（只加 `graphics-path`，未加 `compose-remote`）。
+
+### 10.1 改动面（5 个文件，代码仅 5 行）
+
+| 文件 | 改动 |
+|---|---|
+| `gradle/libs.versions.toml` | `material3 = "1.5.0-alpha25"` → `"1.5.0-alpha27"`；新增 `graphicsPath = "1.1.0"` 与 `androidx-graphics-path` 条目 |
+| `app/build.gradle.kts` | `constraints { }` 追加 `implementation(libs.androidx.graphics.path)`（附 3 行注释说明为什么必须显式抬版） |
+| `presentation/screens/SearchScreen.kt` | `:1235` `ToggleButtonDefaults.toggleButtonColors(` → `ToggleButtonDefaults.colors(`（alpha27 起旧名已移除） |
+| `presentation/components/PlaylistCreationDialogs.kt` | 新增 `import androidx.compose.material3.ExposedDropdownMenu`（**注意实际路径是 `components/`，§9.3 写的 `screens/` 是笔误**） |
+| `presentation/screens/AiSettingsScreen.kt` | 同上，新增该 import（覆盖 2 处调用） |
+
+改动的**逐条签名核实**（下载 `material3-android-<v>-sources.jar` 读 Kotlin 源码，不用 changelog）：
+
+- alpha27 的 member `ExposedDropdownMenu` 确为 `DeprecationLevel.HIDDEN` —— HIDDEN 级别
+  **在源码层完全不可解析**，所以必须 import 顶层扩展函数 `ExposedDropdownMenuBoxScope.ExposedDropdownMenu`
+- 该扩展函数的参数名与本项目写法一致（`expanded` / `onDismissRequest`）
+- `ToggleButtonDefaults.colors()` 保留了项目用到的 4 个命名参数
+  （`containerColor` / `contentColor` / `checkedContainerColor` / `checkedContentColor`）
+- `ExposedDropdownMenuAnchorType`（仍为 value class）、`ExposedDropdownMenuDefaults.TrailingIcon(expanded, modifier)`、
+  `Modifier.menuAnchor(type, enabled = true)` 均未变
+
+### 10.2 生效确认（`releaseRuntimeClasspath` 最终解析值）
+
+| 模块 | 改动前 | 现在 | 说明 |
+|---|---|---|---|
+| `androidx.compose.material3:material3`(+`-android`/`-ripple`) | 1.5.0-alpha25 | **1.5.0-alpha27** | 档 A |
+| `androidx.compose.ui:ui` / `foundation` / `animation` / `runtime` | 1.12.1 | **1.12.1（未变）** | alpha27 只请求 `1.12.0-beta01`，被显式声明顶住 ✅ |
+| `androidx.graphics:graphics-path` | 1.1.0-rc01 | **1.1.0** | 档 B，`(c)` 约束生效 |
+| `androidx.compose.material3.adaptive:adaptive` | 1.3.0 | 1.3.0 | 未变 |
+
+`graphics-path` 的来源链（`dependencies` 实测，两个请求者都被抬到 1.1.0）：
+
+```
+ui-graphics:1.12.1           → graphics-path:1.0.1     -> 1.1.0   (ui-graphics-android-1.12.1.pom 实测有此依赖)
+glance-appwidget:1.3.0-alpha02
+  └─ compose.remote:remote-creation:1.0.0-alpha14 → graphics-path:1.1.0-rc01 -> 1.1.0
+\--- androidx.graphics:graphics-path:1.1.0 (c)      ← 本项目的 constraint
+```
+
+**档 B 的功能增量其实只有 `1.1.0-rc01` → `1.1.0` 正式版**：改动前图里已经有 rc01 请求
+（`glance-appwidget` 带进来的），所以 Compose 的 `PathParser` **在改动前也跑在 1.1.0 线上**。
+换句话说档 B 不会引入新的运行时行为，只是把「rc」收成「final」——
+这也是它被归为「纯收益」的原因。再次印证 §8.3 第 3 条：**判某库跑哪版只能看解析结果。**
+
+### 10.3 验证结论（全绿）
+
+| 项 | 结果 |
+|---|---|
+| `:app:testDebugUnitTest` | **786 例，0 失败 0 错误**（132 个类），与升级前基线一致 |
+| `:app:assembleRelease` | BUILD SUCCESSFUL，4m19s，37.6 MB |
+| 产物核对 | `0.4.2-pisces.1` / `400201` / `arm64-v8a`；`apksigner` → `Verifies` + **v2 true** + `CN=pisces312` |
+| 编译告警 | **51 条，唯一集合与 material3 alpha25 时逐条 diff 完全一致（0 新增 0 消失）** |
+| `:app:lintDebug` | **4 errors = 既有基线**（SerendipityContextCollector 权限、HomeScreen 非观察式 locale、CarLyricTitleController ×2 `UnstableApi`），未被本次改动影响 |
+| 模拟器 smoke | 启动无崩溃；Home / Search / Library / Settings / AI 设置 / Now Playing 全部正常；播放进 `PLAYING(3)`、position 推进；media3 会话正常；logcat **无 FATAL、无本应用 W/E** |
+
+改动的两处 UI 是**运行时真点过**的（不只是编译过）：
+
+- **搜索页筛选 `ToggleButton`**：查询后 5 个筛选按钮（All/Songs/Albums/Artists/Playlists）正常渲染，
+  点 `Songs` → 选中态切到 `checkedContainerColor`（primary）+ check 图标出现在选中项、
+  未选中项回落默认容器色；再点 `Albums` 亦然。`colors()` 改名后配色语义无回归。
+- **AI 设置 `ExposedDropdownMenu`**：Provider 下拉展开正常（菜单在锚点下展开、trailing 箭头 ▼→▲）、
+  选中 `Volcano Engine (Ark)` → Provider 与 Endpoint 联动切到 `ark.cn-beijing.volces.com/api/v3`，
+  **再切回 `Xiaomi MiMo` 完整还原**（Provider/Endpoint/Model 全部回到原值）。
+  已验证该切换可逆：`AiPreferencesRepository` 的 key/model/url 全部按 provider 分槽存储，
+  `setProvider` 只写 provider 名，不销毁其他 provider 的数据。
+  `Model` 字段是「可编辑 + 有待取列表才弹菜单」形态，`availableModels` 为空时只聚焦输入，属预期。
+
+### 10.4 仍未收口的预发布项（本次按裁定不动）
+
+| 项 | 现状 | 何时能落 |
+|---|---|---|
+| `androidx.compose.remote:*` | 1.0.0-alpha14（上游 alpha19） | 等 `glance` 出 stable |
+| `androidx.glance:*`（5 坐标） | 1.3.0-alpha02 = 上游最新 | 等上游 |
+| `org.jetbrains.compose.*` | 1.9.0-beta03 | 被 `wavy-slider:2.2.0` 固定，非本项目可控 |
+| `composeTesting = "1.0.0-alpha03"` | 死条目（见档 D） | 可随手删，独立话题 |

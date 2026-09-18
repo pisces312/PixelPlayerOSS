@@ -1232,7 +1232,7 @@ fun SearchFilterChip(
         checked = selected,
         onCheckedChange = { playerViewModel.updateSearchFilter(filterType) },
         modifier = modifier,
-        colors = ToggleButtonDefaults.toggleButtonColors(
+        colors = ToggleButtonDefaults.colors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             checkedContainerColor = MaterialTheme.colorScheme.primary,
