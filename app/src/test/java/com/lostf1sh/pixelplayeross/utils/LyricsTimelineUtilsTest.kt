@@ -288,7 +288,7 @@ class LyricsTimelineUtilsTest {
     }
 
     @Test
-    fun buildLyricCues_keepsBlankLinesAsEmptyCues() {
+    fun buildLyricCues_skipsABlankMarkerThatIsJustABreath() {
         val cues = buildLyricCues(
             listOf(
                 SyncedLine(time = 1_000, line = "sung"),
@@ -299,9 +299,64 @@ class LyricsTimelineUtilsTest {
             maxColumnsPerCue = 30
         )
 
-        // An instrumental marker still takes its turn: publishing an empty title is what restores
-        // the real track name for that stretch, rather than the previous line lingering.
+        // LRC writes a marker wherever the vocal pauses, and here the next line is only three
+        // seconds behind it: handing the title back to the track for that moment is exactly what
+        // made the head unit alternate between the lyric and the song name. The marker is passed
+        // over, so the line before it simply stays on screen.
+        assertEquals(listOf("sung", "again"), cues.map { it.text })
+    }
+
+    @Test
+    fun buildLyricCues_clearsTheTitleOnABlankMarkerThatStandsForAnInstrumentalStretch() {
+        val cues = buildLyricCues(
+            listOf(
+                SyncedLine(time = 1_000, line = "sung"),
+                SyncedLine(time = 4_000, line = ""),
+                SyncedLine(time = 30_000, line = "again")
+            ),
+            trackDurationMs = 40_000,
+            maxColumnsPerCue = 30
+        )
+
+        // Twenty-six seconds with nothing to sing is an instrumental stretch, and the real track
+        // title is what belongs on screen for it. An empty cue is how that gets expressed.
         assertEquals(listOf("sung", "", "again"), cues.map { it.text })
+        assertEquals(listOf(1_000L, 4_000L, 30_000L), cues.map { it.timeMs })
+    }
+
+    @Test
+    fun buildLyricCues_clearsTheTitleOnATrailingBlankMarker() {
+        val cues = buildLyricCues(
+            listOf(
+                SyncedLine(time = 1_000, line = "sung"),
+                SyncedLine(time = 4_000, line = "")
+            ),
+            trackDurationMs = 10_000,
+            maxColumnsPerCue = 30
+        )
+
+        // A marker with nothing at all after it has nothing to show on the strength of it either,
+        // so the tail of a track counts as a gap just like an instrumental stretch does.
+        assertEquals(listOf("sung", ""), cues.map { it.text })
+    }
+
+    @Test
+    fun buildLyricCues_stillEndsALineAtTheBlankMarkerItSkips() {
+        val cues = buildLyricCues(
+            listOf(
+                SyncedLine(time = 0, line = longChineseLine),
+                SyncedLine(time = 6_000, line = ""),
+                SyncedLine(time = 9_000, line = "again")
+            ),
+            trackDurationMs = 20_000,
+            maxColumnsPerCue = 30
+        )
+
+        // Giving the marker's turn to nobody must not stretch the line before it: the marker is
+        // still the moment that line stopped being sung, so its three cues stay 2s apart. Measured
+        // against the next line that is actually shown they would be 3s apart.
+        assertEquals(listOf(0L, 2_000L, 4_000L, 9_000L), cues.map { it.timeMs })
+        assertTrue(cues.none { it.text.isEmpty() })
     }
 
     @Test

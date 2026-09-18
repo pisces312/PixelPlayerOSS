@@ -44,7 +44,8 @@ fun resolveCurrentLineIndex(
  *   de-duplication key, so two slices that happen to read the same text are still published
  *   separately.
  * @param timeMs playback position at which this slice becomes the current one.
- * @param text slice contents; empty for a line that carries no lyrics (an instrumental marker).
+ * @param text slice contents; empty only for the marker line of a stretch that has nothing to sing
+ *   for a while (see [standsForAGap]), which is what hands the title back to the track for it.
  */
 data class LyricCue(
     val sequence: Int,
@@ -65,6 +66,11 @@ data class LyricCue(
  * field is a fixed amount of *space*, not a fixed number of glyphs: the same field that holds ten
  * Chinese characters holds thirty Latin letters.
  *
+ * A line with no text at all is a marker, not a lyric (LRC writes one wherever the vocal pauses),
+ * so it is passed over — unless the next line that has any text is at least [BLANK_GAP_LIMIT_MS]
+ * away, in which case the marker stands for a stretch with nothing to show and the title is handed
+ * back to the track for it. Either way it remains the end of the line before it.
+ *
  * @param trackDurationMs consulted for the last line only, which has no successor to borrow an
  *   end from. Pass the player duration; pass anything not greater than the last line's start when
  *   it is unknown (the player reports `C.TIME_UNSET` in that case, which is `Long.MIN_VALUE`).
@@ -83,7 +89,14 @@ fun buildLyricCues(
 
     lines.forEachIndexed { index, line ->
         val startMs = line.time.toLong()
-        val segments = splitIntoSegments(line.line.trim(), maxColumnsPerCue)
+        val text = line.line.trim()
+        // A marker with another line right behind it is only the breath between two lines; handing
+        // the title back to the track for those few hundred milliseconds is what made the head unit
+        // alternate between the lyric and the song name. Passing it over leaves the previous line
+        // on screen, which is what the ear expects.
+        if (text.isEmpty() && !standsForAGap(lines, index)) return@forEachIndexed
+
+        val segments = splitIntoSegments(text, maxColumnsPerCue)
         val endMs = lineEndMs(lines, index, startMs, trackDurationMs, segments.size)
         val spanMs = (endMs - startMs).coerceAtLeast(0L)
         // An equal share of the line's span, but never more than [SEGMENT_DWELL_LIMIT_MS]: the span
@@ -106,6 +119,23 @@ fun buildLyricCues(
     // the list out of order, and [resolveCueIndex] relies on it being ordered. `sortedBy` is
     // stable, so slices sharing a timestamp keep the order they were built in.
     return cues.sortedBy { it.timeMs }
+}
+
+/**
+ * Whether the text-less line at [index] stands for a stretch with nothing to sing, i.e. whether the
+ * next line that carries any text is at least [BLANK_GAP_LIMIT_MS] away.
+ *
+ * Lines with text are what it measures against, credits included: what decides the question is
+ * whether there is anything to put on screen in the meantime, not whether that something is a
+ * lyric. A marker with nothing after it at all has nothing to show either, so the tail of a track
+ * counts as a gap.
+ */
+private fun standsForAGap(lines: List<SyncedLine>, index: Int): Boolean {
+    for (next in index + 1..lines.lastIndex) {
+        if (lines[next].line.isBlank()) continue
+        return lines[next].time.toLong() - lines[index].time >= BLANK_GAP_LIMIT_MS
+    }
+    return true
 }
 
 /**
@@ -279,6 +309,17 @@ private fun isBreakCharacter(character: Char): Boolean =
  * track duration to borrow an end from, every segment simply gets this much.
  */
 private const val SEGMENT_DWELL_LIMIT_MS = 4_000L
+
+/**
+ * How long a stretch has to be without a single line of text before a marker line hands the title
+ * back to the track.
+ *
+ * LRC writes a marker after most lines and those are breath gaps, well under a second in the worst
+ * case observed on a real file (2.4s on the longest line of a slow song): restoring the real title
+ * for them is what made it flicker. This is comfortably above that and still well below a real
+ * instrumental stretch or an outro, so a marker that clears the title is telling the truth.
+ */
+private const val BLANK_GAP_LIMIT_MS = 6_000L
 
 /** Columns a full-width glyph takes in the title field; a narrow glyph takes exactly one. */
 private const val WIDE_GLYPH_COLUMNS = 3
