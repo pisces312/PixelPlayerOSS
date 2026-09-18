@@ -56,6 +56,24 @@ fun formatListeningDurationCompact(milliseconds: Long): String {
     }
 }
 
+/**
+ * Formats the song's `release_date` column for display, or returns null when there is
+ * nothing worth showing.
+ *
+ * The column has four states (docs/year-release-date-sort-plan.md §3.2):
+ * - null: the file was never read (backfill pending) -> nothing to show;
+ * - "0": read once, no date information at all -> nothing to show;
+ * - "yyyy-01-01": year-only fallback -> nothing to show, the Year row already carries it;
+ * - "yyyy-MM-dd": a real full release date -> shown as-is.
+ */
+fun formatReleaseDate(releaseDate: String?): String? {
+    val value = releaseDate ?: return null
+    if (value == "0") return null
+    if (!value.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) return null
+    if (value.endsWith("-01-01")) return null
+    return value
+}
+
 fun formatSongCount(count: Int): String {
     return if (count <= 1) "$count Song" else "$count Songs"
 }

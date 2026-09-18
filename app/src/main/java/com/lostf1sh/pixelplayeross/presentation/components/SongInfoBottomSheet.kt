@@ -80,6 +80,7 @@ import com.lostf1sh.pixelplayeross.data.offline.OfflineDownloadStatus
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.AutoSizingTextToFill
 import com.lostf1sh.pixelplayeross.presentation.components.subcomps.RatingStars
 import com.lostf1sh.pixelplayeross.utils.formatDuration
+import com.lostf1sh.pixelplayeross.utils.formatReleaseDate
 import com.lostf1sh.pixelplayeross.utils.shapes.RoundedStarShape
 import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 import androidx.core.net.toUri
@@ -741,6 +742,16 @@ fun SongInfoBottomSheet(
                                                         iconDescription = stringResource(R.string.cd_year_icon),
                                                         shape = infoSegmentItemShape,
                                                         onClick = { onNavigateToYear(song.year) },
+                                                    )
+                                                }
+
+                                                formatReleaseDate(song.releaseDate)?.let { releaseDate ->
+                                                    SongInfoSegmentedListItem(
+                                                        headline = stringResource(R.string.song_field_release_date),
+                                                        supporting = releaseDate,
+                                                        icon = Icons.Rounded.CalendarMonth,
+                                                        iconDescription = stringResource(R.string.cd_release_date_icon),
+                                                        shape = infoSegmentItemShape,
                                                     )
                                                 }
 
