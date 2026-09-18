@@ -167,6 +167,7 @@ internal fun UnifiedPlayerQueueLayer(
 @Composable
 internal fun UnifiedPlayerSongInfoLayer(
     selectedSongForInfo: Song?,
+    songInfoInitialTab: SongInfoTab,
     albumColorScheme: ColorScheme,
     playerViewModel: PlayerViewModel,
     currentPlaybackQueueProvider: () -> ImmutableList<Song>,
@@ -194,6 +195,7 @@ internal fun UnifiedPlayerSongInfoLayer(
         ) {
             SongInfoBottomSheet(
                 song = liveSong,
+                initialTab = songInfoInitialTab,
                 isFavorite = liveSong.isFavorite,
                 onToggleFavorite = { playerViewModel.toggleFavoriteSpecificSong(liveSong) },
                 onDismiss = {
@@ -285,6 +287,7 @@ internal fun UnifiedPlayerQueueAndSongInfoHost(
     infrequentPlayerState: StablePlayerState,
     playerViewModel: PlayerViewModel,
     selectedSongForInfo: Song?,
+    songInfoInitialTab: SongInfoTab,
     onSelectedSongForInfoChange: (Song?) -> Unit,
     onAnimateQueueSheet: (Boolean) -> Unit,
     onBeginQueueDrag: () -> Unit,
@@ -427,6 +430,7 @@ internal fun UnifiedPlayerQueueAndSongInfoHost(
 
             UnifiedPlayerSongInfoLayer(
                 selectedSongForInfo = selectedSongForInfo,
+                songInfoInitialTab = songInfoInitialTab,
                 albumColorScheme = albumColorScheme,
                 playerViewModel = playerViewModel,
                 currentPlaybackQueueProvider = playbackQueueProvider,

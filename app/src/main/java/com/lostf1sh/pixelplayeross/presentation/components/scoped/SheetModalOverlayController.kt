@@ -8,6 +8,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.presentation.components.SaveQueueOverlayData
+import com.lostf1sh.pixelplayeross.presentation.components.SongInfoTab
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -30,8 +31,15 @@ internal class SheetModalOverlayController(
     var selectedSongForInfo: Song? by mutableStateOf(null)
         private set
 
-    fun updateSelectedSongForInfo(song: Song?) {
+    var songInfoInitialTab: SongInfoTab by mutableStateOf(SongInfoTab.OPTIONS)
+        private set
+
+    fun updateSelectedSongForInfo(
+        song: Song?,
+        tab: SongInfoTab = SongInfoTab.OPTIONS
+    ) {
         selectedSongForInfo = song
+        songInfoInitialTab = if (song != null) tab else SongInfoTab.OPTIONS
     }
 
     fun dismissSaveQueueOverlay() {

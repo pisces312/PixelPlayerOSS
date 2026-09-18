@@ -660,8 +660,9 @@ fun UnifiedPlayerSheetV2(
                             shouldRenderFullPlayer = shouldRenderFullPlayer,
                             onShowQueueClicked = sheetActionHandlers.openQueueSheet,
                             onSongTitleClick = {
-                                sheetActionHandlers.onSelectedSongForInfoChange(
-                                    infrequentPlayerState.currentSong
+                                sheetModalOverlayController.updateSelectedSongForInfo(
+                                    infrequentPlayerState.currentSong,
+                                    SongInfoTab.DETAILS
                                 )
                             },
                             onQueueDragStart = sheetActionHandlers.beginQueueDrag,
@@ -716,6 +717,7 @@ fun UnifiedPlayerSheetV2(
                 infrequentPlayerState = infrequentPlayerState,
                 playerViewModel = playerViewModel,
                 selectedSongForInfo = selectedSongForInfo,
+                songInfoInitialTab = sheetModalOverlayController.songInfoInitialTab,
                 onSelectedSongForInfoChange = sheetActionHandlers.onSelectedSongForInfoChange,
                 onAnimateQueueSheet = sheetActionHandlers.animateQueueSheet,
                 onBeginQueueDrag = sheetActionHandlers.beginQueueDrag,

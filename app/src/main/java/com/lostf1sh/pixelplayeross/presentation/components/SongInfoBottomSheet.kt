@@ -97,6 +97,8 @@ import com.lostf1sh.pixelplayeross.ui.theme.RoundedSans
 import com.lostf1sh.pixelplayeross.utils.AudioMetaUtils
 import androidx.compose.ui.res.stringResource
 
+enum class SongInfoTab { OPTIONS, DETAILS }
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 @Suppress("UNUSED_PARAMETER")
@@ -131,6 +133,7 @@ fun SongInfoBottomSheet(
         customMetadataChanges: CustomMetadataChanges
     ) -> Unit,
     removeFromListTrigger: () -> Unit,
+    initialTab: SongInfoTab = SongInfoTab.OPTIONS,
     songInfoViewModel: SongInfoBottomSheetViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -315,7 +318,10 @@ fun SongInfoBottomSheet(
         }
     }
 
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 2 })
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+        initialPage = initialTab.ordinal,
+        pageCount = { 2 }
+    )
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
