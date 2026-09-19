@@ -2,6 +2,31 @@
 
 All notable changes to PixelPlayerOSS will be documented in this file.
 
+## [0.4.3-pisces.1] - 2026-09-19
+
+Songs now carry the release date their own tags declare, so the year list can be sorted by it
+and the song sheet can show it, and the car lyric title stops dropping itself on lines it used
+to give up on.
+
+### Added
+- Release date support, database schema v12. The song sheet shows a Release date row for tracks whose tags carry a full date, and the year screen gained Release Date (Oldest First) and Release Date (Newest First) alongside its existing sort options. Every song already in the library is read once in the background at the end of the next sync, so no manual rescan is needed. Files that only carry a year keep the Year row they already had, and cloud tracks are left alone because their date cannot be read without downloading them.
+- A source filter on the library's playlist tab, so AI-generated and hand-built playlists can be listed separately. The choice survives a restart, and each of the two empty states names which kind of playlist is missing instead of showing a blank page.
+- Split long lines, under Settings > Playback > Bluetooth car. A lyric line wider than the head unit can display is cut into segments shown in turn; turning it off sends the line whole, for units that scroll a long title by themselves. On by default.
+- Tapping the title in the full player opens the song sheet on its Details tab rather than on its first tab.
+
+### Changed
+- Tracks started from Quick play no longer reach listening statistics, recently played or the songs the AI samples from, since Quick play deliberately previews songs that stay outside the library. The notification and its controls are unchanged.
+- The rating control in the player is raised as an overlay pill instead of expanding in place, so opening it no longer reflows the row around it, and the expanded pill is wider with tighter star spacing.
+
+### Fixed
+- The car lyric title fell back to the real track title far more often than the gaps in a song call for, which is what made a head unit alternate between lyrics and the song name. An untimed blank line in the file cleared the override unconditionally, so a marker that merely ends one lyric line and starts the next dropped the title as well. A blank marker now clears it only when it stands for an actual gap, which is what makes it mean intro, interlude or outro. On a real track with 44 blank markers this cut the fallbacks from 44 to 3.
+- A segment of a long lyric line could sit on screen well past the line it belongs to, because nothing bounded how long a segment lasts. A segment now waits at most four seconds before the next one takes over.
+- Dragging the position slider in the middle of a line could leave the car lyric title stuck until the following line, because the scheduler's wake-up key did not account for every input that decides when the next cue is due.
+- The player could show the previous song after a track change: the shown state was derived from the app's own copy of the playback position rather than from the engine, which by then reported something else. The state is now read from the engine.
+- The library sort sheet could not be scrolled, so on a short screen its last options could not be reached at all.
+- Search history rows were taller than the 48 dp minimum touch target.
+- Backup export left AI and Serendipity playlists out of the archive, so restoring a backup silently lost them.
+
 ## [0.4.2-pisces.1] - 2026-09-16
 
 The current lyric line can be published as the media title, so a Bluetooth car head unit that
