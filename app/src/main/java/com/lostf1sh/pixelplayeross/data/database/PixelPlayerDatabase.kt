@@ -29,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AiCacheEntity::class,
         AiUsageEntity::class
     ],
-    version = 12,
+    version = 14,
     exportSchema = true
 )
 abstract class PixelPlayerDatabase : RoomDatabase() {
@@ -120,7 +120,8 @@ abstract class PixelPlayerDatabase : RoomDatabase() {
             db.execSQL(
                 """
                     CREATE TRIGGER IF NOT EXISTS trg_songs_fts_update
-                    AFTER UPDATE ON songs
+                    AFTER UPDATE OF title, artist_name ON songs
+                    WHEN OLD.title != NEW.title OR OLD.artist_name != NEW.artist_name
                     BEGIN
                         DELETE FROM songs_fts WHERE rowid = OLD.id;
                         INSERT INTO songs_fts(rowid, title, artist_name)

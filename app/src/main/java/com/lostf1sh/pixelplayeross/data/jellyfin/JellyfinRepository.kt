@@ -7,6 +7,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.lostf1sh.pixelplayeross.data.database.AlbumEntity
 import com.lostf1sh.pixelplayeross.data.database.ArtistEntity
+import com.lostf1sh.pixelplayeross.data.database.CloudUnifiedIds
 import com.lostf1sh.pixelplayeross.data.database.JellyfinDao
 import com.lostf1sh.pixelplayeross.data.database.JellyfinPlaylistEntity
 import com.lostf1sh.pixelplayeross.data.database.JellyfinSongEntity
@@ -664,20 +665,16 @@ class JellyfinRepository @Inject constructor(
         CloudMusicUtils.parseArtistNames(rawArtist)
 
     private fun toUnifiedSongId(jellyfinId: String): Long {
-        return -(JELLYFIN_SONG_ID_OFFSET + jellyfinId.hashCode().toLong().absoluteValue)
+        return CloudUnifiedIds.unifiedSongId(JELLYFIN_SONG_ID_OFFSET, jellyfinId)
     }
 
     private fun toUnifiedAlbumId(albumId: String?, albumName: String): Long {
-        val normalized = if (!albumId.isNullOrBlank()) {
-            albumId.hashCode().toLong().absoluteValue
-        } else {
-            albumName.lowercase().hashCode().toLong().absoluteValue
-        }
-        return -(JELLYFIN_ALBUM_ID_OFFSET + normalized)
+        val key = albumId?.takeIf { it.isNotBlank() } ?: albumName.lowercase()
+        return CloudUnifiedIds.unifiedAlbumId(JELLYFIN_ALBUM_ID_OFFSET, key)
     }
 
     private fun toUnifiedArtistId(artistName: String): Long {
-        return -(JELLYFIN_ARTIST_ID_OFFSET + artistName.lowercase().hashCode().toLong().absoluteValue)
+        return CloudUnifiedIds.unifiedArtistId(JELLYFIN_ARTIST_ID_OFFSET, artistName)
     }
 
     private suspend fun updateAppPlaylistForJellyfinPlaylist(

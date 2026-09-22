@@ -993,20 +993,27 @@ class LyricsRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * Lyrics read priority (single source of truth = `lyrics` table):
+     * 1. `lyrics` table (manual / remote / embedded)
+     * 2. `song.lyrics` — legacy/embedded column still present until migration v14
+     * 3. JSON disk cache
+     * 4. in-memory LruCache (optional)
+     */
     private suspend fun loadStoredLyrics(
         song: Song,
         cacheKey: String,
         includeMemoryCache: Boolean
     ): Pair<Lyrics, String>? = withContext(Dispatchers.IO) {
-        song.lyrics
+        song.id.toLongOrNull()
+            ?.let { lyricsDao.getLyrics(it)?.content }
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.let { rawLyrics ->
                 parseStoredLyrics(rawLyrics)?.let { return@withContext it to rawLyrics }
             }
 
-        song.id.toLongOrNull()
-            ?.let { lyricsDao.getLyrics(it)?.content }
+        song.lyrics
             ?.trim()
             ?.takeIf { it.isNotBlank() }
             ?.let { rawLyrics ->
@@ -1376,6 +1383,7 @@ class LyricsRepositoryImpl @Inject constructor(
 
         val songsToScan = songs.filter { song ->
             val songId = song.id.toLongOrNull()
+            // Fetch only when neither the lyrics table nor song.lyrics has content.
             song.lyrics.isNullOrBlank() && (songId == null || songId !in idsWithPersistedLyrics)
         }
         val skippedCount = total - songsToScan.size

@@ -5,7 +5,10 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.lostf1sh.pixelplayeross.data.backup.model.BackupSection
+import com.lostf1sh.pixelplayeross.data.backup.restore.PendingSongRef
+import com.lostf1sh.pixelplayeross.data.backup.restore.PlaylistSongMatcher
 import com.lostf1sh.pixelplayeross.data.database.EngagementDao
+import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.SongEngagementEntity
 import com.lostf1sh.pixelplayeross.di.BackupGson
 import kotlinx.coroutines.Dispatchers
@@ -13,16 +16,43 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Engagement backup row + identity metadata for cross-device songId remapping. */
+data class EngagementBackupEntry(
+    val songId: String,
+    val playCount: Int = 0,
+    val totalPlayDurationMs: Long = 0L,
+    val lastPlayedTimestamp: Long = 0L,
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val duration: Long = 0L,
+)
+
 @Singleton
 class EngagementStatsModuleHandler @Inject constructor(
     private val engagementDao: EngagementDao,
+    private val musicDao: MusicDao,
     @BackupGson private val gson: Gson
 ) : BackupModuleHandler {
 
     override val section = BackupSection.ENGAGEMENT_STATS
 
     override suspend fun export(): String = withContext(Dispatchers.IO) {
-        gson.toJson(engagementDao.getAllEngagements())
+        val summaries = musicDao.getAllLocalSongSummaries().associateBy { it.id.toString() }
+        val payload = engagementDao.getAllEngagements().map { row ->
+            val meta = summaries[row.songId]
+            EngagementBackupEntry(
+                songId = row.songId,
+                playCount = row.playCount,
+                totalPlayDurationMs = row.totalPlayDurationMs,
+                lastPlayedTimestamp = row.lastPlayedTimestamp,
+                title = meta?.title,
+                artist = meta?.artistName,
+                album = meta?.albumName,
+                duration = meta?.duration ?: 0L,
+            )
+        }
+        gson.toJson(payload)
     }
 
     override suspend fun countEntries(): Int = withContext(Dispatchers.IO) {
@@ -36,26 +66,42 @@ class EngagementStatsModuleHandler @Inject constructor(
         require(parsed.isJsonArray) { "Engagement stats payload must be a JSON array." }
 
         val sourceEntries = parsed.asJsonArray.size()
-        val stats = parseEntries(parsed.asJsonArray)
+        val matcher = PlaylistSongMatcher(musicDao.getAllLocalSongSummaries())
+        val stats = parseEntries(parsed.asJsonArray, matcher)
         if (sourceEntries > 0 && stats.isEmpty()) {
             throw IllegalArgumentException("Engagement stats backup does not contain any valid entries.")
         }
 
-        engagementDao.replaceAll(stats)
+        // Merge with existing rows so backup restore never drops newer local stats.
+        val existing = engagementDao.getAllEngagements().associateBy { it.songId }
+        val merged = stats.map { incoming ->
+            existing[incoming.songId]?.let { mergeEntries(it, incoming) } ?: incoming
+        }
+        val untouched = existing.values.filter { it.songId !in stats.map { s -> s.songId }.toSet() }
+        engagementDao.replaceAll(merged + untouched)
     }
 
-    override suspend fun rollback(snapshot: String) = restore(snapshot)
+    /** Full replace so a failed restore can be undone. */
+    override suspend fun rollback(snapshot: String) = withContext(Dispatchers.IO) {
+        val parsed = JsonParser.parseString(snapshot)
+        require(parsed.isJsonArray) { "Engagement stats payload must be a JSON array." }
+        val matcher = PlaylistSongMatcher(musicDao.getAllLocalSongSummaries())
+        engagementDao.replaceAll(parseEntries(parsed.asJsonArray, matcher))
+    }
 
-    private fun parseEntries(array: com.google.gson.JsonArray): List<SongEngagementEntity> {
+    private fun parseEntries(
+        array: com.google.gson.JsonArray,
+        matcher: PlaylistSongMatcher,
+    ): List<SongEngagementEntity> {
         val merged = linkedMapOf<String, SongEngagementEntity>()
         array.forEach { element ->
-            val entry = parseEntry(element) ?: return@forEach
+            val entry = parseEntry(element, matcher) ?: return@forEach
             merged.merge(entry.songId, entry, ::mergeEntries)
         }
         return merged.values.toList()
     }
 
-    private fun parseEntry(element: JsonElement): SongEngagementEntity? {
+    private fun parseEntry(element: JsonElement, matcher: PlaylistSongMatcher): SongEngagementEntity? {
         if (!element.isJsonObject) return null
 
         val obj = element.asJsonObject
@@ -64,8 +110,11 @@ class EngagementStatsModuleHandler @Inject constructor(
             ?.takeIf { it.isNotEmpty() }
             ?: return null
 
+        val meta = buildMeta(obj)
+        val resolvedId = matcher.resolve(songId, meta) ?: songId
+
         return SongEngagementEntity(
-            songId = songId,
+            songId = resolvedId,
             playCount = (readInt(obj, "playCount", "play_count", "score", "plays") ?: 0).coerceAtLeast(0),
             totalPlayDurationMs = (
                 readLong(
@@ -88,6 +137,18 @@ class EngagementStatsModuleHandler @Inject constructor(
                     "timestamp"
                 ) ?: 0L
             ).coerceAtLeast(0L)
+        )
+    }
+
+    private fun buildMeta(obj: JsonObject): PendingSongRef? {
+        val title = readString(obj, "title")
+        val artist = readString(obj, "artist", "artistName", "artist_name")
+        if (title == null || artist == null) return null
+        return PendingSongRef(
+            title = title,
+            artist = artist,
+            album = readString(obj, "album", "albumName", "album_name"),
+            duration = readLong(obj, "duration") ?: 0L,
         )
     }
 

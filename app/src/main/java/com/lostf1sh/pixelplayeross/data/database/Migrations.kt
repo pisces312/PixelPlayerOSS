@@ -313,3 +313,143 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
         db.addColumnIfMissing("songs", "release_date", "`release_date` TEXT")
     }
 }
+
+/**
+ * v12 -> v13: lyrics source of truth moves to the `lyrics` table.
+ *
+ * Backfills `songs.lyrics` (file-embedded / legacy column) into `lyrics` as `source='embedded'`
+ * when that song has no `lyrics` row yet. Idempotent: existing manual/remote rows win.
+ * The `songs.lyrics` column is kept until a later migration drops it.
+ */
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+                INSERT OR IGNORE INTO lyrics (songId, content, isSynced, source)
+                SELECT id, lyrics, 0, 'embedded'
+                FROM songs
+                WHERE lyrics IS NOT NULL AND lyrics != ''
+            """.trimIndent()
+        )
+    }
+}
+
+/**
+ * v13 -> v14: cloud unified ids switch from 32-bit `hashCode` to [CloudUnifiedIds] (SHA-256 / 63-bit).
+ *
+ * Old ids can collide and silently merge two cloud songs. Rewrites `songs` / `albums` / `artists`
+ * primary keys and every referencing table (favorites, lyrics, engagements, playlist_songs, …).
+ * Local MediaStore ids (positive) are untouched.
+ */
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val songMap = mutableMapOf<Long, Long>()
+        val albumMap = mutableMapOf<Long, Long>()
+        val artistMap = mutableMapOf<Long, Long>()
+
+        fun offsetFor(sourceType: Int): Triple<Long, Long, Long> = when (sourceType) {
+            SourceType.NAVIDROME -> Triple(9_000_000_000_000L, 10_000_000_000_000L, 11_000_000_000_000L)
+            SourceType.JELLYFIN -> Triple(12_000_000_000_000L, 13_000_000_000_000L, 14_000_000_000_000L)
+            else -> Triple(0L, 0L, 0L)
+        }
+
+        db.query(
+            "SELECT id, content_uri_string, source_type, album_id, album_name, artist_id, artist_name, album_artist_id FROM songs WHERE source_type != 0"
+        ).use { c ->
+            while (c.moveToNext()) {
+                val oldId = c.getLong(0)
+                val contentUri = c.getString(1) ?: continue
+                val sourceType = c.getInt(2)
+                val oldAlbumId = c.getLong(3)
+                val albumName = c.getString(4) ?: ""
+                val oldArtistId = c.getLong(5)
+                val artistName = c.getString(6) ?: ""
+                val oldAlbumArtistId = c.getLong(7)
+                val (songOff, albumOff, artistOff) = offsetFor(sourceType)
+                if (songOff == 0L) continue
+
+                val externalId = when {
+                    contentUri.startsWith("navidrome://") -> contentUri.removePrefix("navidrome://")
+                    contentUri.startsWith("jellyfin://") -> contentUri.removePrefix("jellyfin://")
+                    else -> continue
+                }
+                val newId = CloudUnifiedIds.unifiedSongId(songOff, externalId)
+                songMap[oldId] = newId
+
+                // Prefer server album id when the cache table still has it; else name.
+                val serverAlbumId = lookupServerAlbumId(db, sourceType, externalId)
+                val newAlbumId = CloudUnifiedIds.unifiedAlbumId(
+                    albumOff,
+                    serverAlbumId?.takeIf { it.isNotBlank() } ?: albumName.lowercase()
+                )
+                albumMap[oldAlbumId] = newAlbumId
+
+                val newArtistId = CloudUnifiedIds.unifiedArtistId(artistOff, artistName)
+                artistMap[oldArtistId] = newArtistId
+                if (oldAlbumArtistId != 0L && oldAlbumArtistId != oldArtistId) {
+                    // album artist id is rewritten from its own artist row name below if present
+                }
+            }
+        }
+
+        db.query("SELECT id, name FROM artists WHERE id < 0").use { c ->
+            while (c.moveToNext()) {
+                val oldId = c.getLong(0)
+                val name = c.getString(1) ?: continue
+                val newId = if (oldId < -12_000_000_000_000L) {
+                    CloudUnifiedIds.unifiedArtistId(14_000_000_000_000L, name)
+                } else {
+                    CloudUnifiedIds.unifiedArtistId(11_000_000_000_000L, name)
+                }
+                artistMap[oldId] = newId
+            }
+        }
+
+        db.execSQL("PRAGMA foreign_keys=OFF")
+        try {
+            applyIdMap(db, "songs", "id", songMap)
+            applyIdMap(db, "albums", "id", albumMap)
+            applyIdMap(db, "artists", "id", artistMap)
+            applyIdMap(db, "songs", "album_id", albumMap)
+            applyIdMap(db, "songs", "artist_id", artistMap)
+            applyIdMap(db, "songs", "album_artist_id", artistMap)
+            applyIdMap(db, "song_artist_cross_ref", "song_id", songMap)
+            applyIdMap(db, "song_artist_cross_ref", "artist_id", artistMap)
+            applyIdMap(db, "favorites", "songId", songMap)
+            applyIdMap(db, "lyrics", "songId", songMap)
+            applyTextIdMap(db, "song_engagements", "song_id", songMap)
+            applyTextIdMap(db, "playlist_songs", "song_id", songMap)
+            applyTextIdMap(db, "audio_bookmarks", "song_id", songMap)
+            applyTextIdMap(db, "offline_tracks", "song_id", songMap)
+        } finally {
+            db.execSQL("PRAGMA foreign_keys=ON")
+        }
+    }
+
+    private fun lookupServerAlbumId(db: SupportSQLiteDatabase, sourceType: Int, externalId: String): String? {
+        val table = if (sourceType == SourceType.NAVIDROME) "navidrome_songs" else "jellyfin_songs"
+        val keyCol = if (sourceType == SourceType.NAVIDROME) "navidrome_id" else "jellyfin_id"
+        return db.query("SELECT album_id FROM `$table` WHERE `$keyCol` = ? LIMIT 1", arrayOf(externalId)).use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }
+
+    private fun applyIdMap(db: SupportSQLiteDatabase, table: String, column: String, map: Map<Long, Long>) {
+        map.forEach { (oldId, newId) ->
+            if (oldId != newId) {
+                db.execSQL("UPDATE `$table` SET `$column` = ? WHERE `$column` = ?", arrayOf(newId, oldId))
+            }
+        }
+    }
+
+    private fun applyTextIdMap(db: SupportSQLiteDatabase, table: String, column: String, map: Map<Long, Long>) {
+        map.forEach { (oldId, newId) ->
+            if (oldId != newId) {
+                db.execSQL(
+                    "UPDATE `$table` SET `$column` = ? WHERE `$column` = ?",
+                    arrayOf(newId.toString(), oldId.toString())
+                )
+            }
+        }
+    }
+}

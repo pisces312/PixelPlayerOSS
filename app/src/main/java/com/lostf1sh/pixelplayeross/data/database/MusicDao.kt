@@ -272,11 +272,17 @@ interface MusicDao {
     @Query("DELETE FROM favorites WHERE songId IN (SELECT id FROM songs WHERE source_type = 0)")
     suspend fun deleteLocalFavorites()
 
+    @Query("DELETE FROM favorites WHERE songId NOT IN (SELECT id FROM songs)")
+    suspend fun deleteOrphanedFavorites()
+
     @Query("DELETE FROM lyrics WHERE songId IN (:songIds)")
     suspend fun deleteLyricsBySongIds(songIds: List<Long>)
 
     @Query("DELETE FROM lyrics WHERE songId IN (SELECT id FROM songs WHERE source_type = 0)")
     suspend fun deleteLocalLyrics()
+
+    @Query("DELETE FROM lyrics WHERE songId NOT IN (SELECT id FROM songs)")
+    suspend fun deleteOrphanedLyrics()
 
     @Query("""
         UPDATE artists
@@ -1847,15 +1853,24 @@ interface MusicDao {
             discNumber = discNumber
         )
 
+        replaceSongArtistLinks(songId, crossRefs)
+
+        deleteOrphanedArtists()
+        refreshArtistTrackCounts()
+    }
+
+    /**
+     * Single write path for multi-artist links. `song_artist_cross_ref` is the relational
+     * source of truth; keep `songs.artists_json` in the same transaction as a list projection.
+     */
+    @Transaction
+    suspend fun replaceSongArtistLinks(songId: Long, crossRefs: List<SongArtistCrossRef>) {
         deleteCrossRefsForSong(songId)
         if (crossRefs.isNotEmpty()) {
             crossRefs.chunked(CROSS_REF_BATCH_SIZE).forEach { chunk ->
                 insertSongArtistCrossRefs(chunk)
             }
         }
-
-        deleteOrphanedArtists()
-        refreshArtistTrackCounts()
     }
 
     @Query("UPDATE songs SET album_art_uri_string = :albumArtUri WHERE id = :songId")
@@ -2093,6 +2108,13 @@ interface MusicDao {
         }
     }
 
+    /**
+     * Emergency rebuild of local songs from MediaStore.
+     *
+     * Intentionally wipes local favorites / lyrics / user-edited metadata for source_type=0
+     * (see settings dialog `dialog_rebuild_database_message`). Cloud songs are untouched.
+     * Use full rescan for a non-destructive reindex.
+     */
     @Transaction
     suspend fun rebuildLocalMusicDataWithCrossRefs(
         songs: List<SongEntity>,

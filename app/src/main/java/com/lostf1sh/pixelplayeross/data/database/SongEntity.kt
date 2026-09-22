@@ -56,7 +56,8 @@ object SourceType {
             entity = ArtistEntity::class,
             parentColumns = ["id"],
             childColumns = ["artist_id"],
-            onDelete = ForeignKey.SET_NULL
+            // NOT NULL column — SET_NULL would abort on delete; orphans cleaned by deleteOrphanedArtists().
+            onDelete = ForeignKey.NO_ACTION
         )
     ]
 )
@@ -178,23 +179,6 @@ fun serializeArtistRefs(artists: List<ArtistRef>): String {
         })
     }
     return arr.toString()
-}
-
-/**
- * Converts a SongEntity to Song with artists from the junction table.
- */
-fun SongEntity.toSongWithArtistRefs(artists: List<ArtistEntity>, crossRefs: List<SongArtistCrossRef>): Song {
-    val crossRefByArtistId = crossRefs.associateBy { it.artistId }
-    val artistRefs = artists.map { artist ->
-        val crossRef = crossRefByArtistId[artist.id]
-        ArtistRef(
-            id = artist.id,
-            name = artist.name.normalizeMetadataTextOrEmpty(),
-            isPrimary = crossRef?.isPrimary ?: false
-        )
-    }.sortedByDescending { it.isPrimary }
-
-    return toSongInternal(artists = artistRefs)
 }
 
 fun List<SongEntity>.toSongs(): List<Song> {

@@ -16,8 +16,10 @@ import org.junit.jupiter.api.Test
 class FavoritesModuleHandlerTest {
 
     private val favoritesDao: FavoritesDao = mockk(relaxed = true)
+    private val musicDao: com.lostf1sh.pixelplayeross.data.database.MusicDao = mockk(relaxed = true)
     private val handler = FavoritesModuleHandler(
         favoritesDao = favoritesDao,
+        musicDao = musicDao,
         gson = GsonBuilder().serializeNulls().create()
     )
 
@@ -50,7 +52,7 @@ class FavoritesModuleHandlerTest {
         handler.restore(payload)
 
         coVerify(exactly = 1) {
-            favoritesDao.replaceAll(
+            favoritesDao.insertAll(
                 listOf(
                     FavoritesEntity(
                         songId = 123L,

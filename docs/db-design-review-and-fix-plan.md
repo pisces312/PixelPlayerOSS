@@ -109,7 +109,7 @@ loadStoredLyrics:                song.lyrics → lyricsDao           ← songs.l
 | M3 | `song_id` 类型不统一 | `songs.id`/`favorites`/`lyrics` = Long；`song_engagements`/`playlist_songs`/`audio_bookmarks`/`offline_tracks` = String。出现 `CAST(songs.id AS TEXT)` JOIN，索引失效 |
 | M4 | FTS 双轨管理 | Room `@Fts4` 实体 + 裸 SQL `CREATE VIRTUAL TABLE`；UPDATE trigger 无 `WHEN`，任何 songs 列更新（含 `is_favorite`）都重写 FTS |
 | M5 | Migration 测试覆盖薄 | 只测 `5→6` 和 `10→11`；`1→2`（加列+回填）、`6→7`（rating）、trigger 存活性均无测 |
-| M6 | `rebuildLocalMusicDataWithCrossRefs` 清用户数据 | 全量重建会 `deleteLocalFavorites()` + `deleteLocalLyrics()` |
+| M6 | `rebuildLocalMusicDataWithCrossRefs` 清用户数据 | **有意为之**（见 §2.10）：重建是急救重置，dialog 已承诺删除本地歌词/收藏/自定义元数据；非破坏性场景用「完整重新扫描」 |
 
 ### 1.3 做得好的地方
 
@@ -314,13 +314,22 @@ clearLocalSongs()
 | P1a `Song.isFavorite` map-time 富化 | **完成** | `MusicRepositoryImpl` 的 `toSongsWithFavoriteState*` 批量覆盖 |
 | P0 测试（Merge / Favorites restore） | **完成** | `SongEntityMergeUserOwnedFieldsTest`、`FavoritesRestoreLegacyDefaultsTest` |
 | 备份 R2：缺 `isFavorite` 默认 true | **完成** | `FavoritesModuleHandler.restore` 字段级解析 |
-| P1b 歌词真源 | 未开始 | |
-| P1c 多艺人真源 | 未开始 | |
-| P1e 重建保留用户数据 | 未开始 | |
+| P1b 歌词真源 | **完成** | `loadStoredLyrics` 歌词表优先；`MIGRATION_12_13` 回填 `songs.lyrics`→`lyrics`（`source=embedded`）；DB version 13 |
+| P1c 多艺人真源 | **完成** | `MusicDao.replaceSongArtistLinks` 单写入口；删 `toSongWithArtistRefs` |
+| P1e 重建语义 | **澄清并维持原语义** | 重建 = 从 MediaStore 重扫 **并故意清**本地收藏/歌词/自定义元数据（与 dialog 一致）；非破坏性重应用「完整重新扫描」。`deleteOrphanedFavorites/Lyrics` 仅用于删歌后的孤儿清理 |
 | P1d 删列 | 未开始 | 隔发版后 |
-| P0-4 云 id 64 位哈希 | 未开始 | 单独 PR |
+| P0-4 云 id 64 位哈希 | **完成** | `CloudUnifiedIds`（SHA-256/63-bit）+ `MIGRATION_13_14` 重写引用；DB v14 |
+| 备份 R3 合并恢复 | **完成** | restore=upsert 合并；rollback 仍 replace |
+| M5 migration 测试 | **完成** | `LyricsAndCloudIdMigrationTest`（12→13、13→14） |
+| P1d 删列 / M2 / M3 | 未开始 | schema 级，单独一版 |
+| M1 artist FK SET_NULL | **完成** | 改为 `NO_ACTION`（列 NOT NULL） |
+| 备份 R1 收藏/歌词/统计重映射 | **完成** | 三者导出带 title/artist/album/duration，恢复走 `PlaylistSongMatcher` |
+| M4 FTS UPDATE trigger | **完成** | 仅 title/artist_name 变更时重写 |
+| 死代码 `deleteOrphanedEngagements` | **完成** | 已删 |
+| P1d 删列 | 未开始 | 隔发版后 |
+| 备份 R1/R3、M1/M2/M3/M5 | 未开始 | 见 §1 |
 
-验证：`testDebugUnitTest` 820 tests 全绿；`assembleRelease` 成功。
+验证：`testDebugUnitTest` 全绿；`assembleDebug` / `assembleRelease` 成功。
 
 ### 2.8 风险与回滚
 
@@ -331,6 +340,26 @@ clearLocalSongs()
 | `artists_json` 与 cross_ref 历史漂移 | 回填只填 NULL；漂移行以 cross_ref 为准做一次性修复 |
 | 删列后老备份恢复失败 | 删列放在 v14；备份 schema 兼容单独确认（`ModuleSchemaValidator`） |
 | 回滚 | 每阶段独立 commit；删列前打 tag；DataStore/key 不物理删除 |
+
+---
+
+### 2.10 「完整重新扫描」vs「重建数据库」
+
+设置里两个入口语义不同，**不要合并**：
+
+| | 完整重新扫描 Full Rescan | 重建数据库 Rebuild Database |
+|---|---|---|
+| 目的 | 正常维护：补索引 / 补 MIME 码率 / 艺人解析设置变更后应用 | **急救重置**：索引坏了、想丢掉本地覆盖、从系统媒体库重来 |
+| 本地歌曲行 | 增量/全量重扫 | 丢弃后按 MediaStore 重建 |
+| 收藏 / 评分 / 歌词 / 自定义元数据 | **保留** | **删除**（`source_type=0`；云曲不受影响） |
+| 播放统计 / 歌单 | 保留 | 保留（不在 rebuild 清理列表） |
+| 对应文案 | `setcat_sync_full_rescan_*` | `dialog_rebuild_database_message` |
+
+实现入口：`SyncManager.rebuildDatabase()` → `SyncWorker.rebuildDatabaseWork()`（`forceProcessAll` + `resetExistingLocalData`）→ `MusicDao.rebuildLocalMusicDataWithCrossRefs`。
+
+**产品契约以 dialog 为准**：重建会删本地导入歌词、收藏、自定义元数据。任何改这里行为的 PR 必须同步改所有语言的 `dialog_rebuild_database_message`。
+
+增量同步的删歌路径仍按 songId 精确清理（`deleteSongsAndRelatedData`）；`deleteOrphanedFavorites` / `deleteOrphanedLyrics` 可用于孤儿清理，但**不是**重建语义的一部分。
 
 ---
 

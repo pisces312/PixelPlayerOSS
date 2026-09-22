@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.database.AlbumEntity
 import com.lostf1sh.pixelplayeross.data.database.ArtistEntity
+import com.lostf1sh.pixelplayeross.data.database.CloudUnifiedIds
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.NavidromeDao
 import com.lostf1sh.pixelplayeross.data.database.NavidromePlaylistEntity
@@ -885,20 +886,16 @@ class NavidromeRepository @Inject constructor(
         CloudMusicUtils.parseArtistNames(rawArtist)
 
     private fun toUnifiedSongId(navidromeId: String): Long {
-        return -(NAVIDROME_SONG_ID_OFFSET + navidromeId.hashCode().toLong().absoluteValue)
+        return CloudUnifiedIds.unifiedSongId(NAVIDROME_SONG_ID_OFFSET, navidromeId)
     }
 
     private fun toUnifiedAlbumId(albumId: String?, albumName: String): Long {
-        val normalized = if (!albumId.isNullOrBlank()) {
-            albumId.hashCode().toLong().absoluteValue
-        } else {
-            albumName.lowercase().hashCode().toLong().absoluteValue
-        }
-        return -(NAVIDROME_ALBUM_ID_OFFSET + normalized)
+        val key = albumId?.takeIf { it.isNotBlank() } ?: albumName.lowercase()
+        return CloudUnifiedIds.unifiedAlbumId(NAVIDROME_ALBUM_ID_OFFSET, key)
     }
 
     private fun toUnifiedArtistId(artistName: String): Long {
-        return -(NAVIDROME_ARTIST_ID_OFFSET + artistName.lowercase().hashCode().toLong().absoluteValue)
+        return CloudUnifiedIds.unifiedArtistId(NAVIDROME_ARTIST_ID_OFFSET, artistName)
     }
 
     private fun getAppPlaylistIdForNavidrome(navidromePlaylistId: String): String {

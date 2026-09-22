@@ -171,7 +171,8 @@ class ModuleSchemaValidator @Inject constructor(
             if (!element.isJsonObject) return@forEachIndexed
             val obj = element.asJsonObject
             val songId = readNumericField(obj, "songId", "song_id")
-            if (!songId.present || songId.value == null || songId.value <= 0L) {
+            // Local MediaStore ids are positive; cloud unified ids are negative (see SourceType).
+            if (!songId.present || songId.value == null || songId.value == 0L) {
                 errors.add(
                     ValidationError(
                         "INVALID_SONG_ID",

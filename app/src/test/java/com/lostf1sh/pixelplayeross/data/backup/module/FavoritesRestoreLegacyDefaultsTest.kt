@@ -12,8 +12,10 @@ import org.junit.jupiter.api.Test
 class FavoritesRestoreLegacyDefaultsTest {
 
     private val favoritesDao: FavoritesDao = mockk(relaxed = true)
+    private val musicDao: com.lostf1sh.pixelplayeross.data.database.MusicDao = mockk(relaxed = true)
     private val handler = FavoritesModuleHandler(
         favoritesDao = favoritesDao,
+        musicDao = musicDao,
         gson = GsonBuilder().serializeNulls().create()
     )
 
@@ -28,7 +30,7 @@ class FavoritesRestoreLegacyDefaultsTest {
         handler.restore(payload)
 
         coVerify(exactly = 1) {
-            favoritesDao.replaceAll(match { list ->
+            favoritesDao.insertAll(match { list ->
                 list.size == 1 &&
                     list[0].songId == 42L &&
                     list[0].isFavorite &&
@@ -49,7 +51,7 @@ class FavoritesRestoreLegacyDefaultsTest {
         handler.restore(payload)
 
         coVerify(exactly = 1) {
-            favoritesDao.replaceAll(match { list ->
+            favoritesDao.insertAll(match { list ->
                 list.size == 1 && !list[0].isFavorite && list[0].songId == 7L
             })
         }
@@ -66,7 +68,7 @@ class FavoritesRestoreLegacyDefaultsTest {
         handler.restore(payload)
 
         coVerify(exactly = 1) {
-            favoritesDao.replaceAll(match { list ->
+            favoritesDao.insertAll(match { list ->
                 list.size == 1 && list[0].rating == 0 && list[0].songId == 9L
             })
         }
@@ -84,7 +86,7 @@ class FavoritesRestoreLegacyDefaultsTest {
         handler.restore(payload)
 
         coVerify(exactly = 1) {
-            favoritesDao.replaceAll(match { list ->
+            favoritesDao.insertAll(match { list ->
                 list.map { it.songId } == listOf(1L, 2L) &&
                     list.all { it.isFavorite }
             })
@@ -102,7 +104,7 @@ class FavoritesRestoreLegacyDefaultsTest {
         handler.restore(payload)
 
         coVerify(exactly = 1) {
-            favoritesDao.replaceAll(match { list ->
+            favoritesDao.insertAll(match { list ->
                 list.size == 1 && list[0].songId == -123456789L && list[0].rating == 1
             })
         }

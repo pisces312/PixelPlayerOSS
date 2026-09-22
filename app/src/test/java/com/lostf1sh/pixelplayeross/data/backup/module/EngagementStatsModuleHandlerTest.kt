@@ -20,6 +20,7 @@ class EngagementStatsModuleHandlerTest {
     private val engagementDao: EngagementDao = mockk(relaxed = true)
     private val handler = EngagementStatsModuleHandler(
         engagementDao = engagementDao,
+        musicDao = mockk(relaxed = true),
         gson = GsonBuilder().serializeNulls().create()
     )
 
