@@ -1247,10 +1247,13 @@ class MusicService : MediaSessionService() {
         }
 
         override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
-            requestWidgetFullUpdate(force = true)
-            mediaSession?.let { refreshMediaSessionUiWithFollowUp(it) }
+            // LyricTitlePlayer synthesizes titles and fires this often. Keep the
+            // ReplayGain path (title-sensitive) but drop the force full widget rebuild
+            // and the media-button follow-up — both are unrelated to the title chain
+            // that Bluetooth AVRCP reads via MediaSession / the legacy stub.
             val activePlayer = mediaSession?.player ?: engine.masterPlayer
             replayGainProcessor.onMediaMetadataChanged(activePlayer.currentMediaItem)
+            requestWidgetFullUpdate(force = false)
         }
 
         override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
