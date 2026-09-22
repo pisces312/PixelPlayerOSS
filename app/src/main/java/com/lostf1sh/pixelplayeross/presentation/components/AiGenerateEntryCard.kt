@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,18 +34,17 @@ import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 /**
  * Home screen entry point for AI playlist generation.
  *
- * The card itself is the "describe it yourself" entry. When [onSerendipityClick] is supplied the
- * actions move to their own row below the title, so both capsules fit side by side:
+ * One primary capsule carries the whole flow:
  *
  * ```
  * AI Playlist
- * Describe the music you want to hear
- *             [wand Serendipity!] [sparkle Describe]
+ * Short-press to listen · hold to describe
+ *                    [wand Serendipity!]
  * ```
  *
- * Serendipity takes the magic wand while the ordinary entry keeps the sparkle: the wand is what
- * makes "zero input" visually distinct, and the sparkle is already the AI family icon (article
- * header, recent mixes, settings category), so giving it to the special action would blur the two.
+ * - Short press on the capsule: gather the moment's signals and generate straight away.
+ * - Long press on the capsule (or tapping the card body): open the shared sheet so the user can
+ *   describe it themselves, with the same signals available as read-only chips.
  *
  * When no provider is configured the subtitle says so and the caller routes to AI settings
  * instead of opening the generation sheet.
@@ -55,12 +52,11 @@ import racra.compose.smooth_corner_rect_library.AbsoluteSmoothCornerShape
 @Composable
 fun AiGenerateEntryCard(
         configured: Boolean,
-        onClick: () -> Unit,
-        modifier: Modifier = Modifier,
-        onSerendipityClick: (() -> Unit)? = null,
-        // Long press on Serendipity: collect the signals and generate without opening the input
-        // step first. Null keeps the pill click-only (and the describe card never sets it).
-        onSerendipityLongClick: (() -> Unit)? = null
+        /** Short press on the pill: collect signals and generate without another tap. */
+        onQuickGenerate: () -> Unit,
+        /** Long press on the pill (and the card body): open the editable describe sheet. */
+        onOpenDescribe: () -> Unit,
+        modifier: Modifier = Modifier
 ) {
     val shape =
             AbsoluteSmoothCornerShape(
@@ -75,9 +71,8 @@ fun AiGenerateEntryCard(
             )
 
     val onCard = MaterialTheme.colorScheme.onPrimary
-    val hasSecondAction = onSerendipityClick != null
 
-    Surface(onClick = onClick, shape = shape, modifier = modifier.fillMaxWidth()) {
+    Surface(onClick = onOpenDescribe, shape = shape, modifier = modifier.fillMaxWidth()) {
         Box(
                 modifier =
                         Modifier.background(
@@ -88,14 +83,13 @@ fun AiGenerateEntryCard(
                                                 )
                                         )
                                 )
-                                // Two rows need room: title block, 12dp gap, button row.
-                                .heightIn(min = if (hasSecondAction) 100.dp else 76.dp)
+                                .heightIn(min = 100.dp)
                                 .padding(horizontal = 18.dp, vertical = 14.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                            imageVector = Icons.Rounded.AutoAwesome,
+                            imageVector = Icons.Rounded.AutoFixHigh,
                             contentDescription = null,
                             tint = onCard,
                             modifier = Modifier.size(28.dp)
@@ -116,46 +110,26 @@ fun AiGenerateEntryCard(
                         Text(
                                 text =
                                         stringResource(
-                                                if (configured) R.string.ai_playlist_entry_subtitle
+                                                if (configured) R.string.ai_serendipity_button_hint
                                                 else R.string.ai_playlist_entry_unconfigured
                                         ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = onCard.copy(alpha = 0.85f)
                         )
                     }
-                    // Without a second action the pill stays inline; with one it moves to the row
-                    // below, which is what frees the width the subtitle needs to stay on one line.
-                    if (!hasSecondAction) {
-                        Spacer(modifier = Modifier.width(12.dp))
-                        ActionPill(
-                                text = stringResource(R.string.ai_playlist_entry_action),
-                                color = onCard.copy(alpha = 0.18f)
-                        )
-                    }
                 }
-                if (onSerendipityClick != null) {
-                    Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ActionPill(
-                                text = stringResource(R.string.ai_serendipity_button),
-                                icon = Icons.Rounded.AutoFixHigh,
-                                // A touch brighter than the plain pill so the special action reads
-                                // as the more prominent of the two.
-                                color = onCard.copy(alpha = 0.24f),
-                                onClick = onSerendipityClick,
-                                onLongClick = onSerendipityLongClick
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        // Not clickable on its own: the whole card already opens the describe sheet.
-                        ActionPill(
-                                text = stringResource(R.string.ai_playlist_entry_action),
-                                icon = Icons.Rounded.AutoAwesome,
-                                color = onCard.copy(alpha = 0.18f)
-                        )
-                    }
+                Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ActionPill(
+                            text = stringResource(R.string.ai_serendipity_button),
+                            icon = Icons.Rounded.AutoFixHigh,
+                            color = onCard.copy(alpha = 0.24f),
+                            onClick = onQuickGenerate,
+                            onLongClick = onOpenDescribe
+                    )
                 }
             }
         }
@@ -163,7 +137,7 @@ fun AiGenerateEntryCard(
 }
 
 /**
- * Capsule used for the card actions; a null [onClick] renders a plain label pill.
+ * Capsule used for the card action; a null [onClick] renders a plain label pill.
  *
  * Long press needs no manual haptic: combinedClickable fires the built-in LongPress feedback on
  * its own, routed through the app-scoped LocalHapticFeedback in MainActivity (which already honours
@@ -173,7 +147,7 @@ fun AiGenerateEntryCard(
 private fun ActionPill(
         text: String,
         color: Color,
-        icon: ImageVector? = null,
+        icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
         onClick: (() -> Unit)? = null,
         onLongClick: (() -> Unit)? = null
 ) {

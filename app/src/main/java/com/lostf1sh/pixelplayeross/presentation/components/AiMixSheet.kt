@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -82,10 +83,11 @@ private val AI_MIX_IDEAS = listOf(
  * Three phases live in one sheet — input, generating, result — so the prompt the user typed
  * stays on screen the whole time and "regenerate" is a single tap.
  *
- * The same sheet also serves Serendipity: passing a non-null [serendipity] swaps the input phase
- * for "signals we could read + the prompt they composed", and hides the sampling controls because
- * that path forces its own. Sharing the sheet keeps the result phase, the play/save actions and
- * the error handling identical between the two entries.
+ * The same sheet also serves both Serendipity gestures: short press auto-generates and lands
+ * straight on the result phase, long press stops on the input phase so the user can describe it
+ * themselves. Passing a non-null [serendipity] shows the signals that were read as chips, keeps
+ * the prompt editable (and allowed to stay blank), and shares the result phase, play/save actions
+ * and the error handling between the two entries.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,6 +102,10 @@ fun AiMixSheet(
     serendipityChips: List<String> = emptyList(),
     /** Suggested playlist name built from the same signals ("Rain · Evening · 19:20"). */
     serendipityDefaultName: String? = null,
+    /** Non-null when the short-press flow already saved this list under that name. */
+    autoSavedName: String? = null,
+    /** Replay the given result from the start without saving or closing. */
+    onReplay: ((List<Song>) -> Unit)? = null,
     onReshuffleSerendipity: (() -> Unit)? = null,
     onRephraseSerendipity: (() -> Unit)? = null
 ) {
@@ -118,10 +124,22 @@ fun AiMixSheet(
 
     val ideas = AI_MIX_IDEAS.map { stringResource(it) }
 
-    // Serendipity composes the prompt before the sheet opens; the user can still edit it, and a
-    // reshuffle or an AI rephrase replaces whatever is in the field.
+    // Serendipity composes a sentence from the moment's signals before the sheet opens. The
+    // describe entry intentionally starts with an empty field ("the prompt may stay blank"):
+    // the first composed sentence is only kept as the generation fallback. A later reshuffle or
+    // AI rephrase — both user-initiated — overwrites whatever is in the field.
+    var lastSeenSerendipityPrompt by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(serendipity?.prompt) {
-        serendipity?.prompt?.takeIf { it.isNotBlank() }?.let { prompt = it }
+        val composed = serendipity?.prompt
+        if (composed.isNullOrBlank()) return@LaunchedEffect
+        if (lastSeenSerendipityPrompt == null) {
+            lastSeenSerendipityPrompt = composed
+            return@LaunchedEffect
+        }
+        if (composed != lastSeenSerendipityPrompt) {
+            lastSeenSerendipityPrompt = composed
+            prompt = composed
+        }
     }
 
     LaunchedEffect(state) {
@@ -188,6 +206,7 @@ fun AiMixSheet(
                     onGenerate = { onGenerate(prompt.trim(), maxLength) },
                     serendipity = serendipity,
                     serendipityChips = serendipityChips,
+                    onChipTap = { chip -> prompt = appendChipToPrompt(prompt, chip) },
                     onReshuffle = onReshuffleSerendipity,
                     onRephrase = onRephraseSerendipity
                 )
@@ -200,8 +219,10 @@ fun AiMixSheet(
                     onRemove = { resultSongs.remove(it) },
                     mixName = mixName,
                     onNameChange = { mixName = it },
+                    autoSavedName = autoSavedName,
                     onPlay = { onSave(mixName, resultSongs.toList(), prompt.trim(), true) },
                     onSaveOnly = { onSave(mixName, resultSongs.toList(), prompt.trim(), false) },
+                    onReplay = onReplay?.let { replay -> { replay(resultSongs.toList()) } },
                     onRegenerate = { onGenerate(prompt.trim(), maxLength) }
                 )
             }
@@ -210,6 +231,13 @@ fun AiMixSheet(
 }
 
 private enum class AiMixPhase { Input, Generating, Result }
+
+/** Appends a tapped signal chip to the prompt, skipping a duplicate of the same text. */
+internal fun appendChipToPrompt(prompt: String, chip: String): String {
+    if (chip.isBlank()) return prompt
+    if (prompt.contains(chip)) return prompt
+    return if (prompt.isBlank()) chip else "$prompt $chip"
+}
 
 @Composable
 private fun InputPhase(
@@ -224,6 +252,7 @@ private fun InputPhase(
     onGenerate: () -> Unit,
     serendipity: SerendipityUiState?,
     serendipityChips: List<String>,
+    onChipTap: (String) -> Unit,
     onReshuffle: (() -> Unit)?,
     onRephrase: (() -> Unit)?
 ) {
@@ -238,6 +267,7 @@ private fun InputPhase(
             SerendipitySignals(
                 state = serendipity,
                 chips = serendipityChips,
+                onChipTap = onChipTap,
                 onReshuffle = onReshuffle,
                 onRephrase = onRephrase
             )
@@ -255,25 +285,23 @@ private fun InputPhase(
             placeholder = { Text(stringResource(R.string.ai_mix_prompt_hint)) }
         )
 
-        // The one-tap ideas belong to the describe flow: picking one would throw away the
-        // composed context sentence.
-        if (serendipity == null) {
-            Text(
-                text = stringResource(R.string.ai_mix_ideas_label),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ideas.forEach { idea ->
-                    FilterChip(
-                        selected = prompt.trim().equals(idea, ignoreCase = true),
-                        onClick = { onPromptChange(idea) },
-                        label = { Text(idea) }
-                    )
-                }
+        // One-tap ideas stay available beside the signals: they replace the field, they do not
+        // throw the context away — generation falls back to the composed sentence when blank.
+        Text(
+            text = stringResource(R.string.ai_mix_ideas_label),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ideas.forEach { idea ->
+                FilterChip(
+                    selected = prompt.trim().equals(idea, ignoreCase = true),
+                    onClick = { onPromptChange(idea) },
+                    label = { Text(idea) }
+                )
             }
         }
 
@@ -313,7 +341,9 @@ private fun InputPhase(
 
         Button(
             onClick = onGenerate,
-            enabled = prompt.isNotBlank() && serendipity?.isCollecting != true,
+            // Blank prompt is allowed: the view model falls back to the composed moment sentence
+            // (or a generic "surprise me") so the primary action never has to stay disabled.
+            enabled = serendipity?.isCollecting != true,
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(
@@ -331,14 +361,15 @@ private fun InputPhase(
  * What Serendipity based the prompt on, plus the two ways to change the wording.
  *
  * The chips only ever show signals that were actually read — a missing weather line is the honest
- * answer to "why does this mix ignore the rain?", and it is the main reason this sheet exists
- * instead of generating straight away.
+ * answer to "why does this mix ignore the rain?". Tapping a chip appends its text to the prompt
+ * so the user can keep just the signals they care about.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SerendipitySignals(
     state: SerendipityUiState,
     chips: List<String>,
+    onChipTap: (String) -> Unit,
     onReshuffle: (() -> Unit)?,
     onRephrase: (() -> Unit)?
 ) {
@@ -359,22 +390,21 @@ private fun SerendipitySignals(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Text(
+                text = stringResource(R.string.ai_serendipity_chip_tap_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Row(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 chips.forEach { chip ->
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.secondaryContainer
-                    ) {
-                        Text(
-                            text = chip,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
+                    SuggestionChip(
+                        onClick = { onChipTap(chip) },
+                        enabled = !state.isCollecting,
+                        label = { Text(chip) }
+                    )
                 }
             }
         }
@@ -556,8 +586,10 @@ private fun ResultPhase(
     onRemove: (Song) -> Unit,
     mixName: String,
     onNameChange: (String) -> Unit,
+    autoSavedName: String?,
     onPlay: () -> Unit,
     onSaveOnly: () -> Unit,
+    onReplay: (() -> Unit)?,
     onRegenerate: () -> Unit
 ) {
     // The thought process and the songs share one scroll region: ExpressiveScrollBar only accepts a
@@ -641,23 +673,52 @@ private fun ResultPhase(
             )
         }
 
+        // After short-press auto-save the list is already in the library: keep "replay" and an
+        // optional re-save only when the user renamed it, instead of creating a duplicate.
+        val autoSaved = autoSavedName != null
+        val nameMatchesAutoSave = autoSaved && mixName.trim() == autoSavedName
+
+        if (autoSaved) {
+            Text(
+                text = stringResource(R.string.ai_mix_auto_saved, autoSavedName.orEmpty()),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onSaveOnly, enabled = songs.isNotEmpty()) {
-                Text(stringResource(R.string.ai_mix_save_only))
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            Button(onClick = onPlay, enabled = songs.isNotEmpty()) {
-                Icon(
-                    imageVector = Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.ai_mix_play))
+            if (autoSaved) {
+                TextButton(onClick = onSaveOnly, enabled = songs.isNotEmpty() && !nameMatchesAutoSave) {
+                    Text(stringResource(R.string.ai_mix_save_as))
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Button(onClick = { onReplay?.invoke() }, enabled = songs.isNotEmpty() && onReplay != null) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.ai_mix_replay))
+                }
+            } else {
+                TextButton(onClick = onSaveOnly, enabled = songs.isNotEmpty()) {
+                    Text(stringResource(R.string.ai_mix_save_only))
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Button(onClick = onPlay, enabled = songs.isNotEmpty()) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.ai_mix_play))
+                }
             }
         }
 

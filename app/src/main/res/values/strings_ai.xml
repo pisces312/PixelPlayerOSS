@@ -49,6 +49,7 @@
     <string name="ai_playlist_entry_subtitle">Describe the music you want to hear</string>
     <string name="ai_playlist_entry_unconfigured">Set up AI in settings first</string>
     <string name="ai_playlist_entry_action">Describe</string>
+    <string name="ai_serendipity_button_hint">Tap to listen · hold to describe</string>
     <string name="ai_serendipity_button">Serendipity!</string>
     <string name="playlist_ai_prompt_label">AI prompt</string>
     <string name="playlist_ai_prompt_details_title">Prompt details</string>
@@ -81,6 +82,7 @@
     <string name="ai_serendipity_chip_time">%1$s %2$s · %3$s</string>
     <string name="ai_serendipity_chip_weather">%1$s %2$d°C</string>
     <string name="ai_serendipity_chip_steps">%1$s steps</string>
+    <string name="ai_serendipity_chip_tap_hint">Tap to append to the prompt below</string>
     <string name="ai_serendipity_time_morning">morning</string>
     <string name="ai_serendipity_time_afternoon">afternoon</string>
     <string name="ai_serendipity_time_evening">evening</string>
@@ -110,7 +112,7 @@
 
     <!-- AI mix sheet (home) -->
     <string name="ai_mix_sheet_title">AI Mix</string>
-    <string name="ai_mix_prompt_hint">Describe a mood, a moment or what you are doing…</string>
+    <string name="ai_mix_prompt_hint">Optional — or describe a mood, a moment or what you are doing…</string>
     <string name="ai_mix_ideas_label">Ideas</string>
     <string name="ai_mix_idea_late_night">Late night coding</string>
     <string name="ai_mix_idea_commute">Commute energy</string>
@@ -127,6 +129,9 @@
     <string name="ai_mix_result_count">%1$d songs</string>
     <string name="ai_mix_play">Play</string>
     <string name="ai_mix_save_only">Save only</string>
+    <string name="ai_mix_save_as">Save as</string>
+    <string name="ai_mix_replay">Play again</string>
+    <string name="ai_mix_auto_saved">Auto-saved “%1$s”</string>
     <string name="ai_mix_remove_song">Remove song</string>
     <string name="ai_mix_saved">Saved “%1$s”</string>
 

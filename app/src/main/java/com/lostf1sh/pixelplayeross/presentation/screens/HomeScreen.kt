@@ -158,7 +158,6 @@ fun HomeScreen(
     val homeMixPreviewSongs by playerViewModel.homeMixPreviewSongs.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val isAiConfigured by playlistViewModel.isAiConfigured.collectAsStateWithLifecycle()
-    val aiLibrarySampleMode by playlistViewModel.aiLibrarySampleMode.collectAsStateWithLifecycle()
     val aiSerendipitySampleMode by
             playlistViewModel.aiSerendipitySampleMode.collectAsStateWithLifecycle()
     val recentAiMixes by playlistViewModel.recentAiMixes.collectAsStateWithLifecycle()
@@ -166,15 +165,18 @@ fun HomeScreen(
     val serendipityWantsLocation by
             playlistViewModel.serendipityWantsLocation.collectAsStateWithLifecycle()
     var showAiMixSheet by remember { mutableStateOf(false) }
-    // Which button opened the sheet: both share it, only the input phase differs.
-    var aiEntryIsSerendipity by remember { mutableStateOf(false) }
+    // Short press auto-generates and then auto-plays (without saving); long press opens the
+    // editable describe sheet and never auto-plays.
+    var aiEntryIsQuick by remember { mutableStateOf(false) }
+    var autoPlayAfterGenerate by remember { mutableStateOf(false) }
 
-    // The permission result arrives after the system dialog, so the long-press intent is
-    // remembered here: a long press starts generation automatically once the callback fires.
+    // The permission result arrives after the system dialog, so the entry intent is
+    // remembered here: a short press starts generation automatically once the callback fires.
     var pendingQuickSerendipity by remember { mutableStateOf(false) }
 
     val openSerendipitySheet: (Boolean) -> Unit = { quick ->
-        aiEntryIsSerendipity = true
+        aiEntryIsQuick = quick
+        autoPlayAfterGenerate = quick
         if (quick) playlistViewModel.quickGenerateSerendipity()
         else playlistViewModel.openSerendipity()
         showAiMixSheet = true
@@ -187,20 +189,15 @@ fun HomeScreen(
                     ActivityResultContracts.RequestMultiplePermissions()
             ) { openSerendipitySheet(pendingQuickSerendipity) }
 
-    // Both AI card actions share this guard: with no provider configured they route to AI settings.
-    // "quick" is the Serendipity long press: collect signals and generate without another tap.
-    val openAiEntry: (Boolean, Boolean) -> Unit = { serendipity, quick ->
+    // Both gestures share this guard: with no provider configured they route to AI settings.
+    // "quick" is the short press: collect signals and generate without another tap.
+    val openAiEntry: (Boolean) -> Unit = { quick ->
         if (isAiConfigured) {
-            if (serendipity) {
-                pendingQuickSerendipity = quick
-                serendipityPermissionLauncher.launch(
-                        if (serendipityWantsLocation) SerendipityLocationPermissions
-                        else SerendipityStepPermissions
-                )
-            } else {
-                aiEntryIsSerendipity = false
-                showAiMixSheet = true
-            }
+            pendingQuickSerendipity = quick
+            serendipityPermissionLauncher.launch(
+                    if (serendipityWantsLocation) SerendipityLocationPermissions
+                    else SerendipityStepPermissions
+            )
         } else {
             navController.navigateSafely(Screen.SettingsCategory.createRoute(SettingsCategory.AI.id))
         }
@@ -354,12 +351,11 @@ fun HomeScreen(
                     AiGenerateEntryCard(
                         configured = isAiConfigured,
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        onClick = { openAiEntry(false, false) },
-                        // Serendipity asks for the location and step permissions before it opens,
-                        // because the collected context is what its sheet explains.
-                        onSerendipityClick = { openAiEntry(true, false) },
-                        // Long press skips the confirm step and generates straight away.
-                        onSerendipityLongClick = { openAiEntry(true, true) }
+                        // Short press: gather signals and generate straight away, then auto-play.
+                        onQuickGenerate = { openAiEntry(true) },
+                        // Long press / card tap: open the editable describe sheet with the same
+                        // signal chips; the prompt may stay blank.
+                        onOpenDescribe = { openAiEntry(false) }
                     )
                 }
                 if (recentAiMixes.isNotEmpty()) {
@@ -557,9 +553,23 @@ fun HomeScreen(
         }
     }
     val aiPlaylistPreviewState by playlistViewModel.aiPlaylistPreviewState.collectAsStateWithLifecycle()
-    val aiLibrarySampleSize by playlistViewModel.aiLibrarySampleSize.collectAsStateWithLifecycle()
     val aiSerendipitySampleSize by
             playlistViewModel.aiSerendipitySampleSize.collectAsStateWithLifecycle()
+
+    // Short-press auto-play de-dup key: song ids of the last list already sent to the player.
+    var lastAutoPlayedSongIds by remember { mutableStateOf<String?>(null) }
+    // Name of the mix the short-press flow already saved; the result sheet uses it to avoid a
+    // second identical save and to offer "replay" instead of "play+save".
+    var autoSavedName by remember { mutableStateOf<String?>(null) }
+
+    fun resetAiMixSheetSession() {
+        playlistViewModel.resetAiPlaylistPreview()
+        playlistViewModel.closeSerendipity()
+        showAiMixSheet = false
+        autoPlayAfterGenerate = false
+        lastAutoPlayedSongIds = null
+        autoSavedName = null
+    }
 
     LaunchedEffect(Unit) {
         playlistViewModel.aiMixSaved.collect { mix ->
@@ -577,7 +587,7 @@ fun HomeScreen(
 
     // Serendipity keeps its signals in localized chips, and names the mix after them. Both are
     // derived here rather than in the sheet so the sheet stays free of resource lookups.
-    val serendipityContext = if (aiEntryIsSerendipity) serendipityState?.context else null
+    val serendipityContext = serendipityState?.context
     val serendipityChips = mutableListOf<String>()
     var serendipityDefaultName: String? = null
     if (serendipityContext != null) {
@@ -616,49 +626,75 @@ fun HomeScreen(
                         .joinToString(" · ") + " · " + serendipityContext.clockTime
     }
 
+    // Short-press auto-play + auto-save: start the generated list and file it under the
+    // Serendipity default name as soon as it lands. Keyed on the song ids so a recomposition or
+    // an unrelated state copy cannot replay or re-save it.
+    val autoPlayQueueName = serendipityDefaultName ?: stringResource(R.string.ai_serendipity_sheet_title)
+    LaunchedEffect(
+        autoPlayAfterGenerate,
+        aiPlaylistPreviewState.hasResult,
+        aiPlaylistPreviewState.isGenerating,
+        aiPlaylistPreviewState.songs,
+        autoPlayQueueName
+    ) {
+        if (!autoPlayAfterGenerate) return@LaunchedEffect
+        val songs = aiPlaylistPreviewState.songs
+        if (aiPlaylistPreviewState.isGenerating ||
+            !aiPlaylistPreviewState.hasResult ||
+            songs.isEmpty()
+        ) {
+            return@LaunchedEffect
+        }
+        val songKey = songs.joinToString(separator = "|") { it.id }
+        if (songKey == lastAutoPlayedSongIds) return@LaunchedEffect
+        lastAutoPlayedSongIds = songKey
+        // Save first with playback: the aiMixSaved collector starts the queue and toasts, while
+        // the sheet stays open on the result phase. startPlayback = true would double-play if we
+        // also called playSongs here, so playback comes only from the save event.
+        playlistViewModel.saveAiMix(
+            name = autoPlayQueueName,
+            songs = songs,
+            prompt = serendipityState?.prompt.orEmpty(),
+            startPlayback = true,
+            source = SERENDIPITY_SOURCE
+        )
+        autoSavedName = autoPlayQueueName
+    }
+
     if (showAiMixSheet) {
         ModalBottomSheet(
-            onDismissRequest = {
-                playlistViewModel.resetAiPlaylistPreview()
-                playlistViewModel.closeSerendipity()
-                showAiMixSheet = false
-            },
+            onDismissRequest = { resetAiMixSheetSession() },
             sheetState = aiMixSheetState
         ) {
             AiMixSheet(
                 state = aiPlaylistPreviewState,
+                // One sampling profile for the whole button: Serendipity's own (random / wide slice).
                 sampleConfig =
-                        if (aiEntryIsSerendipity) {
-                            // Serendipity keeps its own sampling settings (random / 200 by default).
-                            SampleConfig(
-                                modes = AiLibrarySampleMode.entries,
-                                mode = aiSerendipitySampleMode,
-                                sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
-                                size = aiSerendipitySampleSize,
-                                onModeChange = playlistViewModel::setAiSerendipitySampleMode,
-                                onSizeChange = playlistViewModel::setAiSerendipitySampleSize
-                            )
-                        } else {
-                            SampleConfig(
-                                modes = AiLibrarySampleMode.entries,
-                                mode = aiLibrarySampleMode,
-                                sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
-                                size = aiLibrarySampleSize,
-                                onModeChange = playlistViewModel::setAiLibrarySampleMode,
-                                onSizeChange = playlistViewModel::setAiLibrarySampleSize
-                            )
-                        },
-                serendipity = if (aiEntryIsSerendipity) serendipityState else null,
+                        SampleConfig(
+                            modes = AiLibrarySampleMode.entries,
+                            mode = aiSerendipitySampleMode,
+                            sizes = AiPreferencesRepository.LIBRARY_SAMPLE_SIZE_OPTIONS,
+                            size = aiSerendipitySampleSize,
+                            onModeChange = playlistViewModel::setAiSerendipitySampleMode,
+                            onSizeChange = playlistViewModel::setAiSerendipitySampleSize
+                        ),
+                serendipity = serendipityState,
                 serendipityChips = serendipityChips,
                 serendipityDefaultName = serendipityDefaultName,
+                autoSavedName = autoSavedName,
+                onReplay = { songs ->
+                    if (songs.isNotEmpty()) {
+                        playerViewModel.playSongs(
+                            songsToPlay = songs,
+                            startSong = songs.first(),
+                            queueName = autoSavedName ?: autoPlayQueueName
+                        )
+                    }
+                },
                 onReshuffleSerendipity = playlistViewModel::reshuffleSerendipityPrompt,
                 onRephraseSerendipity = playlistViewModel::rephraseSerendipityPrompt,
                 onGenerate = { prompt, maxLength ->
-                    if (aiEntryIsSerendipity) {
-                        playlistViewModel.generateSerendipityPreview(prompt, maxLength)
-                    } else {
-                        playlistViewModel.generateAiPlaylistPreview(prompt, maxLength)
-                    }
+                    playlistViewModel.generateSerendipityPreview(prompt, maxLength)
                 },
                 onSave = { name, songs, prompt, startPlayback ->
                     playlistViewModel.saveAiMix(
@@ -667,18 +703,12 @@ fun HomeScreen(
                         prompt = prompt,
                         startPlayback = startPlayback,
                         source =
-                                if (aiEntryIsSerendipity) SERENDIPITY_SOURCE
+                                if (aiEntryIsQuick) SERENDIPITY_SOURCE
                                 else AI_MIX_SOURCE
                     )
-                    playlistViewModel.resetAiPlaylistPreview()
-                    playlistViewModel.closeSerendipity()
-                    showAiMixSheet = false
+                    resetAiMixSheetSession()
                 },
-                onDismiss = {
-                    playlistViewModel.resetAiPlaylistPreview()
-                    playlistViewModel.closeSerendipity()
-                    showAiMixSheet = false
-                }
+                onDismiss = { resetAiMixSheetSession() }
             )
         }
     }

@@ -251,6 +251,9 @@ class PlaylistViewModel @Inject constructor(
          */
         const val DEFAULT_AI_MIX_LENGTH = 15
 
+        /** Used when the user leaves the prompt blank and no Serendipity sentence was composed. */
+        const val DEFAULT_AI_MIX_FALLBACK_PROMPT = "Pick something that fits this moment. Surprise me."
+
         fun sanitizeFileName(name: String): String {
             val sanitized = name.replace(Regex("[\\\\/:*?\"<>|\\s]+"), "_").trim('_')
             return sanitized.ifEmpty { "Playlist" }
@@ -517,32 +520,43 @@ class PlaylistViewModel @Inject constructor(
      * nothing.
      */
     fun generateAiPlaylistPreview(description: String, maxLength: Int = DEFAULT_AI_MIX_LENGTH) {
+        val effective = resolveEffectivePrompt(description)
         startPreview(
-            description,
+            effective,
             resolveSample = {
                 aiPreferences.getLibrarySampleMode().first() to
                         aiPreferences.getLibrarySampleSize().first()
             }
-        ) { listener -> aiPlaylistGenerator.generate(description, maxLength, listener = listener) }
+        ) { listener -> aiPlaylistGenerator.generate(effective, maxLength, listener = listener) }
     }
 
     /**
-     * Generation for the Serendipity entry point.
+     * Generation for the Serendipity entry (short press and long press share this path).
      *
-     * Same preview state and same sheet as [generateAiPlaylistPreview]; only the generator call
-     * differs (forced random sampling, no cache). Keeping one state means the result screen, the
-     * "play / save only" actions and the error handling are shared rather than duplicated.
+     * Forced random sampling, no cache. One preview state means the result screen, the
+     * "play / save only" actions and the error handling stay shared.
      */
     fun generateSerendipityPreview(description: String, maxLength: Int = DEFAULT_AI_MIX_LENGTH) {
+        val effective = resolveEffectivePrompt(description)
         startPreview(
-            description,
+            effective,
             resolveSample = {
                 aiPreferences.getSerendipitySampleMode().first() to
                         aiPreferences.getSerendipitySampleSize().first()
             }
         ) { listener ->
-            aiPlaylistGenerator.generateSerendipity(description, maxLength, listener = listener)
+            aiPlaylistGenerator.generateSerendipity(effective, maxLength, listener = listener)
         }
+    }
+
+    /**
+     * Empty prompt is allowed: fall back to the Serendipity sentence built from the moment's
+     * signals, then to a plain "surprise me" request so a blank field still generates.
+     */
+    private fun resolveEffectivePrompt(description: String): String {
+        if (description.isNotBlank()) return description.trim()
+        return _serendipityState.value?.prompt?.takeIf { it.isNotBlank() }
+                ?: DEFAULT_AI_MIX_FALLBACK_PROMPT
     }
 
     private fun startPreview(
@@ -638,31 +652,19 @@ class PlaylistViewModel @Inject constructor(
     }
 
     /**
-     * Long-press shortcut: gather the signals and immediately start generation with defaults,
+     * Short-press shortcut: gather the signals and immediately start generation with defaults,
      * skipping the manual confirm step. The same sheet observes the collecting/generating states,
      * so the UI needs no separate "quick" flow.
+     *
+     * A blank composed sentence no longer aborts: [resolveEffectivePrompt] supplies a fallback so
+     * "generate with whatever fits this moment" always has a request to send.
      */
     fun quickGenerateSerendipity() {
         _serendipityState.value = SerendipityUiState()
         viewModelScope.launch {
             val composed = collectAndComposeSerendipity() ?: return@launch
             _serendipityState.value = composed
-            // No signal could be composed: leave the sheet on the manual input phase as a fallback
-            // instead of pretending generation started.
-            if (composed.prompt.isBlank()) return@launch
-            startPreview(
-                composed.prompt,
-                resolveSample = {
-                    aiPreferences.getSerendipitySampleMode().first() to
-                            aiPreferences.getSerendipitySampleSize().first()
-                }
-            ) { listener ->
-                aiPlaylistGenerator.generateSerendipity(
-                        composed.prompt,
-                        DEFAULT_AI_MIX_LENGTH,
-                        listener = listener
-                )
-            }
+            generateSerendipityPreview(composed.prompt, DEFAULT_AI_MIX_LENGTH)
         }
     }
 

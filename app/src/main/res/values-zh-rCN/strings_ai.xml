@@ -50,6 +50,7 @@
     <string name="ai_playlist_entry_subtitle">描述你想听的音乐</string>
     <string name="ai_playlist_entry_unconfigured">请先在设置中配置 AI</string>
     <string name="ai_playlist_entry_action">说一句</string>
+    <string name="ai_serendipity_button_hint">短按即听 · 长按说一句</string>
     <string name="ai_serendipity_button">不期而遇！</string>
     <string name="playlist_ai_prompt_label">AI 描述</string>
     <string name="playlist_ai_prompt_details_title">提示词详情</string>
@@ -82,6 +83,7 @@
     <string name="ai_serendipity_chip_time">%1$s %2$s · %3$s</string>
     <string name="ai_serendipity_chip_weather">%1$s %2$d°C</string>
     <string name="ai_serendipity_chip_steps">约 %1$s 步</string>
+    <string name="ai_serendipity_chip_tap_hint">轻点追加到下方提示词</string>
     <string name="ai_serendipity_time_morning">早晨</string>
     <string name="ai_serendipity_time_afternoon">午后</string>
     <string name="ai_serendipity_time_evening">傍晚</string>
@@ -110,7 +112,7 @@
 
     <!-- AI mix sheet (home) -->
     <string name="ai_mix_sheet_title">AI 歌单</string>
-    <string name="ai_mix_prompt_hint">描述一种心情、一个此刻或你正在做的事……</string>
+    <string name="ai_mix_prompt_hint">可留空；或描述一种心情、一个此刻或你正在做的事……</string>
     <string name="ai_mix_ideas_label">灵感</string>
     <string name="ai_mix_idea_late_night">深夜码字</string>
     <string name="ai_mix_idea_commute">通勤提神</string>
@@ -127,6 +129,9 @@
     <string name="ai_mix_result_count">%1$d 首</string>
     <string name="ai_mix_play">播放</string>
     <string name="ai_mix_save_only">仅保存</string>
+    <string name="ai_mix_save_as">另存</string>
+    <string name="ai_mix_replay">重新播放</string>
+    <string name="ai_mix_auto_saved">已自动保存「%1$s」</string>
     <string name="ai_mix_remove_song">移除歌曲</string>
     <string name="ai_mix_saved">已保存「%1$s」</string>
 
