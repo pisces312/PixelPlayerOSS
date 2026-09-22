@@ -830,11 +830,11 @@ class PlayerViewModel @Inject constructor(
     lateinit var imageCacheManager: com.lostf1sh.pixelplayeross.data.media.ImageCacheManager
 
     init {
-        listeningStatsTracker.initialize(viewModelScope)
-        dailyMixStateHolder.initialize(viewModelScope)
-        lyricsStateHolder.initialize(viewModelScope, lyricsLoadCallback, playbackStateHolder.stablePlayerState)
-        playbackStateHolder.initialize(coroutineScope = viewModelScope)
-        themeStateHolder.initialize(viewModelScope)
+        listeningStatsTracker.initialize(this, viewModelScope)
+        dailyMixStateHolder.initialize(this, viewModelScope)
+        lyricsStateHolder.initialize(this, viewModelScope, lyricsLoadCallback, playbackStateHolder.stablePlayerState)
+        playbackStateHolder.initialize(owner = this, coroutineScope = viewModelScope)
+        themeStateHolder.initialize(this, viewModelScope)
 
         viewModelScope.launch {
             val snapshot = runCatching {
@@ -1702,11 +1702,12 @@ class PlayerViewModel @Inject constructor(
             }, ContextCompat.getMainExecutor(context))
 
 
-            connectivityStateHolder.initialize()
+            connectivityStateHolder.initialize(this@PlayerViewModel)
 
             val currentSongIdFlow = stablePlayerState.map { it.currentSong?.id }
                 .stateIn(viewModelScope, SharingStarted.Eagerly, null)
             sleepTimerStateHolder.initialize(
+                this@PlayerViewModel,
                 scope = viewModelScope,
                 toastEmitter = { msg -> _toastEvents.emit(msg) },
                 mediaControllerProvider = { mediaController },
@@ -1737,7 +1738,7 @@ class PlayerViewModel @Inject constructor(
                 }
             }
 
-            libraryStateHolder.initialize(viewModelScope)
+            libraryStateHolder.initialize(this@PlayerViewModel, viewModelScope)
 
             viewModelScope.launch {
                 combine(
@@ -4142,15 +4143,15 @@ class PlayerViewModel @Inject constructor(
         mediaControllerFuture.cancel(true)
         super.onCleared()
         stopProgressUpdates()
-        playbackStateHolder.onCleared()
-        listeningStatsTracker.onCleared()
-        dailyMixStateHolder.onCleared()
-        lyricsStateHolder.onCleared()
-        themeStateHolder.onCleared()
+        playbackStateHolder.onCleared(this)
+        listeningStatsTracker.onCleared(this)
+        dailyMixStateHolder.onCleared(this)
+        lyricsStateHolder.onCleared(this)
+        themeStateHolder.onCleared(this)
         searchStateHolder.onCleared(this@PlayerViewModel)
-        libraryStateHolder.onCleared()
-        sleepTimerStateHolder.onCleared()
-        connectivityStateHolder.onCleared()
+        libraryStateHolder.onCleared(this)
+        sleepTimerStateHolder.onCleared(this)
+        connectivityStateHolder.onCleared(this)
         queueUndoStateHolder.onCleared()
         playlistDismissUndoStateHolder.onCleared()
     }

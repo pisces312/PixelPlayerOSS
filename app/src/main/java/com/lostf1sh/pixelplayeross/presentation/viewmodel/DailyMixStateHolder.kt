@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 import javax.inject.Inject
 import javax.inject.Singleton
+import timber.log.Timber
 
 /**
  * Manages Daily Mix and Your Mix state.
@@ -48,9 +49,25 @@ class DailyMixStateHolder @Inject constructor(
     val yourMixSongs: StateFlow<ImmutableList<Song>> = _yourMixSongs.asStateFlow()
 
     /**
+     * The ViewModel that owns this holder's scope. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the scope of the
+     * first one: only the owner may [onCleared] it.
+     */
+    private var owner: Any? = null
+
+    /**
      * Initialize with coroutine scope from ViewModel.
      */
-    fun initialize(coroutineScope: CoroutineScope) {
+    fun initialize(owner: Any, coroutineScope: CoroutineScope) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "DailyMixStateHolder.initialize ignored: already owned by %s",
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = owner
         scope = coroutineScope
     }
 
@@ -149,8 +166,18 @@ class DailyMixStateHolder @Inject constructor(
         }
     }
 
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "DailyMixStateHolder.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
         updateJob?.cancel()
         scope = null
+        this.owner = null
     }
 }

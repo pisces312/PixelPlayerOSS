@@ -82,16 +82,33 @@ class SleepTimerStateHolder @Inject constructor(
     }
 
     /**
+     * The ViewModel that owns this holder's scope. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the scope of the
+     * first one: only the owner may [onCleared] it.
+     */
+    private var owner: Any? = null
+
+    /**
      * Initialize with dependencies from ViewModel.
      * Must be called before using timer functions.
      */
     fun initialize(
+        owner: Any,
         scope: CoroutineScope,
         toastEmitter: suspend (String) -> Unit,
         mediaControllerProvider: () -> MediaController?,
         currentSongIdProvider: () -> StateFlow<String?>,
         songTitleResolver: (String?) -> String
     ) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "SleepTimerStateHolder.initialize ignored: already owned by %s",
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = owner
         this.scope = scope
         this.toastEmitter = toastEmitter
         this.mediaControllerProvider = mediaControllerProvider
@@ -281,7 +298,16 @@ class SleepTimerStateHolder @Inject constructor(
     /**
      * Cleanup when ViewModel is cleared.
      */
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "SleepTimerStateHolder.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
         sleepTimerJob?.cancel()
         eotSongMonitorJob?.cancel()
         scope = null
@@ -289,6 +315,7 @@ class SleepTimerStateHolder @Inject constructor(
         mediaControllerProvider = null
         currentSongIdProvider = null
         songTitleResolver = null
+        this.owner = null
     }
 
     private companion object {

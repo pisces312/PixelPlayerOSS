@@ -61,7 +61,7 @@ class LyricsStateHolderTest {
         )
         val storedLyrics = Lyrics(plain = listOf("Stored lyrics"), areFromRemote = false)
 
-        holder.initialize(backgroundScope, callback, state)
+        holder.initialize(Any(), backgroundScope, callback, state)
         coEvery { musicRepository.getStoredLyrics(song) } returns (storedLyrics to "Stored lyrics")
 
         holder.searchUiState.test {

@@ -58,6 +58,13 @@ class PlaybackStateHolder @Inject constructor(
     @Volatile
     private var scope: CoroutineScope? = null
 
+    /**
+     * The ViewModel that owns this holder's scope. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the scope of the
+     * first one: only the owner may [onCleared] it.
+     */
+    private var owner: Any? = null
+
     var mediaController: MediaController? = null
         private set
     private val mediaControllerStack = mutableListOf<MediaController>()
@@ -125,8 +132,18 @@ class PlaybackStateHolder @Inject constructor(
     }
 
     fun initialize(
+        owner: Any,
         coroutineScope: CoroutineScope
     ) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "PlaybackStateHolder.initialize ignored: already owned by %s",
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = owner
         this.scope = coroutineScope
         scope?.launch {
             val snapshot = runCatching {
@@ -870,11 +887,21 @@ class PlaybackStateHolder @Inject constructor(
             }
     }
 
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "PlaybackStateHolder.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
         stopProgressUpdates()
         shuffleToggleJob?.cancel()
         shuffleToggleJob = null
         scope = null
+        this.owner = null
     }
 
 }

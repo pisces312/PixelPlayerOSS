@@ -43,9 +43,22 @@ class ListeningStatsTracker @Inject constructor(
     val playbackHistory: StateFlow<List<PlaybackStatsRepository.PlaybackHistoryEntry>> = _playbackHistory.asStateFlow()
 
     /**
-     * Must be called to set the coroutine scope for async operations.
+     * The ViewModel that owns this holder. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the first one.
      */
-    fun initialize(coroutineScope: CoroutineScope) {
+    private var owner: Any? = null
+
+    /**
+     * Must be called to set the coroutine scope for async operations.
+     *
+     * Unlike the other holders, this one has two legitimate callers (`PlayerViewModel` and
+     * `MusicService`). Initialize is therefore open to both — only [onCleared] is owner-guarded
+     * so a stray second `PlayerViewModel` cannot finalize the in-flight listening session.
+     */
+    fun initialize(owner: Any, coroutineScope: CoroutineScope) {
+        if (this.owner == null) {
+            this.owner = owner
+        }
         val activeScope = scope
         if (activeScope == null || activeScope.coroutineContext[Job]?.isActive != true) {
             scope = coroutineScope
@@ -282,9 +295,19 @@ class ListeningStatsTracker @Inject constructor(
     }
 
     @Synchronized
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "ListeningStatsTracker.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
         finalizeCurrentSession(forceSynchronousPersistence = true)
         scope = null
+        this.owner = null
     }
 
     /**

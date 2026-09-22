@@ -157,15 +157,15 @@ class PlayerViewModelTest {
         every { mockSearchStateHolder.updateSearchFilter(any()) } just runs
         every { mockSearchStateHolder.initialize(any(), any()) } just runs
 
-        every { mockConnectivityStateHolder.initialize() } just runs
+        every { mockConnectivityStateHolder.initialize(any()) } just runs
 
         _favoriteIdsFlow.value = emptySet()
         stablePlayerStateFlow = MutableStateFlow(StablePlayerState(currentSong = null))
         every { mockPlaybackStateHolder.stablePlayerState } returns stablePlayerStateFlow
         every { mockPlaybackStateHolder.setMediaController(any()) } just runs
 
-        every { mockSleepTimerStateHolder.initialize(any(), any(), any(), any(), any()) } just runs
-        every { mockLibraryStateHolder.initialize(any()) } just runs
+        every { mockSleepTimerStateHolder.initialize(any(), any(), any(), any(), any(), any()) } just runs
+        every { mockLibraryStateHolder.initialize(any(), any()) } just runs
 
         every { mockMusicRepository.getPaginatedSongs(any(), any()) } returns flowOf(androidx.paging.PagingData.empty())
         every { mockMusicRepository.getPaginatedFavoriteSongs(any(), any()) } returns flowOf(androidx.paging.PagingData.empty())

@@ -423,7 +423,7 @@ class MusicService : MediaSessionService() {
         }
 
         super.onCreate()
-        listeningStatsTracker.initialize(appScope)
+        listeningStatsTracker.initialize(this, appScope)
         
         engine.initialize()
         replayGainProcessor.captureUserVolume(engine.masterPlayer.volume)

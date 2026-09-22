@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+import timber.log.Timber
 
 data class BluetoothAudioDeviceState(
     val name: String,
@@ -98,9 +99,24 @@ class ConnectivityStateHolder @Inject constructor(
     private val discoveredBluetoothAudioDevices = linkedMapOf<String, BluetoothAudioDeviceState>()
 
     /**
+     * The ViewModel that owns this holder. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the first one.
+     */
+    private var owner: Any? = null
+
+    /**
      * Initialize connectivity monitoring. Should be called once from ViewModel.
      */
-    fun initialize() {
+    fun initialize(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "ConnectivityStateHolder.initialize ignored: already owned by %s",
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = owner
         if (isInitialized) return
         isInitialized = true
 
@@ -508,7 +524,17 @@ class ConnectivityStateHolder @Inject constructor(
     /**
      * Cleanup resources. Should be called from ViewModel's onCleared.
      */
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "ConnectivityStateHolder.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = null
         networkCallback?.let { 
             runCatching { connectivityManager.unregisterNetworkCallback(it) }
         }

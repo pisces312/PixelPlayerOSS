@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.collections.immutable.toImmutableList
+import timber.log.Timber
 
 /**
  * Callback interface for lyrics loading results.
@@ -74,13 +75,30 @@ class LyricsStateHolder @Inject constructor(
     val messageEvents = _messageEvents.asSharedFlow()
 
     /**
+     * The ViewModel that owns this holder's scope. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the scope of the
+     * first one: only the owner may [onCleared] it.
+     */
+    private var owner: Any? = null
+
+    /**
      * Initialize with coroutine scope and callback from ViewModel.
      */
     fun initialize(
+        owner: Any,
         coroutineScope: CoroutineScope,
         callback: LyricsLoadCallback,
         stablePlayerState: StateFlow<com.lostf1sh.pixelplayeross.presentation.viewmodel.StablePlayerState>
     ) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "LyricsStateHolder.initialize ignored: already owned by %s",
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = owner
         scope = coroutineScope
         loadCallback = callback
 
@@ -393,10 +411,20 @@ class LyricsStateHolder @Inject constructor(
         }
     }
 
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "LyricsStateHolder.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
         loadingJob?.cancel()
         scope = null
         loadCallback = null
+        this.owner = null
     }
 }
 

@@ -49,7 +49,23 @@ class ThemeStateHolder @Inject constructor(
     private val _activePlayerColorSchemePair = MutableStateFlow<ColorSchemePair?>(null)
     val activePlayerColorSchemePair: StateFlow<ColorSchemePair?> = _activePlayerColorSchemePair.asStateFlow()
 
-    fun initialize(scope: CoroutineScope) {
+    /**
+     * The ViewModel that owns this holder's scope. This is a `@Singleton`, so a second
+     * ViewModel instance must never be able to re-bind (or tear down) the scope of the
+     * first one: only the owner may [onCleared] it.
+     */
+    private var owner: Any? = null
+
+    fun initialize(owner: Any, scope: CoroutineScope) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "ThemeStateHolder.initialize ignored: already owned by %s",
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
+        this.owner = owner
         this.scope = scope
 
         scope.launch {
@@ -313,8 +329,18 @@ class ThemeStateHolder @Inject constructor(
         }
     }
 
-    fun onCleared() {
+    fun onCleared(owner: Any) {
+        val currentOwner = this.owner
+        if (currentOwner != null && currentOwner !== owner) {
+            Timber.w(
+                "ThemeStateHolder.onCleared ignored: called by %s but owned by %s",
+                owner::class.java.simpleName,
+                currentOwner::class.java.simpleName
+            )
+            return
+        }
         scope = null
+        this.owner = null
     }
 
 }

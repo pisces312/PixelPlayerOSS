@@ -105,7 +105,7 @@ class PlaybackStateHolderTest {
         coEvery { userPreferencesRepository.getPlaybackQueueSnapshotOnce() } returns snapshot()
 
         val holder = createHolder()
-        holder.initialize(this)
+        holder.initialize(this, this)
         advanceUntilIdle()
 
         holder.ensureCurrentPlaybackOccurrence("duplicate-song")
@@ -124,7 +124,7 @@ class PlaybackStateHolderTest {
         coEvery { userPreferencesRepository.getPlaybackQueueSnapshotOnce() } returns snapshot()
 
         val holder = createHolder()
-        holder.initialize(this)
+        holder.initialize(this, this)
         holder.ensureCurrentPlaybackOccurrence("duplicate-song")
         holder.syncCurrentPositionFromPlayer("duplicate-song", 0L)
         assertEquals(0L, holder.currentPosition.value)
@@ -141,7 +141,7 @@ class PlaybackStateHolderTest {
         coEvery { userPreferencesRepository.getPlaybackQueueSnapshotOnce() } returns snapshot()
 
         val holder = createHolder()
-        holder.initialize(this)
+        holder.initialize(this, this)
         holder.ensureCurrentPlaybackOccurrence("duplicate-song")
         holder.onPlaybackOccurrenceTransition("another-song")
         holder.onPlaybackOccurrenceTransition("duplicate-song")
@@ -158,7 +158,7 @@ class PlaybackStateHolderTest {
         coEvery { userPreferencesRepository.getPlaybackQueueSnapshotOnce() } returns snapshot()
 
         val holder = createHolder()
-        holder.initialize(this)
+        holder.initialize(this, this)
         holder.ensureCurrentPlaybackOccurrence("duplicate-song")
         holder.onPlaybackOccurrenceTransition(null)
 
@@ -168,5 +168,27 @@ class PlaybackStateHolderTest {
         holder.syncCurrentPositionFromPlayer("duplicate-song", 0L)
 
         assertEquals(0L, holder.currentPosition.value)
+    }
+
+    @Test
+    fun `onCleared from a non-owner keeps the holder usable`() = runTest {
+        val holder = createHolder()
+        val owner = Any()
+        holder.initialize(owner, backgroundScope)
+        holder.onCleared(Any())
+        // Owner teardown still works after a non-owner attempt.
+        holder.onCleared(owner)
+    }
+
+    @Test
+    fun `initialize from a non-owner cannot steal the scope`() = runTest {
+        val holder = createHolder()
+        val owner = Any()
+        holder.initialize(owner, backgroundScope)
+        val intruder = Any()
+        holder.initialize(intruder, backgroundScope)
+        holder.onCleared(intruder)
+        // The real owner can still tear down.
+        holder.onCleared(owner)
     }
 }
