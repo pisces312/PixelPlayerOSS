@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -230,6 +231,8 @@ class DualPlayerEngine @Inject constructor(
         private const val AUDIO_OFFLOAD_STALL_FALLBACK_MS = 4_000L
         private const val POST_TRANSITION_OFFLOAD_GUARD_MS = 2_000L
         private const val MAX_AUXILIARY_TIMELINE_ITEMS = 200
+        private const val OFFLINE_LOOKUP_TIMEOUT_MS = 200L
+        private const val INLINE_RESOLVE_TIMEOUT_MS = 200L
         private val LOCAL_MEDIA_SCHEMES = setOf("content", "file", "android.resource")
         private val REMOTE_MEDIA_SCHEMES = setOf("http", "https", "navidrome", "jellyfin")
         private val CLOUD_PROXY_SCHEMES = setOf("navidrome", "jellyfin")
@@ -1076,7 +1079,11 @@ class DualPlayerEngine @Inject constructor(
                 if (scheme in CLOUD_PROXY_SCHEMES) {
                     val originalUri = uri.toString()
                     val offlineUri = try {
-                        runBlocking { cloudOfflineRepository.resolveLocalUri(originalUri) }
+                        runBlocking {
+                            withTimeoutOrNull(OFFLINE_LOOKUP_TIMEOUT_MS) {
+                                cloudOfflineRepository.resolveLocalUri(originalUri)
+                            }
+                        }
                     } catch (e: Exception) {
                         Timber.tag("DualPlayerEngine").w(e, "Offline copy lookup failed")
                         null
@@ -1091,26 +1098,28 @@ class DualPlayerEngine @Inject constructor(
                     if (resolved != null) {
                         return dataSpec.buildUpon().setUri(resolved).build()
                     }
-                    // Cache miss: resolve inline. resolveDataSpec runs on ExoPlayer's
-                    // loading thread, where blocking I/O is allowed. This makes cloud
-                    // playback independent of whether the dispatch path pre-resolved
-                    // the URI — seeks into unresolved queue items, add-to-queue,
-                    // controller-driven playback and restored queues would otherwise
-                    // hand a raw cloud scheme to DefaultDataSource and surface a
-                    // "Source error" toast.
+                    // Cache miss: resolve inline with a short timeout so a cold proxy
+                    // cannot stall ExoPlayer's loading thread for seconds. The dispatch
+                    // path (`resolveMediaItem` / `prepareNext`) warms `resolvedUriCache`
+                    // ahead of time; this branch only covers seeks, add-to-queue and
+                    // restored queues that skipped pre-resolution.
                     Timber.tag("DualPlayerEngine").d("resolveDataSpec: cache miss for %s — resolving inline", scheme)
                     val inlineResolved = try {
-                        runBlocking { resolveCloudUri(uri) }
+                        runBlocking {
+                            withTimeoutOrNull(INLINE_RESOLVE_TIMEOUT_MS) {
+                                resolveCloudUri(uri)
+                            }
+                        }
                     } catch (e: Exception) {
                         // Keep loader failures on the IOException path: ExoPlayer treats
                         // unexpected RuntimeExceptions from a DataSource as fatal.
                         throw IOException("Failed to resolve $scheme stream", e)
                     }
-                    if (inlineResolved != uri) {
+                    if (inlineResolved != null && inlineResolved != uri) {
                         return dataSpec.buildUpon().setUri(inlineResolved).build()
                     }
-                    // No proxy can serve a raw cloud scheme; fail with a clear cause
-                    // instead of letting DefaultDataSource report an opaque scheme error.
+                    // Timed out or no proxy can serve a raw cloud scheme; fail with a
+                    // clear cause so ExoPlayer can retry after the cache is warm.
                     throw IOException("Could not resolve $scheme stream (offline or provider unavailable)")
                 }
                 return dataSpec

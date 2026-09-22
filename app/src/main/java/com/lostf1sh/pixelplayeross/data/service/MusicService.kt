@@ -1391,10 +1391,76 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    private suspend fun capturePlaybackSnapshot(playWhenReadyOverride: Boolean? = null): PlaybackQueueSnapshot? =
-        withContext(Dispatchers.Main.immediate) {
-            capturePlaybackSnapshotFromPlayer(playWhenReadyOverride)
+    private suspend fun capturePlaybackSnapshot(playWhenReadyOverride: Boolean? = null): PlaybackQueueSnapshot? {
+        // Read main-thread-only player state first, then assemble items off main so a
+        // large timeline does not stall the UI thread.
+        val playerState = withContext(Dispatchers.Main.immediate) {
+            val player = engine.masterPlayer
+            val mediaItemCount = player.mediaItemCount
+            if (mediaItemCount <= 0) {
+                return@withContext null
+            }
+            val rawItems = ArrayList<MediaItem>(mediaItemCount)
+            for (index in 0 until mediaItemCount) {
+                rawItems += player.getMediaItemAt(index)
+            }
+            PlayerSnapshotInputs(
+                rawItems = rawItems,
+                currentMediaId = player.currentMediaItem?.mediaId,
+                currentMediaItemIndex = player.currentMediaItemIndex,
+                currentPositionMs = player.currentPosition.coerceAtLeast(0L),
+                playWhenReady = playWhenReadyOverride ?: player.playWhenReady,
+                repeatModeRaw = player.repeatMode,
+                shuffleEnabled = isManualShuffleEnabled,
+            )
+        } ?: return null
+
+        return withContext(Dispatchers.Default) {
+            val snapshotItems = playbackSnapshotItemCache.getOrBuild {
+                buildPlaybackSnapshotItems(playerState.rawItems)
+            }
+            if (snapshotItems.isEmpty()) {
+                return@withContext null
+            }
+
+            val indexFromMediaId = playerState.currentMediaId
+                ?.let { id -> snapshotItems.indexOfFirst { it.mediaId == id } }
+                ?.takeIf { it >= 0 }
+
+            val safeCurrentIndex = when {
+                indexFromMediaId != null -> indexFromMediaId
+                playerState.currentMediaItemIndex in snapshotItems.indices -> playerState.currentMediaItemIndex
+                else -> 0
+            }
+
+            val safeRepeatMode = when (playerState.repeatModeRaw) {
+                Player.REPEAT_MODE_OFF,
+                Player.REPEAT_MODE_ONE,
+                Player.REPEAT_MODE_ALL -> playerState.repeatModeRaw
+                else -> Player.REPEAT_MODE_OFF
+            }
+
+            PlaybackQueueSnapshot(
+                items = snapshotItems,
+                currentMediaId = playerState.currentMediaId,
+                currentIndex = safeCurrentIndex,
+                currentPositionMs = playerState.currentPositionMs,
+                playWhenReady = playerState.playWhenReady,
+                repeatMode = safeRepeatMode,
+                shuffleEnabled = playerState.shuffleEnabled,
+            )
         }
+    }
+
+    private data class PlayerSnapshotInputs(
+        val rawItems: List<MediaItem>,
+        val currentMediaId: String?,
+        val currentMediaItemIndex: Int,
+        val currentPositionMs: Long,
+        val playWhenReady: Boolean,
+        val repeatModeRaw: Int,
+        val shuffleEnabled: Boolean,
+    )
 
     private fun capturePlaybackSnapshotFromPlayer(
         playWhenReadyOverride: Boolean? = null
@@ -1405,8 +1471,12 @@ class MusicService : MediaSessionService() {
             return null
         }
 
+        val rawItems = ArrayList<MediaItem>(mediaItemCount)
+        for (index in 0 until mediaItemCount) {
+            rawItems += player.getMediaItemAt(index)
+        }
         val snapshotItems = playbackSnapshotItemCache.getOrBuild {
-            buildPlaybackSnapshotItems(player, mediaItemCount)
+            buildPlaybackSnapshotItems(rawItems)
         }
 
         if (snapshotItems.isEmpty()) {
@@ -1443,12 +1513,10 @@ class MusicService : MediaSessionService() {
     }
 
     private fun buildPlaybackSnapshotItems(
-        player: Player,
-        mediaItemCount: Int,
+        mediaItems: List<MediaItem>,
     ): List<PlaybackQueueItemSnapshot> {
-        val snapshotItems = ArrayList<PlaybackQueueItemSnapshot>(mediaItemCount)
-        for (index in 0 until mediaItemCount) {
-            val mediaItem = player.getMediaItemAt(index)
+        val snapshotItems = ArrayList<PlaybackQueueItemSnapshot>(mediaItems.size)
+        for (mediaItem in mediaItems) {
             val metadata = mediaItem.mediaMetadata
             val playerUri = mediaItem.localConfiguration?.uri?.toString()
             val originalContentUri = metadata.extras
