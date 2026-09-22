@@ -1578,6 +1578,11 @@ class DualPlayerEngine @Inject constructor(
         }
         playerB?.release()
         playerB = null
+        queueSnapshot = emptyList()
+        onPlayerSwappedListeners.clear()
+        onTransitionDisplayPlayerListeners.clear()
+        onTransitionFinishedListeners.clear()
+        onPlayerAboutToBeReleasedListener = null
         isReleased = true
     }
 }

@@ -173,6 +173,7 @@ class PlaybackStateHolder @Inject constructor(
 
     fun setMediaController(controller: MediaController?) {
         if (controller == null) {
+            mediaControllerStack.forEach { it.release() }
             mediaControllerStack.clear()
             mediaController = null
             return
@@ -186,9 +187,15 @@ class PlaybackStateHolder @Inject constructor(
     fun clearMediaController(controller: MediaController?) {
         if (controller == null) return
 
-        mediaControllerStack.removeAll { it === controller }
+        // Only release a controller this holder owns and is discarding. A controller
+        // still on the stack (or still active) is left alone — it may be the service
+        // session's own connection.
+        val removed = mediaControllerStack.removeAll { it === controller }
         if (mediaController === controller) {
             mediaController = mediaControllerStack.lastOrNull()
+        }
+        if (removed && mediaController !== controller) {
+            controller.release()
         }
     }
 
