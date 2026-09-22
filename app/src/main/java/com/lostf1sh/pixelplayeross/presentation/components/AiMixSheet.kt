@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -156,6 +157,9 @@ fun AiMixSheet(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
+            // Keep the action row clear of the system nav bar / gesture pill: without this the
+            // bottom "regenerate" control sits under the bar and looks cut off.
+            .navigationBarsPadding()
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -626,10 +630,12 @@ private fun ResultPhase(
         }
 
         if (songs.isNotEmpty() || thinkingText.isNotBlank()) {
+            // Cap the list so the action row + regenerate stay on screen beside the mini player
+            // and nav bar. 200.dp shows several rows and keeps the sheet readable at 411×914 dp.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 320.dp)
+                    .heightIn(max = 200.dp)
             ) {
                 LazyColumn(
                     state = listState,

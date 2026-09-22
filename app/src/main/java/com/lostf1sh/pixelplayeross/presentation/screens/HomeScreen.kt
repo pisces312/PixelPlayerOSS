@@ -571,6 +571,19 @@ fun HomeScreen(
         autoSavedName = null
     }
 
+    // Close the AI sheet the same way the options sheet does: animate `sheetState` out first,
+    // then drop the composable. Toggling `showAiMixSheet` alone leaves the expanded sheet on
+    // screen, so the header close button looks dead.
+    fun dismissAiMixSheet() {
+        scope.launch {
+            aiMixSheetState.hide()
+        }.invokeOnCompletion {
+            if (!aiMixSheetState.isVisible) {
+                resetAiMixSheetSession()
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         playlistViewModel.aiMixSaved.collect { mix ->
             if (mix.startPlayback && mix.songs.isNotEmpty()) {
@@ -663,7 +676,7 @@ fun HomeScreen(
 
     if (showAiMixSheet) {
         ModalBottomSheet(
-            onDismissRequest = { resetAiMixSheetSession() },
+            onDismissRequest = { dismissAiMixSheet() },
             sheetState = aiMixSheetState
         ) {
             AiMixSheet(
@@ -706,9 +719,9 @@ fun HomeScreen(
                                 if (aiEntryIsQuick) SERENDIPITY_SOURCE
                                 else AI_MIX_SOURCE
                     )
-                    resetAiMixSheetSession()
+                    dismissAiMixSheet()
                 },
-                onDismiss = { resetAiMixSheetSession() }
+                onDismiss = { dismissAiMixSheet() }
             )
         }
     }
