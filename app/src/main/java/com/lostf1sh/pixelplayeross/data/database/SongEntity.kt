@@ -245,6 +245,38 @@ data class SongReleaseDateStub(
     @ColumnInfo(name = "file_path") val filePath: String
 )
 
+/**
+ * Merges an incoming sync row with the existing database row so upserts cannot wipe
+ * user-owned or first-seen fields.
+ *
+ * Preserved from [this] (existing):
+ * - favorite flag (source of truth is `favorites`, mirrored here by trigger)
+ * - lyrics (source of truth is `lyrics` / file tags)
+ * - `*_user_edited` flags and, when set, the corresponding display columns
+ * - `date_added` (first-added time)
+ * - MusicBrainz ids (only filled when previously empty)
+ *
+ * Everything else is taken from [incoming] (MediaStore / cloud scan).
+ */
+fun SongEntity.mergingUserOwnedFieldsFrom(existing: SongEntity): SongEntity {
+    return copy(
+        title = if (existing.titleUserEdited) existing.title else title,
+        artistName = if (existing.artistUserEdited) existing.artistName else artistName,
+        albumName = if (existing.albumUserEdited) existing.albumName else albumName,
+        genre = if (existing.genreUserEdited) existing.genre else genre,
+        isFavorite = existing.isFavorite,
+        lyrics = existing.lyrics,
+        dateAdded = existing.dateAdded,
+        titleUserEdited = existing.titleUserEdited,
+        artistUserEdited = existing.artistUserEdited,
+        albumUserEdited = existing.albumUserEdited,
+        genreUserEdited = existing.genreUserEdited,
+        mbRecordingId = existing.mbRecordingId ?: mbRecordingId,
+        mbReleaseId = existing.mbReleaseId ?: mbReleaseId,
+        mbArtistId = existing.mbArtistId ?: mbArtistId,
+    )
+}
+
 fun Song.toEntityWithoutPaths(): SongEntity {
     return SongEntity(
         id = this.id.toLong(),

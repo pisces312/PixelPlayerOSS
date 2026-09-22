@@ -1108,33 +1108,8 @@ constructor(
         }
     }
 
-    suspend fun toggleFavoriteSong(
-            songId: String,
-            removing: Boolean = false
-    ) {
-        dataStore.edit { preferences ->
-            val currentFavorites = preferences[PreferencesKeys.FAVORITE_SONG_IDS] ?: emptySet()
-            val contains = currentFavorites.contains(songId)
-
-            if (contains) preferences[PreferencesKeys.FAVORITE_SONG_IDS] = currentFavorites - songId
-            else {
-                if (removing)
-                        preferences[PreferencesKeys.FAVORITE_SONG_IDS] = currentFavorites - songId
-                else preferences[PreferencesKeys.FAVORITE_SONG_IDS] = currentFavorites + songId
-            }
-        }
-    }
-
-    suspend fun setFavoriteSong(songId: String, isFavorite: Boolean) {
-        dataStore.edit { preferences ->
-            val currentFavorites = preferences[PreferencesKeys.FAVORITE_SONG_IDS] ?: emptySet()
-            preferences[PreferencesKeys.FAVORITE_SONG_IDS] = if (isFavorite) {
-                currentFavorites + songId
-            } else {
-                currentFavorites - songId
-            }
-        }
-    }
+    // Favorite writes live in FavoritesDao / MusicRepositoryImpl.setFavoriteStatus only.
+    // FAVORITE_SONG_IDS remains read-only for the one-shot legacy migration in PlayerViewModel.
 
     suspend fun clearFavoriteSongIds() {
         dataStore.edit { preferences ->

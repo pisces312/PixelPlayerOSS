@@ -140,10 +140,27 @@ abstract class PixelPlayerDatabase : RoomDatabase() {
             )
         }
 
+        /**
+         * Installs favorite + FTS sync triggers.
+         *
+         * Called from `onOpen` (not only `onCreate`) so upgrades and Auto Backup restores — which
+         * never fire `onCreate` — still end up with a complete trigger set. Both installers are
+         * idempotent (`DROP TRIGGER IF EXISTS` + `CREATE`), so running them on every open is safe
+         * and keeps `songs.is_favorite` / `songs_fts` recoverable after drift.
+         *
+         * `songs.is_favorite` is a derived cache: the only write source is the `favorites` table
+         * (see `FavoritesDao` / `MusicRepositoryImpl.setFavoriteStatus`).
+         */
         fun createRuntimeArtifactsCallback(): RoomDatabase.Callback {
             return object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
+                    installFavoriteSyncTriggers(db)
+                    installSongsSearchSyncTriggers(db)
+                }
+
+                override fun onOpen(db: SupportSQLiteDatabase) {
+                    super.onOpen(db)
                     installFavoriteSyncTriggers(db)
                     installSongsSearchSyncTriggers(db)
                 }

@@ -57,6 +57,8 @@ class MusicRepositoryImplTest {
         every { mockMusicDao.getDistinctParentDirectoriesFlow() } returns
             flowOf(listOf("/music/folder1", "/music/folder2"))
         every { mockMusicDao.getAllSongArtistCrossRefs() } returns flowOf(emptyList())
+        every { mockFavoritesDao.getFavoriteSongIds() } returns flowOf(emptyList())
+        coEvery { mockFavoritesDao.getFavoriteSongIdsOnce() } returns emptyList()
         every { mockMusicDao.getAllSongs(any(), any()) } answers {
             println("getAllSongs called with: ${args[0]}, ${args[1]}")
             flowOf(emptyList())

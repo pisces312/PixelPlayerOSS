@@ -22,6 +22,7 @@ import com.lostf1sh.pixelplayeross.data.database.FavoritesDao
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.SearchHistoryDao
 import com.lostf1sh.pixelplayeross.data.database.SearchHistoryEntity
+import com.lostf1sh.pixelplayeross.data.database.SongEntity
 import com.lostf1sh.pixelplayeross.data.database.toAlbum
 import com.lostf1sh.pixelplayeross.data.database.toArtist
 import com.lostf1sh.pixelplayeross.data.database.toSearchHistoryItem
@@ -113,6 +114,32 @@ class MusicRepositoryImpl @Inject constructor(
     private fun normalizePath(path: String): String =
         runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
 
+    /**
+     * Favorite state source of truth is the `favorites` table. Overlay it at the repository
+     * boundary so `Song.isFavorite` stays correct even if the `songs.is_favorite` cache drifts.
+     */
+    private fun Flow<List<SongEntity>>.toSongsWithFavoriteState(): Flow<List<Song>> =
+        combine(this, favoritesDao.getFavoriteSongIds()) { entities, favoriteIds ->
+            val favorites = favoriteIds.toSet()
+            entities.map { it.toSong().copy(isFavorite = it.id in favorites) }
+        }
+
+    private suspend fun List<SongEntity>.toSongsWithFavoriteStateOnce(): List<Song> {
+        val favorites = favoritesDao.getFavoriteSongIdsOnce().toSet()
+        return map { it.toSong().copy(isFavorite = it.id in favorites) }
+    }
+
+    private fun Flow<SongEntity?>.toSongWithFavoriteState(): Flow<Song?> =
+        combine(this, favoritesDao.getFavoriteSongIds()) { entity, favoriteIds ->
+            entity?.toSong()?.copy(isFavorite = entity.id in favoriteIds.toSet())
+        }
+
+    private suspend fun SongEntity?.toSongWithFavoriteStateOnce(): Song? {
+        if (this == null) return null
+        val isFavorite = favoritesDao.getFavoriteSongIdsOnce().contains(id)
+        return toSong().copy(isFavorite = isFavorite)
+    }
+
     /** Cached directory filter — recomputed when allowed/blocked dirs preferences change or when the set of song folders changes. */
     data class CachedDirFilter(val allowedParentDirs: List<String> = emptyList(), val applyFilter: Boolean = false)
 
@@ -173,9 +200,7 @@ class MusicRepositoryImpl @Inject constructor(
                     )
                 )
             }.flatMapLatest { it }
-        }.map { entities ->
-            entities.map { it.toSong() }
-        }.distinctUntilChanged().conflate().flowOn(Dispatchers.IO)
+        }.toSongsWithFavoriteState().distinctUntilChanged().conflate().flowOn(Dispatchers.IO)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -284,7 +309,7 @@ class MusicRepositoryImpl @Inject constructor(
             filterMode = storageFilter.toFilterMode(),
             limit = limit,
             offset = offset
-        ).map { it.toSong() }
+        ).toSongsWithFavoriteStateOnce()
     }
 
     override fun getFavoriteSongCountFlow(storageFilter: StorageFilter): Flow<Int> {
@@ -301,7 +326,7 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun getRandomSongs(limit: Int): List<Song> = withContext(Dispatchers.IO) {
         val filter = cachedDirFilter.value
-        musicDao.getRandomSongs(limit, filter.allowedParentDirs, filter.applyFilter).map { it.toSong() }
+        musicDao.getRandomSongs(limit, filter.allowedParentDirs, filter.applyFilter).toSongsWithFavoriteStateOnce()
     }
 
     override suspend fun getSongsPage(
@@ -318,7 +343,7 @@ class MusicRepositoryImpl @Inject constructor(
             filterMode = storageFilter.toFilterMode(),
             limit = limit,
             offset = offset
-        ).map { it.toSong() }
+        ).toSongsWithFavoriteStateOnce()
     }
 
     override suspend fun getAlbumsPage(
@@ -365,7 +390,7 @@ class MusicRepositoryImpl @Inject constructor(
         musicDao.getFirstPlayableSong(
             allowedParentDirs = allowedParentDirs,
             applyDirectoryFilter = applyDirectoryFilter
-        )?.toSong()
+        ).toSongWithFavoriteStateOnce()
     }
 
     /**
@@ -439,8 +464,8 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     override fun getSongsForAlbum(albumId: Long): Flow<List<Song>> {
-        return musicDao.getSongsByAlbumId(albumId).map { entities ->
-            entities.map { it.toSong() }.sortedBy { it.trackNumber }
+        return musicDao.getSongsByAlbumId(albumId).toSongsWithFavoriteState().map { songs ->
+            songs.sortedBy { it.trackNumber }
         }.flowOn(Dispatchers.IO)
     }
 
@@ -483,9 +508,7 @@ class MusicRepositoryImpl @Inject constructor(
             } else {
                 musicDao.getSongsForArtist(artistId)
             }
-        }.map { entities ->
-            entities.map { it.toSong() }
-        }.flowOn(Dispatchers.IO)
+        }.toSongsWithFavoriteState().flowOn(Dispatchers.IO)
     }
 
     override suspend fun getAllUniqueAudioDirectories(): Set<String> = withContext(Dispatchers.IO) {
@@ -535,9 +558,7 @@ class MusicRepositoryImpl @Inject constructor(
                     )
                 )
             }.flatMapLatest { it }
-        }.map { entities ->
-            entities.map { it.toSong() }
-        }.flowOn(Dispatchers.IO)
+        }.toSongsWithFavoriteState().flowOn(Dispatchers.IO)
     }
 
 
@@ -655,24 +676,22 @@ class MusicRepositoryImpl @Inject constructor(
                     }
                 )
             }.flatMapLatest { it }
-        }.map { entities ->
-            entities.map { it.toSong() }
-        }.flowOn(Dispatchers.IO)
+        }.toSongsWithFavoriteState().flowOn(Dispatchers.IO)
     }
 
     override fun getSongsByIds(songIds: List<String>): Flow<List<Song>> {
         if (songIds.isEmpty()) return flowOf(emptyList())
         val longIds = songIds.mapNotNull { it.toLongOrNull() }
         if (longIds.isEmpty()) return flowOf(emptyList())
-        return musicDao.getSongsByIds(longIds, emptyList(), false).map { entities ->
-            val songMap = entities.associate { it.id.toString() to it.toSong() }
+        return musicDao.getSongsByIds(longIds, emptyList(), false).toSongsWithFavoriteState().map { songs ->
+            val songMap = songs.associateBy { it.id }
             songIds.mapNotNull { songMap[it] }
         }.flowOn(Dispatchers.IO)
     }
 
     override suspend fun getSongByPath(path: String): Song? {
         return withContext(Dispatchers.IO) {
-            musicDao.getSongByPath(path)?.toSong()
+            musicDao.getSongByPath(path).toSongWithFavoriteStateOnce()
         }
     }
 
@@ -688,7 +707,7 @@ class MusicRepositoryImpl @Inject constructor(
         musicDao.getAllSongs(
             allowedParentDirs = allowedParentDirs,
             applyDirectoryFilter = applyDirectoryFilter
-        ).first().map { it.toSong() }
+        ).first().toSongsWithFavoriteStateOnce()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -709,9 +728,7 @@ class MusicRepositoryImpl @Inject constructor(
                     )
                 )
             }.flatMapLatest { it }
-        }.map { entities ->
-            entities.map { it.toSong() }
-        }.distinctUntilChanged().flowOn(Dispatchers.IO)
+        }.toSongsWithFavoriteState().distinctUntilChanged().flowOn(Dispatchers.IO)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -733,9 +750,7 @@ class MusicRepositoryImpl @Inject constructor(
                     )
                 )
             }.flatMapLatest { it }
-        }.map { entities ->
-            entities.map { it.toSong() }
-        }.distinctUntilChanged().flowOn(Dispatchers.IO)
+        }.toSongsWithFavoriteState().distinctUntilChanged().flowOn(Dispatchers.IO)
     }
 
     override suspend fun getAllAlbumsOnce(storageFilter: StorageFilter, minTracks: Int): List<Album> = withContext(Dispatchers.IO) {
@@ -822,7 +837,7 @@ class MusicRepositoryImpl @Inject constructor(
     override fun getSong(songId: String): Flow<Song?> {
         val longId = songId.toLongOrNull()
         return if (longId != null) {
-            musicDao.getSongById(longId).map { it?.toSong() }.flowOn(Dispatchers.IO)
+            musicDao.getSongById(longId).toSongWithFavoriteState().flowOn(Dispatchers.IO)
         } else {
             flowOf(null)
         }
@@ -915,9 +930,7 @@ class MusicRepositoryImpl @Inject constructor(
                 applyDirectoryFilter = applyDirectoryFilter,
                 sortOrder = sortOption.storageKey
             )
-        }.map { entities ->
-            entities.map { it.toSong() }
-        }.distinctUntilChanged().conflate().flowOn(Dispatchers.IO)
+        }.toSongsWithFavoriteState().distinctUntilChanged().conflate().flowOn(Dispatchers.IO)
     }
 
     private fun buildGenre(genreName: String): Genre {

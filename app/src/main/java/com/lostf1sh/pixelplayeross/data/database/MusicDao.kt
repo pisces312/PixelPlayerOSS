@@ -164,9 +164,19 @@ interface MusicDao {
             if (rowId == -1L) songsToUpdate.add(songs[index])
         }
         if (songsToUpdate.isNotEmpty()) {
-            updateSongs(songsToUpdate)
+            // Keep user-owned fields (favorite / lyrics / user-edited / dateAdded / MB ids).
+            // Sync entities hard-code isFavorite=false, lyrics=null and would otherwise wipe them.
+            val existingById = getExistingSongsForMerge(songsToUpdate.map { it.id }).associateBy { it.id }
+            val merged = songsToUpdate.map { incoming ->
+                val existing = existingById[incoming.id]
+                if (existing == null) incoming else incoming.mergingUserOwnedFieldsFrom(existing)
+            }
+            updateSongs(merged)
         }
     }
+
+    @Query("SELECT * FROM songs WHERE id IN (:songIds)")
+    suspend fun getExistingSongsForMerge(songIds: List<Long>): List<SongEntity>
 
     @Transaction
     suspend fun insertAlbums(albums: List<AlbumEntity>) {
@@ -1777,19 +1787,7 @@ interface MusicDao {
     """)
     suspend fun deleteOrphanedArtists()
 
-    @Query("UPDATE songs SET is_favorite = :isFavorite WHERE id = :songId")
-    suspend fun setFavoriteStatus(songId: Long, isFavorite: Boolean)
-
-    @Query("SELECT is_favorite FROM songs WHERE id = :songId")
-    suspend fun getFavoriteStatus(songId: Long): Boolean?
-
-    @Transaction
-    suspend fun toggleFavoriteStatus(songId: Long): Boolean {
-        val currentStatus = getFavoriteStatus(songId) ?: false
-        val newStatus = !currentStatus
-        setFavoriteStatus(songId, newStatus)
-        return newStatus
-    }
+    // Favorite writes go through FavoritesDao only; songs.is_favorite is a trigger-maintained cache.
 
     @Query("""
         UPDATE songs
@@ -1901,14 +1899,7 @@ interface MusicDao {
         artistId: String?
     )
 
-    @Query("UPDATE songs SET lyrics = :lyrics WHERE id = :songId")
-    suspend fun updateLyrics(songId: Long, lyrics: String)
-
-    @Query("UPDATE songs SET lyrics = NULL WHERE id = :songId")
-    suspend fun resetLyrics(songId: Long)
-
-    @Query("UPDATE songs SET lyrics = NULL")
-    suspend fun resetAllLyrics()
+    // Lyrics writes go through LyricsDao; songs.lyrics is legacy/embedded only (see docs).
 
     @Query("SELECT " + SONG_LIST_PROJECTION + " FROM songs")
     suspend fun getAllSongsList(): List<SongEntity>
