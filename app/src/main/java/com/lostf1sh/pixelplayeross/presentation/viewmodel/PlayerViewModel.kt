@@ -835,6 +835,7 @@ class PlayerViewModel @Inject constructor(
         lyricsStateHolder.initialize(this, viewModelScope, lyricsLoadCallback, playbackStateHolder.stablePlayerState)
         playbackStateHolder.initialize(owner = this, coroutineScope = viewModelScope)
         themeStateHolder.initialize(this, viewModelScope)
+        externalMediaStateHolder.cleanupLegacyExternalAudioCache()
 
         viewModelScope.launch {
             val snapshot = runCatching {

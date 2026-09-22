@@ -9,7 +9,7 @@ import com.lostf1sh.pixelplayeross.data.media.AudioMetadataReader
 import com.lostf1sh.pixelplayeross.data.media.guessImageMimeType
 import com.lostf1sh.pixelplayeross.data.media.imageExtensionFromMimeType
 import com.lostf1sh.pixelplayeross.data.media.isValidImageData
-import com.lostf1sh.pixelplayeross.data.media.resolveAudioFileExtension
+
 import com.lostf1sh.pixelplayeross.data.model.Song
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +28,17 @@ data class ExternalSongLoadResult(
 class ExternalMediaStateHolder @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    /**
+     * One-time cleanup of legacy whole-file copies under `cacheDir/external_audio`.
+     * External previews now play the original URI directly (no copy).
+     */
+    fun cleanupLegacyExternalAudioCache() {
+        runCatching {
+            File(context.cacheDir, "external_audio").deleteRecursively()
+        }.onFailure { throwable ->
+            Timber.w(throwable, "Unable to clean legacy external_audio cache")
+        }
+    }
 
     suspend fun buildExternalQueue(
         result: ExternalSongLoadResult,
@@ -230,19 +241,11 @@ class ExternalMediaStateHolder @Inject constructor(
 
         val mimeType = context.contentResolver.getType(uri) ?: "audio/*"
         val directFilePath = resolveDirectFilePath(uri, storeDataPath)
-        val cachedPlaybackFile = if (directFilePath == null && uri.scheme == "content") {
-            persistExternalAudioForPlayback(uri)
-        } else {
-            null
-        }
         val playbackContentUriString = when {
-            cachedPlaybackFile != null -> Uri.fromFile(cachedPlaybackFile).toString()
             directFilePath != null -> Uri.fromFile(File(directFilePath)).toString()
             else -> uri.toString()
         }
-        val playbackPath = cachedPlaybackFile?.absolutePath
-            ?: directFilePath
-            ?: uri.toString()
+        val playbackPath = directFilePath ?: uri.toString()
 
         val mediaStoreSongId = storeMediaId ?: uri.mediaStoreAudioId()
         val songId = mediaStoreSongId?.toString() ?: "external:${uri}"
@@ -305,32 +308,6 @@ class ExternalMediaStateHolder @Inject constructor(
         }
 
         return null
-    }
-
-    private fun persistExternalAudioForPlayback(uri: Uri): File? {
-        return runCatching {
-            val directory = File(context.cacheDir, "external_audio")
-            if (!directory.exists()) {
-                directory.mkdirs()
-            }
-
-            val fileNamePrefix = "audio_${uri.toString().hashCode()}."
-            directory.listFiles { file ->
-                file.name.startsWith(fileNamePrefix)
-            }?.forEach { it.delete() }
-
-            val extension = resolveAudioFileExtension(context, uri).trimStart('.').ifBlank { "mp3" }
-            val file = File(directory, "$fileNamePrefix$extension")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                file.outputStream().use { output ->
-                    input.copyTo(output)
-                }
-            } ?: return@runCatching null
-
-            file.takeIf { it.length() > 0L }
-        }.onFailure { throwable ->
-            Timber.w(throwable, "Unable to persist external audio for playback uri: $uri")
-        }.getOrNull()
     }
 
     private fun persistExternalAlbumArt(uri: Uri, data: ByteArray, mimeType: String? = null): String? {
