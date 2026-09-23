@@ -28,6 +28,24 @@ private fun SupportSQLiteDatabase.addColumnIfMissing(table: String, column: Stri
 }
 
 /**
+ * Runs [block] bracketed by `PRAGMA foreign_keys=OFF/ON`.
+ *
+ * **Currently a no-op**: Room wraps migrations in a transaction, and SQLite ignores
+ * `foreign_keys` changes inside a transaction. Safe only because the app never enables FK
+ * enforcement (`setForeignKeyConstraintsEnabled` is unused; Room leaves it off). If that
+ * changes, parent-key rewrites (MIGRATION_13_14) and `DROP TABLE songs` (MIGRATION_14_15)
+ * need FK-safe ordering — e.g. park old ids in a temp range before rewriting.
+ */
+private fun SupportSQLiteDatabase.withoutForeignKeyChecks(block: () -> Unit) {
+    execSQL("PRAGMA foreign_keys=OFF")
+    try {
+        block()
+    } finally {
+        execSQL("PRAGMA foreign_keys=ON")
+    }
+}
+
+/**
  * v1 -> v2: album-artist support for the unified library (issue #8).
  *
  * - `songs.album_artist_id`: id of the *effective* album artist (the song's `album_artist` when
@@ -386,9 +404,7 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
 
                 val newArtistId = CloudUnifiedIds.unifiedArtistId(artistOff, artistName)
                 artistMap[oldArtistId] = newArtistId
-                if (oldAlbumArtistId != 0L && oldAlbumArtistId != oldArtistId) {
-                    // album artist id is rewritten from its own artist row name below if present
-                }
+                // album_artist_id remaps via the artists-table scan below when its row exists.
             }
         }
 
@@ -405,8 +421,7 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
             }
         }
 
-        db.execSQL("PRAGMA foreign_keys=OFF")
-        try {
+        db.withoutForeignKeyChecks {
             applyIdMap(db, "songs", "id", songMap)
             applyIdMap(db, "albums", "id", albumMap)
             applyIdMap(db, "artists", "id", artistMap)
@@ -421,8 +436,6 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
             applyTextIdMap(db, "playlist_songs", "song_id", songMap)
             applyTextIdMap(db, "audio_bookmarks", "song_id", songMap)
             applyTextIdMap(db, "offline_tracks", "song_id", songMap)
-        } finally {
-            db.execSQL("PRAGMA foreign_keys=ON")
         }
     }
 
@@ -646,21 +659,17 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         copy: String,
         indices: List<String>,
     ) {
-        db.execSQL("PRAGMA foreign_keys=OFF")
-        try {
+        db.withoutForeignKeyChecks {
             db.execSQL(createNew)
             db.execSQL(copy)
             db.execSQL("DROP TABLE `$table`")
             db.execSQL("ALTER TABLE `${table}_v15` RENAME TO `$table`")
             indices.forEach { db.execSQL(it) }
-        } finally {
-            db.execSQL("PRAGMA foreign_keys=ON")
         }
     }
 
     private fun rebuildSongsWithoutLegacyColumns(db: SupportSQLiteDatabase) {
-        db.execSQL("PRAGMA foreign_keys=OFF")
-        try {
+        db.withoutForeignKeyChecks {
             db.execSQL(
                 """
                     CREATE TABLE `songs_v15` (
@@ -743,8 +752,6 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
                 "CREATE INDEX IF NOT EXISTS `index_songs_parent_directory_path_source_type_album_id` ON `songs` (`parent_directory_path`, `source_type`, `album_id`)",
                 "CREATE INDEX IF NOT EXISTS `index_songs_parent_directory_path_source_type_id` ON `songs` (`parent_directory_path`, `source_type`, `id`)"
             ).forEach { db.execSQL(it) }
-        } finally {
-            db.execSQL("PRAGMA foreign_keys=ON")
         }
     }
 }

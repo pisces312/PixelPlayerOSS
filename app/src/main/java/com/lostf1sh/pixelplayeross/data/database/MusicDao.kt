@@ -270,6 +270,7 @@ interface MusicDao {
     @Query("DELETE FROM favorites WHERE song_id IN (SELECT id FROM songs WHERE source_type = 0)")
     suspend fun deleteLocalFavorites()
 
+    /** Safety net after song deletes — per-id cleanup is `deleteFavoritesBySongIds`. */
     @Query("DELETE FROM favorites WHERE song_id NOT IN (SELECT id FROM songs)")
     suspend fun deleteOrphanedFavorites()
 
@@ -279,6 +280,7 @@ interface MusicDao {
     @Query("DELETE FROM lyrics WHERE song_id IN (SELECT id FROM songs WHERE source_type = 0)")
     suspend fun deleteLocalLyrics()
 
+    /** Safety net after song deletes — per-id cleanup is `deleteLyricsBySongIds`. */
     @Query("DELETE FROM lyrics WHERE song_id NOT IN (SELECT id FROM songs)")
     suspend fun deleteOrphanedLyrics()
 
@@ -319,6 +321,8 @@ interface MusicDao {
         }
         deleteOrphanedAlbums()
         deleteOrphanedArtists()
+        deleteOrphanedFavorites()
+        deleteOrphanedLyrics()
         refreshAlbumSongCounts()
         refreshArtistTrackCounts()
     }
@@ -375,6 +379,8 @@ interface MusicDao {
 
         deleteOrphanedAlbums()
         deleteOrphanedArtists()
+        deleteOrphanedFavorites()
+        deleteOrphanedLyrics()
         refreshAlbumSongCounts()
         refreshArtistTrackCounts()
     }

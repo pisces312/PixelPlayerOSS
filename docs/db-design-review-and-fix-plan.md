@@ -318,7 +318,7 @@ clearLocalSongs()
 | P1c 多艺人真源 | **完成** | `MusicDao.replaceSongArtistLinks` 单写入口；删 `toSongWithArtistRefs` |
 | P1e 重建语义 | **澄清并维持原语义** | 重建 = 从 MediaStore 重扫 **并故意清**本地收藏/歌词/自定义元数据（与 dialog 一致）；非破坏性重应用「完整重新扫描」。`deleteOrphanedFavorites/Lyrics` 仅用于删歌后的孤儿清理 |
 | P1d 删列 | **完成** | `MIGRATION_14_15` 回填后重建 `songs`（DROP COLUMN 需 SQLite 3.35，minSdk 30 不够）；删 `is_favorite`/`lyrics` 列与收藏同步 trigger |
-| P0-4 云 id 64 位哈希 | **完成** | `CloudUnifiedIds`（SHA-256/63-bit）+ `MIGRATION_13_14` 重写引用；DB v14 |
+| P0-4 云 id 64 位哈希 | **完成** | `CloudUnifiedIds`（SHA-256/62-bit）+ `MIGRATION_13_14` 重写引用；DB v14 |
 | 备份 R3 合并恢复 | **完成** | restore=upsert 合并；rollback 仍 replace |
 | M5 migration 测试 | **完成** | `LyricsAndCloudIdMigrationTest`（12→13、13→14） |
 | M2 列名 snake_case | **完成** | `favorites`/`lyrics`/`ai_cache`/`ai_usage` 列重命名；备份 `@SerializedName(alternate)` 保留 |
@@ -339,8 +339,8 @@ clearLocalSongs()
 | P0 | 提交 v15 层 + `15.json` | **完成** | `2c8c540c`：`Normalize schema to v15: drop legacy song columns, snake_case, Long song ids`（41 files，含 `15.json`） |
 | P0 | `CloudUnifiedIds` 62 位掩码 | **完成** | `stableHash62`：`hash and (Long.MAX_VALUE shr 1)`；`CloudUnifiedIdsTest` 6 例锁溢出/负 id/稳定性 |
 | P0 | `MIGRATION_14_15` + 12→15 迁移测试 | **完成** | `SchemaV15MigrationTest` 2 例（14→15 / 12→15）`runMigrationsAndValidate` 对照 `15.json` 全绿；手写 DDL 已对齐。顺带修既有 13→14 用例：13.json 的 `songs.artist_id` FK 是 `SET NULL`、14.json 是 `NO ACTION`，且 `MIGRATION_13_14` 只改 id 不改表结构，故校验版本改为 15（由 14→15 重建对齐） |
-| P0 | `PRAGMA foreign_keys` 注释 / 空 `if` 清理 | 未开始 | 事务内 pragma 是 no-op；前提=全局未开 FK |
-| P1 | `deleteOrphanedFavorites/Lyrics` 接线 | 未开始 | 接到 `deleteSongsAndRelatedData` / `incrementalSyncMusicData` 末尾 |
+| P0 | `PRAGMA foreign_keys` 注释 / 空 `if` 清理 | **完成** | `withoutForeignKeyChecks` 收口三处 pragma 并注明：事务内是 no-op、前提是全局未开 FK；删 `album_artist` 空 `if` 块 |
+| P1 | `deleteOrphanedFavorites/Lyrics` 接线 | **完成** | 接到 `deleteSongsAndRelatedData` / `incrementalSyncMusicData` 末尾作删歌后兜底 |
 | P1 | 备份 engagement `songId` 类型统一 | 未开始 | String vs Long，cosmetic |
 
 **窗口期**：云 id 公式变更不写二次重哈希迁移 —— v14 未发版；本机测试库 `pm clear` 或清云库重同步。
