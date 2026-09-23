@@ -343,6 +343,17 @@ clearLocalSongs()
 | P1 | `deleteOrphanedFavorites/Lyrics` 接线 | **完成** | 接到 `deleteSongsAndRelatedData` / `incrementalSyncMusicData` 末尾作删歌后兜底 |
 | P1 | 备份 engagement `songId` 类型统一 | **完成** | `EngagementBackupEntry.songId: Long`，与 favorites/lyrics 一致；恢复仍兼容旧字符串形式 |
 
+#### 2.9.2 模拟器升级冒烟（2026-09-23，pixel6 AVD）
+
+脚本：`tools/build_seed_db.py`（按 schema JSON 造 vN 库）、`tools/pull_and_check_db.py`（导出并核对）。
+
+| 路径 | 结果 |
+|---|---|
+| **v14 → v15** | 通过。`user_version=15`；`songs` 无 `is_favorite`/`lyrics`；favorites/lyrics/ai_* 为 snake_case；`song_engagements.song_id` 为 INTEGER；`songs.lyrics` 回填 `embedded-body`，manual 歌词未覆盖 |
+| **v13 → v15 全链** | 通过。同上；云曲 id `-9000000000001` 重写为 `-885808771440934823`（与 `CloudUnifiedIds.stableHash62` 期望一致），favorites 同步重映射 |
+
+两路径启动均无 `AndroidRuntime` 崩溃。合入 `main` 因工作区隔离未在本会话执行。
+
 **窗口期**：云 id 公式变更不写二次重哈希迁移 —— v14 未发版；本机测试库 `pm clear` 或清云库重同步。
 
 ### 2.8 风险与回滚
