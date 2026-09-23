@@ -56,8 +56,8 @@ class LocalPlaylistDaoTest {
     fun deletingPlaylistRemovesOnlyItsOwnSongRows() = runTest {
         playlistDao.upsertPlaylist(PlaylistEntity(id = "playlist-1", name = "AI Mix"))
         playlistDao.upsertPlaylist(PlaylistEntity(id = "playlist-2", name = "Kept"))
-        playlistDao.replacePlaylistSongs("playlist-1", listOf("a", "b"))
-        playlistDao.replacePlaylistSongs("playlist-2", listOf("c"))
+        playlistDao.replacePlaylistSongs("playlist-1", listOf("11", "22"))
+        playlistDao.replacePlaylistSongs("playlist-2", listOf("33"))
 
         playlistDao.deletePlaylist("playlist-1")
 
@@ -65,7 +65,7 @@ class LocalPlaylistDaoTest {
         assertThat(playlistDao.observePlaylistSongs("playlist-1").first()).isEmpty()
         assertThat(playlistDao.getPlaylistById("playlist-2")).isNotNull()
         assertThat(playlistDao.observePlaylistSongs("playlist-2").first().map(PlaylistSongEntity::songId))
-            .containsExactly("c")
+            .containsExactly(33L)
     }
 
     /**
