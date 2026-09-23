@@ -341,7 +341,7 @@ clearLocalSongs()
 | P0 | `MIGRATION_14_15` + 12→15 迁移测试 | **完成** | `SchemaV15MigrationTest` 2 例（14→15 / 12→15）`runMigrationsAndValidate` 对照 `15.json` 全绿；手写 DDL 已对齐。顺带修既有 13→14 用例：13.json 的 `songs.artist_id` FK 是 `SET NULL`、14.json 是 `NO ACTION`，且 `MIGRATION_13_14` 只改 id 不改表结构，故校验版本改为 15（由 14→15 重建对齐） |
 | P0 | `PRAGMA foreign_keys` 注释 / 空 `if` 清理 | **完成** | `withoutForeignKeyChecks` 收口三处 pragma 并注明：事务内是 no-op、前提是全局未开 FK；删 `album_artist` 空 `if` 块 |
 | P1 | `deleteOrphanedFavorites/Lyrics` 接线 | **完成** | 接到 `deleteSongsAndRelatedData` / `incrementalSyncMusicData` 末尾作删歌后兜底 |
-| P1 | 备份 engagement `songId` 类型统一 | 未开始 | String vs Long，cosmetic |
+| P1 | 备份 engagement `songId` 类型统一 | **完成** | `EngagementBackupEntry.songId: Long`，与 favorites/lyrics 一致；恢复仍兼容旧字符串形式 |
 
 **窗口期**：云 id 公式变更不写二次重哈希迁移 —— v14 未发版；本机测试库 `pm clear` 或清云库重同步。
 

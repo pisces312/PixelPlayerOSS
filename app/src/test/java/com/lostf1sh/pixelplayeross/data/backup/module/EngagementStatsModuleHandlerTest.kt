@@ -38,6 +38,7 @@ class EngagementStatsModuleHandlerTest {
         val payload = handler.export()
 
         assertTrue(payload.contains("\"songId\""))
+        assertTrue(payload.contains("\"songId\":1"))
         assertTrue(payload.contains("\"playCount\""))
         assertTrue(payload.contains("\"totalPlayDurationMs\""))
         assertTrue(payload.contains("\"lastPlayedTimestamp\""))

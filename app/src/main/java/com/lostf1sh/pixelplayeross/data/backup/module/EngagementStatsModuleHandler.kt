@@ -18,7 +18,7 @@ import javax.inject.Singleton
 
 /** Engagement backup row + identity metadata for cross-device songId remapping. */
 data class EngagementBackupEntry(
-    val songId: String,
+    val songId: Long,
     val playCount: Int = 0,
     val totalPlayDurationMs: Long = 0L,
     val lastPlayedTimestamp: Long = 0L,
@@ -38,11 +38,11 @@ class EngagementStatsModuleHandler @Inject constructor(
     override val section = BackupSection.ENGAGEMENT_STATS
 
     override suspend fun export(): String = withContext(Dispatchers.IO) {
-        val summaries = musicDao.getAllLocalSongSummaries().associateBy { it.id.toString() }
+        val summaries = musicDao.getAllLocalSongSummaries().associateBy { it.id }
         val payload = engagementDao.getAllEngagements().map { row ->
-            val meta = summaries[row.songId.toString()]
+            val meta = summaries[row.songId]
             EngagementBackupEntry(
-                songId = row.songId.toString(),
+                songId = row.songId,
                 playCount = row.playCount,
                 totalPlayDurationMs = row.totalPlayDurationMs,
                 lastPlayedTimestamp = row.lastPlayedTimestamp,
@@ -105,13 +105,10 @@ class EngagementStatsModuleHandler @Inject constructor(
         if (!element.isJsonObject) return null
 
         val obj = element.asJsonObject
-        val songId = readString(obj, "songId", "song_id")
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return null
+        val backupId = readLong(obj, "songId", "song_id") ?: return null
 
         val meta = buildMeta(obj)
-        val resolvedId = (matcher.resolve(songId, meta) ?: songId).toLongOrNull() ?: return null
+        val resolvedId = matcher.resolve(backupId.toString(), meta)?.toLongOrNull() ?: backupId
 
         return SongEngagementEntity(
             songId = resolvedId,
