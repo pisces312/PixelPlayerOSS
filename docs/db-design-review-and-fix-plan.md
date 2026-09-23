@@ -8,7 +8,7 @@
 
 ## 0. 总体结构
 
-- 单一 Room 库 `pixelplayer_database`，**version = 12**，`exportSchema = true`（schema 在 `app/schemas/.../1.json` … `12.json`）。
+- 单一 Room 库 `pixelplayer_database`，**version = 15**，`exportSchema = true`（schema 在 `app/schemas/.../1.json` … `15.json`）。
 - 22 张实体表；本地 MediaStore 曲、Navidrome / Jellyfin 云曲统一进 `songs`，用 `source_type` + **负 Long id** 分区。
 - JournalMode = WAL。
 - 运行时 artifact（收藏同步 trigger、FTS 同步 trigger）由 `PixelPlayerDatabase.createRuntimeArtifactsCallback()` 安装。
@@ -356,6 +356,17 @@ clearLocalSongs()
 
 **窗口期**：云 id 公式变更不写二次重哈希迁移 —— v14 未发版；本机测试库 `pm clear` 或清云库重同步。
 
+#### 2.9.3 真机验证（2026-09-23，v12 → v15 原地升级）
+
+release（DB v12）覆盖安装本分支 debug 版、保留全部已有数据，**全部通过**：
+
+- 首启无崩溃，曲库/专辑/艺人完整（三连迁移 12→13→14→15 成功）；
+- 收藏与五星评分保留，增删收藏重启后保持；内嵌歌词正常回填显示，手动歌词未被覆盖；
+- 云曲（Navidrome）可播、云曲收藏保留、离线下载状态与离线播放正常；
+- 自建歌单曲目与顺序完整；最近播放/听歌统计保留；搜索（含升级后新扫入歌曲）正常。
+
+已知一次性现象：升级前持久化的播放队列快照含旧云 id，恢复的云曲条目可播（按 URI）但按 id 查库对不上，下一次队列保存后自愈。
+
 ### 2.8 风险与回滚
 
 | 风险 | 缓解 |
@@ -622,7 +633,7 @@ if (songId.value <= 0L) → WARNING "INVALID_SONG_ID"
 | 文件 | 角色 |
 |---|---|
 | `data/database/PixelPlayerDatabase.kt` | 实体注册、version、trigger 安装 |
-| `data/database/Migrations.kt` | v1–v12 |
+| `data/database/Migrations.kt` | v1–v15 |
 | `di/AppModule.kt` | `providePixelPlayerDatabase` |
 | `data/database/MusicDao.kt` | 曲库主 DAO（含死 API 待删） |
 | `data/database/FavoritesDao.kt` | 收藏/评分真源 |
@@ -631,7 +642,7 @@ if (songId.value <= 0L) → WARNING "INVALID_SONG_ID"
 | `data/repository/LyricsRepositoryImpl.kt` | 歌词四级 fallback |
 | `data/worker/SyncWorker.kt` | 本地同步、重建、artists_json/cross_ref 双写 |
 | `data/navidrome/NavidromeRepository.kt` / `data/jellyfin/JellyfinRepository.kt` | 云 id hash、`incrementalSyncMusicData` |
-| `app/schemas/.../1.json`–`12.json` | Room schema 导出 |
+| `app/schemas/.../1.json`–`15.json` | Room schema 导出 |
 | `app/src/androidTest/.../PlaylistMigrationTest.kt` | 现有 migration 测试（仅 5→6、10→11） |
 | `data/backup/BackupManager.kt` | 现行导入导出入口（UI 使用） |
 | `data/backup/format/BackupFormatDetector.kt` | PXPL/legacy 容器识别 |
@@ -640,3 +651,32 @@ if (songId.value <= 0L) → WARNING "INVALID_SONG_ID"
 | `data/backup/restore/PlaylistSongMatcher.kt` | 歌单跨设备元数据匹配（收藏/歌词没有） |
 | `data/backup/validation/ModuleSchemaValidator.kt` | 模块字段校验 |
 | `data/backup/AppDataBackupManager.kt` | 旧一体式路径（UI 已不引用） |
+
+---
+
+## 6. 优化成果总结（合并 `main` 前，DB v12 → v15）
+
+### 6.1 正确性：修掉的实际风险
+
+| 修复 | 之前的问题 | 之后 |
+|---|---|---|
+| 用户态字段保护（v13） | `insertSongs` upsert 覆盖评分等用户字段 | 合并时保留用户已拥有的字段 |
+| 收藏/歌词真源化（v13–v15） | `songs.is_favorite` / `songs.lyrics` 与 favorites/lyrics 表双写冗余，可漂移；同步 trigger 只在 `onCreate` 装，升级/备份恢复后丢 | favorites / lyrics 表为唯一真源；冗余列与同步 trigger 删除；FTS trigger 改在 `onOpen` 幂等安装 |
+| 云 id 换 SHA-256/62 位（v14） | 32 位 `hashCode()` 碰撞会静默把两首云曲并成同一主键；63 位版本在顶部区间会溢出成正 id 撞 MediaStore 本地 id | 碰撞概率可忽略；`offset + hash` 数学上不可能溢出（`CloudUnifiedIdsTest` 锁定） |
+| 备份恢复合并语义 | 恢复 = 整体替换，旧备份会清掉新数据 | 恢复 = upsert 合并（rollback 仍 replace） |
+| 孤儿清理接线 | `deleteOrphanedFavorites/Lyrics` 无调用点 | 挂到删歌/增量同步末尾 |
+
+### 6.2 Schema 卫生（v15）
+
+- favorites / lyrics / ai_cache / ai_usage 列名统一 snake_case；备份兼容靠 `@SerializedName(alternate)` 保留。
+- song_engagements / playlist_songs / audio_bookmarks / offline_tracks 的 `song_id` 从 TEXT 重建为 INTEGER。
+- `songs.artist_id` FK 从 SET NULL 收敛为 NO ACTION（重建时对齐）。
+- 删除 debug 包的 `fallbackToDestructiveMigration`：debug 与 release 迁移行为一致，迁移 bug 在 debug 阶段就会暴露。
+
+### 6.3 验证资产（本次新增，后续迁移可直接复用）
+
+- `SchemaV15MigrationTest`：14→15、12→15 全链，`runMigrationsAndValidate` 对照 `15.json` 校验手写重建 DDL（防升级用户启动即崩）。
+- `LyricsAndCloudIdMigrationTest`：12→13 歌词回填、13→14 云 id 重写。
+- `CloudUnifiedIdsTest`：62 位上界、负 id、溢出反例、稳定性。
+- `tools/build_seed_db.py` / `tools/pull_and_check_db.py`：模拟器升级冒烟（按 schema JSON 造 vN 库 → 推送 → 启动 → 导出核对）。
+- 真机 v12→v15 原地升级全项通过（§2.9.3）。
