@@ -336,8 +336,8 @@ clearLocalSongs()
 
 | 优先级 | 项 | 状态 | 说明 |
 |---|---|---|---|
-| P0 | 提交 v15 层 + `15.json` | **进行中** | schema 对齐层落盘，防未提交丢失 |
-| P0 | `CloudUnifiedIds` 62 位掩码 | 未开始 | 现行 63-bit 与 offset 相加可溢出变正 id；`hash and (Long.MAX_VALUE shr 1)`；含 JVM 单测 |
+| P0 | 提交 v15 层 + `15.json` | **完成** | `2c8c540c`：`Normalize schema to v15: drop legacy song columns, snake_case, Long song ids`（41 files，含 `15.json`） |
+| P0 | `CloudUnifiedIds` 62 位掩码 | **完成** | `stableHash62`：`hash and (Long.MAX_VALUE shr 1)`；`CloudUnifiedIdsTest` 6 例锁溢出/负 id/稳定性 |
 | P0 | `MIGRATION_14_15` + 12→15 迁移测试 | 未开始 | 手写 DDL 唯一未验证路径；`MigrationTestHelper` 需设备 |
 | P0 | `PRAGMA foreign_keys` 注释 / 空 `if` 清理 | 未开始 | 事务内 pragma 是 no-op；前提=全局未开 FK |
 | P1 | `deleteOrphanedFavorites/Lyrics` 接线 | 未开始 | 接到 `deleteSongsAndRelatedData` / `incrementalSyncMusicData` 末尾 |
