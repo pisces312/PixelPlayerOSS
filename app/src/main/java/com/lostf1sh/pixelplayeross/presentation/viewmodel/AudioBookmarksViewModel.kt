@@ -34,7 +34,7 @@ class AudioBookmarksViewModel @Inject constructor(
     fun addBookmark(song: Song, title: String, timestampMs: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val bookmark = AudioBookmarkEntity(
-                songId = song.id,
+                songId = song.id.toLongOrNull() ?: return@launch,
                 songTitle = song.title,
                 artistName = song.displayArtist,
                 albumArtUri = song.albumArtUriString,

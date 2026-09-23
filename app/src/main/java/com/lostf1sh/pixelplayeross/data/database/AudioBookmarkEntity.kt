@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "audio_bookmarks")
 data class AudioBookmarkEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    @ColumnInfo(name = "song_id") val songId: String,
+    @ColumnInfo(name = "song_id") val songId: Long,
     @ColumnInfo(name = "song_title") val songTitle: String,
     @ColumnInfo(name = "artist_name") val artistName: String,
     @ColumnInfo(name = "album_art_uri") val albumArtUri: String?,

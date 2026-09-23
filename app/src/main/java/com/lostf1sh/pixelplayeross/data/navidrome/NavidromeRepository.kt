@@ -851,8 +851,6 @@ class NavidromeRepository @Inject constructor(
                     genre = navidromeSong.genre ?: NAVIDROME_GENRE,
                     filePath = navidromeSong.path,
                     parentDirectoryPath = NAVIDROME_PARENT_DIRECTORY,
-                    isFavorite = false,
-                    lyrics = null,
                     trackNumber = navidromeSong.trackNumber,
                     year = navidromeSong.year,
                     dateAdded = navidromeSong.dateAdded.takeIf { it > 0 }

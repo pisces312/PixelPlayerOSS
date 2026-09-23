@@ -110,7 +110,7 @@ constructor(
 
     private suspend fun mostPlayed(songs: List<Song>, size: Int): List<Song> {
         val counts =
-                engagementDao.getAllEngagements().associate { it.songId to it.playCount }
+                engagementDao.getAllEngagements().associate { it.songId.toString() to it.playCount }
         return songs.sortedWith(
                         compareByDescending<Song> { counts[it.id] ?: 0 }
                                 .thenBy { it.title.lowercase() }

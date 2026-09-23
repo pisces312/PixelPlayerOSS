@@ -630,8 +630,6 @@ class JellyfinRepository @Inject constructor(
                     genre = jellyfinSong.genre ?: JELLYFIN_GENRE,
                     filePath = jellyfinSong.path,
                     parentDirectoryPath = JELLYFIN_PARENT_DIRECTORY,
-                    isFavorite = false,
-                    lyrics = null,
                     trackNumber = jellyfinSong.trackNumber,
                     year = jellyfinSong.year,
                     dateAdded = jellyfinSong.dateAdded.takeIf { it > 0 }

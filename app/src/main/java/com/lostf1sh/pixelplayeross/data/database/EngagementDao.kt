@@ -21,7 +21,7 @@ interface EngagementDao {
     suspend fun upsertEngagements(engagements: List<SongEngagementEntity>)
 
     @Query("SELECT * FROM song_engagements WHERE song_id = :songId")
-    suspend fun getEngagement(songId: String): SongEngagementEntity?
+    suspend fun getEngagement(songId: Long): SongEngagementEntity?
 
     @Query("SELECT * FROM song_engagements")
     suspend fun getAllEngagements(): List<SongEngagementEntity>
@@ -30,10 +30,10 @@ interface EngagementDao {
     fun getAllEngagementsFlow(): Flow<List<SongEngagementEntity>>
 
     @Query("SELECT play_count FROM song_engagements WHERE song_id = :songId")
-    suspend fun getPlayCount(songId: String): Int?
+    suspend fun getPlayCount(songId: Long): Int?
 
     @Query("DELETE FROM song_engagements WHERE song_id = :songId")
-    suspend fun deleteEngagement(songId: String)
+    suspend fun deleteEngagement(songId: Long)
 
     @Query("DELETE FROM song_engagements")
     suspend fun clearAllEngagements()
@@ -50,7 +50,7 @@ interface EngagementDao {
             total_play_duration_ms = total_play_duration_ms + :durationMs,
             last_played_timestamp = :timestamp
     """)
-    suspend fun recordPlay(songId: String, durationMs: Long, timestamp: Long)
+    suspend fun recordPlay(songId: Long, durationMs: Long, timestamp: Long)
 
     /**
      * Get top songs by play count for quick access.

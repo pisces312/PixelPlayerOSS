@@ -56,8 +56,6 @@ private const val SONG_DETAIL_PROJECTION = """
     songs.genre AS genre,
     songs.file_path AS file_path,
     songs.parent_directory_path AS parent_directory_path,
-    songs.is_favorite AS is_favorite,
-    COALESCE(song_lyrics.content, songs.lyrics) AS lyrics,
     songs.track_number AS track_number,
     songs.disc_number AS disc_number,
     songs.year AS year,
@@ -81,7 +79,7 @@ private const val SONG_DETAIL_PROJECTION = """
 private const val SONG_LIST_PROJECTION = """
     id, title, artist_name, artist_id, album_artist, album_artist_id, album_name, album_id,
     content_uri_string, album_art_uri_string, duration, genre, file_path,
-    parent_directory_path, is_favorite, NULL AS lyrics, track_number, disc_number,
+    parent_directory_path, track_number, disc_number,
     year, date_added, mime_type, bitrate, sample_rate, artists_json, source_type,
     media_store_date_added, media_store_date_modified, title_user_edited,
     artist_user_edited, album_user_edited, genre_user_edited,
@@ -165,7 +163,7 @@ interface MusicDao {
         }
         if (songsToUpdate.isNotEmpty()) {
             // Keep user-owned fields (favorite / lyrics / user-edited / dateAdded / MB ids).
-            // Sync entities hard-code isFavorite=false, lyrics=null and would otherwise wipe them.
+            // Sync entities hard-code user-edited=false and would otherwise wipe local edits.
             val existingById = getExistingSongsForMerge(songsToUpdate.map { it.id }).associateBy { it.id }
             val merged = songsToUpdate.map { incoming ->
                 val existing = existingById[incoming.id]
@@ -266,22 +264,22 @@ interface MusicDao {
     @Query("DELETE FROM song_artist_cross_ref WHERE song_id IN (SELECT id FROM songs WHERE source_type = 0)")
     suspend fun deleteLocalSongArtistCrossRefs()
 
-    @Query("DELETE FROM favorites WHERE songId IN (:songIds)")
+    @Query("DELETE FROM favorites WHERE song_id IN (:songIds)")
     suspend fun deleteFavoritesBySongIds(songIds: List<Long>)
 
-    @Query("DELETE FROM favorites WHERE songId IN (SELECT id FROM songs WHERE source_type = 0)")
+    @Query("DELETE FROM favorites WHERE song_id IN (SELECT id FROM songs WHERE source_type = 0)")
     suspend fun deleteLocalFavorites()
 
-    @Query("DELETE FROM favorites WHERE songId NOT IN (SELECT id FROM songs)")
+    @Query("DELETE FROM favorites WHERE song_id NOT IN (SELECT id FROM songs)")
     suspend fun deleteOrphanedFavorites()
 
-    @Query("DELETE FROM lyrics WHERE songId IN (:songIds)")
+    @Query("DELETE FROM lyrics WHERE song_id IN (:songIds)")
     suspend fun deleteLyricsBySongIds(songIds: List<Long>)
 
-    @Query("DELETE FROM lyrics WHERE songId IN (SELECT id FROM songs WHERE source_type = 0)")
+    @Query("DELETE FROM lyrics WHERE song_id IN (SELECT id FROM songs WHERE source_type = 0)")
     suspend fun deleteLocalLyrics()
 
-    @Query("DELETE FROM lyrics WHERE songId NOT IN (SELECT id FROM songs)")
+    @Query("DELETE FROM lyrics WHERE song_id NOT IN (SELECT id FROM songs)")
     suspend fun deleteOrphanedLyrics()
 
     @Query("""
@@ -417,7 +415,6 @@ interface MusicDao {
     @Query(
         "SELECT " + SONG_DETAIL_PROJECTION + """
         FROM songs
-        LEFT JOIN lyrics AS song_lyrics ON song_lyrics.songId = songs.id
         WHERE songs.id = :songId
         """
     )
@@ -426,7 +423,6 @@ interface MusicDao {
     @Query(
         "SELECT " + SONG_DETAIL_PROJECTION + """
         FROM songs
-        LEFT JOIN lyrics AS song_lyrics ON song_lyrics.songId = songs.id
         WHERE songs.id = :songId
         """
     )
@@ -435,7 +431,6 @@ interface MusicDao {
     @Query(
         "SELECT " + SONG_DETAIL_PROJECTION + """
         FROM songs
-        LEFT JOIN lyrics AS song_lyrics ON song_lyrics.songId = songs.id
         WHERE songs.file_path = :path
         LIMIT 1
         """
@@ -706,7 +701,7 @@ interface MusicDao {
 
     @Query("""
         SELECT songs.id FROM songs
-        INNER JOIN favorites ON songs.id = favorites.songId AND favorites.isFavorite = 1
+        INNER JOIN favorites ON songs.id = favorites.song_id AND favorites.is_favorite = 1
         WHERE (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
         AND (
             :filterMode = 0
@@ -844,7 +839,7 @@ interface MusicDao {
      */
     @Query("""
         SELECT songs.* FROM songs
-        INNER JOIN favorites ON songs.id = favorites.songId AND favorites.isFavorite = 1
+        INNER JOIN favorites ON songs.id = favorites.song_id AND favorites.is_favorite = 1
         WHERE (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
         AND (
             :filterMode = 0
@@ -887,7 +882,7 @@ interface MusicDao {
      */
     @Query("""
         SELECT songs.* FROM songs
-        INNER JOIN favorites ON songs.id = favorites.songId AND favorites.isFavorite = 1
+        INNER JOIN favorites ON songs.id = favorites.song_id AND favorites.is_favorite = 1
         WHERE (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
         AND (
             :filterMode = 0
@@ -911,7 +906,7 @@ interface MusicDao {
     @Query("""
         SELECT """ + SONG_LIST_PROJECTION + """
         FROM songs
-        INNER JOIN favorites ON songs.id = favorites.songId AND favorites.isFavorite = 1
+        INNER JOIN favorites ON songs.id = favorites.song_id AND favorites.is_favorite = 1
         WHERE (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
         AND (
             :filterMode = 0
@@ -957,7 +952,7 @@ interface MusicDao {
      */
     @Query("""
         SELECT COUNT(*) FROM songs
-        INNER JOIN favorites ON songs.id = favorites.songId AND favorites.isFavorite = 1
+        INNER JOIN favorites ON songs.id = favorites.song_id AND favorites.is_favorite = 1
         WHERE (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
         AND (
             :filterMode = 0
@@ -1643,8 +1638,8 @@ interface MusicDao {
     @Query("""
         SELECT """ + SONG_LIST_PROJECTION + """
         FROM songs
-        LEFT JOIN favorites ON songs.id = favorites.songId
-        LEFT JOIN song_engagements ON CAST(songs.id AS TEXT) = song_engagements.song_id
+        LEFT JOIN favorites ON songs.id = favorites.song_id
+        LEFT JOIN song_engagements ON songs.id = song_engagements.song_id
         WHERE ((:year = 0 AND songs.year <= 0) OR songs.year = :year)
         AND (:applyDirectoryFilter = 0 OR songs.id < 0 OR songs.parent_directory_path IN (:allowedParentDirs))
         ORDER BY
@@ -1793,7 +1788,7 @@ interface MusicDao {
     """)
     suspend fun deleteOrphanedArtists()
 
-    // Favorite writes go through FavoritesDao only; songs.is_favorite is a trigger-maintained cache.
+    // Favorite writes go through FavoritesDao only.
 
     @Query("""
         UPDATE songs
@@ -1914,7 +1909,7 @@ interface MusicDao {
         artistId: String?
     )
 
-    // Lyrics writes go through LyricsDao; songs.lyrics is legacy/embedded only (see docs).
+    // Lyrics writes go through LyricsDao only.
 
     @Query("SELECT " + SONG_LIST_PROJECTION + " FROM songs")
     suspend fun getAllSongsList(): List<SongEntity>

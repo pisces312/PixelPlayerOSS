@@ -39,6 +39,7 @@ import com.lostf1sh.pixelplayeross.data.database.MIGRATION_10_11
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_11_12
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_12_13
 import com.lostf1sh.pixelplayeross.data.database.MIGRATION_13_14
+import com.lostf1sh.pixelplayeross.data.database.MIGRATION_14_15
 import com.lostf1sh.pixelplayeross.data.database.MusicDao
 import com.lostf1sh.pixelplayeross.data.database.OfflineTrackDao
 import com.lostf1sh.pixelplayeross.data.database.PixelPlayerDatabase
@@ -157,12 +158,9 @@ object AppModule {
                 MIGRATION_11_12,
                 MIGRATION_12_13,
                 MIGRATION_13_14,
+                MIGRATION_14_15,
             )
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-
-        if (BuildConfig.DEBUG) {
-            builder.fallbackToDestructiveMigration(dropAllTables = true)
-        }
 
         return builder.build()
     }

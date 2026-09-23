@@ -65,10 +65,11 @@ interface LocalPlaylistDao {
     suspend fun replacePlaylistSongs(playlistId: String, songIds: List<String>) {
         clearPlaylistSongs(playlistId)
         if (songIds.isEmpty()) return
-        val rows = songIds.mapIndexed { index, songId ->
+        val rows = songIds.mapIndexedNotNull { index, songId ->
+            val longId = songId.toLongOrNull() ?: return@mapIndexedNotNull null
             PlaylistSongEntity(
                 playlistId = playlistId,
-                songId = songId,
+                songId = longId,
                 sortOrder = index
             )
         }

@@ -416,7 +416,7 @@ constructor(
                                                 contentUriString = entity.contentUriString,
                                                 albumArtUriString = entity.albumArtUriString,
                                                 duration = entity.duration,
-                                                lyrics = entity.lyrics,
+                                                lyrics = null,
                                                 dateAdded = entity.dateAdded,
                                                 trackNumber = entity.trackNumber,
                                                 year = entity.year,
@@ -1022,7 +1022,6 @@ constructor(
                                     } else {
                                         scannedMediaStoreSong.entity.dateAdded
                                     },
-                                    lyrics = localSong.lyrics,
                                     title = if (localSong.titleUserEdited) localSong.title else scannedMediaStoreSong.entity.title,
                                     artistName = if (localSong.artistUserEdited) localSong.artistName else scannedMediaStoreSong.entity.artistName,
                                     albumName = if (localSong.albumUserEdited) localSong.albumName else scannedMediaStoreSong.entity.albumName,

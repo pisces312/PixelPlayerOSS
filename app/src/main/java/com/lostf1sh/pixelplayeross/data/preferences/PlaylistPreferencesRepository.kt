@@ -31,7 +31,7 @@ class PlaylistPreferencesRepository @Inject constructor(
         .map { rows ->
             rows.map { row ->
                 row.playlist.toPlaylist(
-                    songIds = row.songs.sortedBy { it.sortOrder }.map { it.songId }
+                    songIds = row.songs.sortedBy { it.sortOrder }.map { it.songId.toString() }
                 )
             }
         }

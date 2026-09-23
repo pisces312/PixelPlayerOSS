@@ -24,7 +24,7 @@ data class OfflineTrackEntity(
     @ColumnInfo(name = "download_id") val downloadId: String,
     /** Ownership token that prevents a superseded worker from updating a newer attempt. */
     @ColumnInfo(name = "attempt_id") val attemptId: String,
-    @ColumnInfo(name = "song_id") val songId: String,
+    @ColumnInfo(name = "song_id") val songId: Long,
     @ColumnInfo(name = "source_uri") val sourceUri: String,
     val provider: String,
     val title: String,

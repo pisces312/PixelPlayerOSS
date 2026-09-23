@@ -171,7 +171,7 @@ fun AudioBookmarksScreen(
 ) {
     val bookmarks by bookmarksViewModel.allBookmarks.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
-    val songIds = remember(bookmarks) { bookmarks.map { it.songId }.distinct() }
+    val songIds = remember(bookmarks) { bookmarks.map { it.songId.toString() }.distinct() }
     val loadedSongs by remember(songIds) { bookmarksViewModel.observeSongs(songIds) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
     val bookmarkSongs = remember(bookmarks, loadedSongs) {
@@ -360,7 +360,7 @@ fun AudioBookmarkFolderScreen(
     val coroutineScope = rememberCoroutineScope()
     val bookmarks by bookmarksViewModel.allBookmarks.collectAsStateWithLifecycle()
     val songBookmarks = remember(bookmarks, songId) {
-        bookmarks.filter { it.songId == songId }.sortedByDescending { it.createdTime }
+        bookmarks.filter { it.songId.toString() == songId }.sortedByDescending { it.createdTime }
     }
     val loadedSongs by remember(songId) { bookmarksViewModel.observeSongs(listOf(songId)) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -2039,7 +2039,7 @@ private fun buildBookmarkSongList(
     val fallbackSongs = bookmarks
         .distinctBy { it.songId }
         .mapNotNull { bookmark ->
-            if (loadedById.containsKey(bookmark.songId)) {
+            if (loadedById.containsKey(bookmark.songId.toString())) {
                 null
             } else {
                 bookmark.toFallbackSong()
@@ -2051,7 +2051,7 @@ private fun buildBookmarkSongList(
 
 private fun AudioBookmarkEntity.toFallbackSong(): Song =
     Song.emptySong().copy(
-        id = songId,
+        id = songId.toString(),
         title = songTitle,
         artist = artistName,
         albumArtUriString = albumArtUri

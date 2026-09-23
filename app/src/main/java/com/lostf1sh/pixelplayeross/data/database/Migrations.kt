@@ -453,3 +453,298 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         }
     }
 }
+
+/**
+ * v14 -> v15: schema alignment (P1d drop legacy song columns + M2 snake_case + M3 Long song ids).
+ *
+ * - P1d: final backfill of `songs.lyrics` into `lyrics`, then drop `songs.lyrics` / `songs.is_favorite`
+ *   (table rebuild — `DROP COLUMN` needs SQLite 3.35+, minSdk 30 is older).
+ * - M2: rename camelCase columns to snake_case (`favorites`, `lyrics`, `ai_cache`, `ai_usage`).
+ * - M3: rebuild `song_engagements` / `playlist_songs` / `audio_bookmarks` / `offline_tracks`
+ *   so `song_id` is INTEGER (was TEXT).
+ */
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Final safety net: any leftover songs.lyrics still lands in the lyrics table.
+        if (db.hasColumn("songs", "lyrics") && db.hasColumn("lyrics", "songId")) {
+            db.execSQL(
+                """
+                    INSERT OR IGNORE INTO lyrics (songId, content, isSynced, source)
+                    SELECT id, lyrics, 0, 'embedded'
+                    FROM songs
+                    WHERE lyrics IS NOT NULL AND lyrics != ''
+                """.trimIndent()
+            )
+        } else if (db.hasColumn("songs", "lyrics") && db.hasColumn("lyrics", "song_id")) {
+            db.execSQL(
+                """
+                    INSERT OR IGNORE INTO lyrics (song_id, content, is_synced, source)
+                    SELECT id, lyrics, 0, 'embedded'
+                    FROM songs
+                    WHERE lyrics IS NOT NULL AND lyrics != ''
+                """.trimIndent()
+            )
+        }
+
+        db.execSQL("DROP TRIGGER IF EXISTS trg_favorites_insert_sync_song")
+        db.execSQL("DROP TRIGGER IF EXISTS trg_favorites_update_sync_song")
+        db.execSQL("DROP TRIGGER IF EXISTS trg_favorites_delete_sync_song")
+
+        if (db.hasColumn("songs", "is_favorite") || db.hasColumn("songs", "lyrics")) {
+            rebuildSongsWithoutLegacyColumns(db)
+        }
+
+        db.renameColumnIfExists("favorites", "songId", "song_id")
+        db.renameColumnIfExists("favorites", "isFavorite", "is_favorite")
+        db.renameColumnIfExists("lyrics", "songId", "song_id")
+        db.renameColumnIfExists("lyrics", "isSynced", "is_synced")
+        db.renameColumnIfExists("ai_cache", "promptHash", "prompt_hash")
+        db.renameColumnIfExists("ai_cache", "responseJson", "response_json")
+        db.renameColumnIfExists("ai_usage", "promptType", "prompt_type")
+        db.renameColumnIfExists("ai_usage", "promptTokens", "prompt_tokens")
+        db.renameColumnIfExists("ai_usage", "outputTokens", "output_tokens")
+        db.renameColumnIfExists("ai_usage", "thoughtTokens", "thought_tokens")
+
+        if (db.hasColumn("song_engagements", "song_id") && db.columnIsText("song_engagements", "song_id")) {
+            rebuildSongIdTable(
+                db = db,
+                table = "song_engagements",
+                createNew = """
+                    CREATE TABLE `song_engagements_v15` (
+                        `song_id` INTEGER NOT NULL,
+                        `play_count` INTEGER NOT NULL,
+                        `total_play_duration_ms` INTEGER NOT NULL,
+                        `last_played_timestamp` INTEGER NOT NULL,
+                        PRIMARY KEY(`song_id`)
+                    )
+                """.trimIndent(),
+                copy = """
+                    INSERT INTO `song_engagements_v15` (`song_id`, `play_count`, `total_play_duration_ms`, `last_played_timestamp`)
+                    SELECT CAST(`song_id` AS INTEGER), `play_count`, `total_play_duration_ms`, `last_played_timestamp`
+                    FROM `song_engagements`
+                    WHERE `song_id` IS NOT NULL AND trim(`song_id`) != '' AND trim(`song_id`) NOT GLOB '*[^-0-9]*'
+                """.trimIndent(),
+                indices = listOf(
+                    "CREATE INDEX IF NOT EXISTS `index_song_engagements_play_count` ON `song_engagements` (`play_count`)"
+                )
+            )
+        }
+
+        if (db.hasColumn("playlist_songs", "song_id") && db.columnIsText("playlist_songs", "song_id")) {
+            rebuildSongIdTable(
+                db = db,
+                table = "playlist_songs",
+                createNew = """
+                    CREATE TABLE `playlist_songs_v15` (
+                        `playlist_id` TEXT NOT NULL,
+                        `song_id` INTEGER NOT NULL,
+                        `sort_order` INTEGER NOT NULL,
+                        PRIMARY KEY(`playlist_id`, `sort_order`)
+                    )
+                """.trimIndent(),
+                copy = """
+                    INSERT INTO `playlist_songs_v15` (`playlist_id`, `song_id`, `sort_order`)
+                    SELECT `playlist_id`, CAST(`song_id` AS INTEGER), `sort_order`
+                    FROM `playlist_songs`
+                    WHERE `song_id` IS NOT NULL AND trim(`song_id`) != '' AND trim(`song_id`) NOT GLOB '*[^-0-9]*'
+                """.trimIndent(),
+                indices = listOf(
+                    "CREATE INDEX IF NOT EXISTS `index_playlist_songs_playlist_id_sort_order` ON `playlist_songs` (`playlist_id`, `sort_order`)",
+                    "CREATE INDEX IF NOT EXISTS `index_playlist_songs_song_id` ON `playlist_songs` (`song_id`)"
+                )
+            )
+        }
+
+        if (db.hasColumn("audio_bookmarks", "song_id") && db.columnIsText("audio_bookmarks", "song_id")) {
+            rebuildSongIdTable(
+                db = db,
+                table = "audio_bookmarks",
+                createNew = """
+                    CREATE TABLE `audio_bookmarks_v15` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `song_id` INTEGER NOT NULL,
+                        `song_title` TEXT NOT NULL,
+                        `artist_name` TEXT NOT NULL,
+                        `album_art_uri` TEXT,
+                        `title` TEXT NOT NULL,
+                        `timestamp_ms` INTEGER NOT NULL,
+                        `created_time` INTEGER NOT NULL
+                    )
+                """.trimIndent(),
+                copy = """
+                    INSERT INTO `audio_bookmarks_v15` (`id`, `song_id`, `song_title`, `artist_name`, `album_art_uri`, `title`, `timestamp_ms`, `created_time`)
+                    SELECT `id`, CAST(`song_id` AS INTEGER), `song_title`, `artist_name`, `album_art_uri`, `title`, `timestamp_ms`, `created_time`
+                    FROM `audio_bookmarks`
+                    WHERE `song_id` IS NOT NULL AND trim(`song_id`) != '' AND trim(`song_id`) NOT GLOB '*[^-0-9]*'
+                """.trimIndent(),
+                indices = emptyList()
+            )
+        }
+
+        if (db.hasColumn("offline_tracks", "song_id") && db.columnIsText("offline_tracks", "song_id")) {
+            rebuildSongIdTable(
+                db = db,
+                table = "offline_tracks",
+                createNew = """
+                    CREATE TABLE `offline_tracks_v15` (
+                        `download_id` TEXT NOT NULL,
+                        `attempt_id` TEXT NOT NULL,
+                        `song_id` INTEGER NOT NULL,
+                        `source_uri` TEXT NOT NULL,
+                        `provider` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `mime_type` TEXT,
+                        `local_path` TEXT,
+                        `state` TEXT NOT NULL,
+                        `bytes_downloaded` INTEGER NOT NULL,
+                        `total_bytes` INTEGER,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        `error_message` TEXT,
+                        PRIMARY KEY(`download_id`)
+                    )
+                """.trimIndent(),
+                copy = """
+                    INSERT INTO `offline_tracks_v15` (`download_id`, `attempt_id`, `song_id`, `source_uri`, `provider`, `title`, `mime_type`, `local_path`, `state`, `bytes_downloaded`, `total_bytes`, `created_at`, `updated_at`, `error_message`)
+                    SELECT `download_id`, `attempt_id`, CAST(`song_id` AS INTEGER), `source_uri`, `provider`, `title`, `mime_type`, `local_path`, `state`, `bytes_downloaded`, `total_bytes`, `created_at`, `updated_at`, `error_message`
+                    FROM `offline_tracks`
+                    WHERE `song_id` IS NOT NULL AND trim(`song_id`) != '' AND trim(`song_id`) NOT GLOB '*[^-0-9]*'
+                """.trimIndent(),
+                indices = listOf(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_offline_tracks_source_uri` ON `offline_tracks` (`source_uri`)",
+                    "CREATE INDEX IF NOT EXISTS `index_offline_tracks_song_id` ON `offline_tracks` (`song_id`)",
+                    "CREATE INDEX IF NOT EXISTS `index_offline_tracks_state` ON `offline_tracks` (`state`)"
+                )
+            )
+        }
+    }
+
+    private fun SupportSQLiteDatabase.renameColumnIfExists(table: String, from: String, to: String) {
+        if (hasColumn(table, from) && !hasColumn(table, to)) {
+            execSQL("ALTER TABLE `$table` RENAME COLUMN `$from` TO `$to`")
+        }
+    }
+
+    private fun SupportSQLiteDatabase.columnIsText(table: String, column: String): Boolean {
+        query("PRAGMA table_info(`$table`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndex("name")
+            val typeIndex = cursor.getColumnIndex("type")
+            if (nameIndex < 0 || typeIndex < 0) return true
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameIndex) == column) {
+                    return cursor.getString(typeIndex).equals("TEXT", ignoreCase = true)
+                }
+            }
+        }
+        return false
+    }
+
+    private fun rebuildSongIdTable(
+        db: SupportSQLiteDatabase,
+        table: String,
+        createNew: String,
+        copy: String,
+        indices: List<String>,
+    ) {
+        db.execSQL("PRAGMA foreign_keys=OFF")
+        try {
+            db.execSQL(createNew)
+            db.execSQL(copy)
+            db.execSQL("DROP TABLE `$table`")
+            db.execSQL("ALTER TABLE `${table}_v15` RENAME TO `$table`")
+            indices.forEach { db.execSQL(it) }
+        } finally {
+            db.execSQL("PRAGMA foreign_keys=ON")
+        }
+    }
+
+    private fun rebuildSongsWithoutLegacyColumns(db: SupportSQLiteDatabase) {
+        db.execSQL("PRAGMA foreign_keys=OFF")
+        try {
+            db.execSQL(
+                """
+                    CREATE TABLE `songs_v15` (
+                        `id` INTEGER NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `artist_name` TEXT NOT NULL,
+                        `artist_id` INTEGER NOT NULL,
+                        `album_artist` TEXT,
+                        `album_artist_id` INTEGER NOT NULL DEFAULT 0,
+                        `album_name` TEXT NOT NULL,
+                        `album_id` INTEGER NOT NULL,
+                        `content_uri_string` TEXT NOT NULL,
+                        `album_art_uri_string` TEXT,
+                        `duration` INTEGER NOT NULL,
+                        `genre` TEXT,
+                        `file_path` TEXT NOT NULL,
+                        `parent_directory_path` TEXT NOT NULL,
+                        `track_number` INTEGER NOT NULL DEFAULT 0,
+                        `disc_number` INTEGER DEFAULT null,
+                        `year` INTEGER NOT NULL DEFAULT 0,
+                        `release_date` TEXT,
+                        `date_added` INTEGER NOT NULL DEFAULT 0,
+                        `mime_type` TEXT,
+                        `bitrate` INTEGER,
+                        `sample_rate` INTEGER,
+                        `artists_json` TEXT,
+                        `source_type` INTEGER NOT NULL DEFAULT 0,
+                        `media_store_date_added` INTEGER NOT NULL DEFAULT 0,
+                        `media_store_date_modified` INTEGER NOT NULL DEFAULT 0,
+                        `title_user_edited` INTEGER NOT NULL DEFAULT 0,
+                        `artist_user_edited` INTEGER NOT NULL DEFAULT 0,
+                        `album_user_edited` INTEGER NOT NULL DEFAULT 0,
+                        `genre_user_edited` INTEGER NOT NULL DEFAULT 0,
+                        `mb_recording_id` TEXT,
+                        `mb_release_id` TEXT,
+                        `mb_artist_id` TEXT,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`album_id`) REFERENCES `albums`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE ,
+                        FOREIGN KEY(`artist_id`) REFERENCES `artists`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION
+                    )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                    INSERT INTO `songs_v15` (
+                        `id`, `title`, `artist_name`, `artist_id`, `album_artist`, `album_artist_id`,
+                        `album_name`, `album_id`, `content_uri_string`, `album_art_uri_string`, `duration`,
+                        `genre`, `file_path`, `parent_directory_path`, `track_number`, `disc_number`,
+                        `year`, `release_date`, `date_added`, `mime_type`, `bitrate`, `sample_rate`,
+                        `artists_json`, `source_type`, `media_store_date_added`, `media_store_date_modified`,
+                        `title_user_edited`, `artist_user_edited`, `album_user_edited`, `genre_user_edited`,
+                        `mb_recording_id`, `mb_release_id`, `mb_artist_id`
+                    )
+                    SELECT
+                        `id`, `title`, `artist_name`, `artist_id`, `album_artist`, `album_artist_id`,
+                        `album_name`, `album_id`, `content_uri_string`, `album_art_uri_string`, `duration`,
+                        `genre`, `file_path`, `parent_directory_path`, `track_number`, `disc_number`,
+                        `year`, `release_date`, `date_added`, `mime_type`, `bitrate`, `sample_rate`,
+                        `artists_json`, `source_type`, `media_store_date_added`, `media_store_date_modified`,
+                        `title_user_edited`, `artist_user_edited`, `album_user_edited`, `genre_user_edited`,
+                        `mb_recording_id`, `mb_release_id`, `mb_artist_id`
+                    FROM `songs`
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE `songs`")
+            db.execSQL("ALTER TABLE `songs_v15` RENAME TO `songs`")
+            listOf(
+                "CREATE INDEX IF NOT EXISTS `index_songs_title` ON `songs` (`title`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_album_id` ON `songs` (`album_id`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_artist_id` ON `songs` (`artist_id`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_artist_name` ON `songs` (`artist_name`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_genre` ON `songs` (`genre`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_parent_directory_path` ON `songs` (`parent_directory_path`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_file_path` ON `songs` (`file_path`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_content_uri_string` ON `songs` (`content_uri_string`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_date_added` ON `songs` (`date_added`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_duration` ON `songs` (`duration`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_source_type` ON `songs` (`source_type`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_album_artist_id` ON `songs` (`album_artist_id`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_parent_directory_path_source_type_album_id` ON `songs` (`parent_directory_path`, `source_type`, `album_id`)",
+                "CREATE INDEX IF NOT EXISTS `index_songs_parent_directory_path_source_type_id` ON `songs` (`parent_directory_path`, `source_type`, `id`)"
+            ).forEach { db.execSQL(it) }
+        } finally {
+            db.execSQL("PRAGMA foreign_keys=ON")
+        }
+    }
+}

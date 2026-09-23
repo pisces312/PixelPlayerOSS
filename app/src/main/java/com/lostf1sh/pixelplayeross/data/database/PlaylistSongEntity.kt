@@ -16,7 +16,7 @@ data class PlaylistSongEntity(
     @ColumnInfo(name = "playlist_id")
     val playlistId: String,
     @ColumnInfo(name = "song_id")
-    val songId: String,
+    val songId: Long,
     @ColumnInfo(name = "sort_order")
     val sortOrder: Int,
 )

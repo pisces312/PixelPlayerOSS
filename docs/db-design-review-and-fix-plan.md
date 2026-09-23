@@ -317,19 +317,33 @@ clearLocalSongs()
 | P1b 歌词真源 | **完成** | `loadStoredLyrics` 歌词表优先；`MIGRATION_12_13` 回填 `songs.lyrics`→`lyrics`（`source=embedded`）；DB version 13 |
 | P1c 多艺人真源 | **完成** | `MusicDao.replaceSongArtistLinks` 单写入口；删 `toSongWithArtistRefs` |
 | P1e 重建语义 | **澄清并维持原语义** | 重建 = 从 MediaStore 重扫 **并故意清**本地收藏/歌词/自定义元数据（与 dialog 一致）；非破坏性重应用「完整重新扫描」。`deleteOrphanedFavorites/Lyrics` 仅用于删歌后的孤儿清理 |
-| P1d 删列 | 未开始 | 隔发版后 |
+| P1d 删列 | **完成** | `MIGRATION_14_15` 回填后重建 `songs`（DROP COLUMN 需 SQLite 3.35，minSdk 30 不够）；删 `is_favorite`/`lyrics` 列与收藏同步 trigger |
 | P0-4 云 id 64 位哈希 | **完成** | `CloudUnifiedIds`（SHA-256/63-bit）+ `MIGRATION_13_14` 重写引用；DB v14 |
 | 备份 R3 合并恢复 | **完成** | restore=upsert 合并；rollback 仍 replace |
 | M5 migration 测试 | **完成** | `LyricsAndCloudIdMigrationTest`（12→13、13→14） |
-| P1d 删列 / M2 / M3 | 未开始 | schema 级，单独一版 |
+| M2 列名 snake_case | **完成** | `favorites`/`lyrics`/`ai_cache`/`ai_usage` 列重命名；备份 `@SerializedName(alternate)` 保留 |
+| M3 `song_id` 统一 Long | **完成** | 四表重建为 INTEGER；去掉 `CAST` JOIN；边界 `toLongOrNull` |
 | M1 artist FK SET_NULL | **完成** | 改为 `NO_ACTION`（列 NOT NULL） |
 | 备份 R1 收藏/歌词/统计重映射 | **完成** | 三者导出带 title/artist/album/duration，恢复走 `PlaylistSongMatcher` |
 | M4 FTS UPDATE trigger | **完成** | 仅 title/artist_name 变更时重写 |
 | 死代码 `deleteOrphanedEngagements` | **完成** | 已删 |
-| P1d 删列 | 未开始 | 隔发版后 |
-| 备份 R1/R3、M1/M2/M3/M5 | 未开始 | 见 §1 |
 
-验证：`testDebugUnitTest` 全绿；`assembleDebug` / `assembleRelease` 成功。
+验证：`testDebugUnitTest` 全绿（820）；`assembleRelease` 成功。DB version **15**（`MIGRATION_14_15`）。
+
+#### 2.9.1 外部 review 跟进（v15 对齐层之后）
+
+按合入前优先级推进，每步单独 commit：
+
+| 优先级 | 项 | 状态 | 说明 |
+|---|---|---|---|
+| P0 | 提交 v15 层 + `15.json` | **进行中** | schema 对齐层落盘，防未提交丢失 |
+| P0 | `CloudUnifiedIds` 62 位掩码 | 未开始 | 现行 63-bit 与 offset 相加可溢出变正 id；`hash and (Long.MAX_VALUE shr 1)`；含 JVM 单测 |
+| P0 | `MIGRATION_14_15` + 12→15 迁移测试 | 未开始 | 手写 DDL 唯一未验证路径；`MigrationTestHelper` 需设备 |
+| P0 | `PRAGMA foreign_keys` 注释 / 空 `if` 清理 | 未开始 | 事务内 pragma 是 no-op；前提=全局未开 FK |
+| P1 | `deleteOrphanedFavorites/Lyrics` 接线 | 未开始 | 接到 `deleteSongsAndRelatedData` / `incrementalSyncMusicData` 末尾 |
+| P1 | 备份 engagement `songId` 类型统一 | 未开始 | String vs Long，cosmetic |
+
+**窗口期**：云 id 公式变更不写二次重哈希迁移 —— v14 未发版；本机测试库 `pm clear` 或清云库重同步。
 
 ### 2.8 风险与回滚
 

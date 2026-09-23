@@ -16,39 +16,39 @@ interface FavoritesDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(favorites: List<FavoritesEntity>)
 
-    @Query("DELETE FROM favorites WHERE songId = :songId")
+    @Query("DELETE FROM favorites WHERE song_id = :songId")
     suspend fun removeFavorite(songId: Long)
 
     /**
      * 软删除：仅清除收藏标记，保留评分。
      * 取消收藏应调用此方法而非 removeFavorite——直接 DELETE 会连带丢掉评分。
      */
-    @Query("UPDATE favorites SET isFavorite = 0 WHERE songId = :songId")
+    @Query("UPDATE favorites SET is_favorite = 0 WHERE song_id = :songId")
     suspend fun clearFavoriteFlag(songId: Long)
 
     /** 清除无意义行（既未收藏也未评分），避免表中残留空记录。 */
-    @Query("DELETE FROM favorites WHERE songId = :songId AND isFavorite = 0 AND rating = 0")
+    @Query("DELETE FROM favorites WHERE song_id = :songId AND is_favorite = 0 AND rating = 0")
     suspend fun purgeIfEmpty(songId: Long)
 
-    @Query("SELECT isFavorite FROM favorites WHERE songId = :songId")
+    @Query("SELECT is_favorite FROM favorites WHERE song_id = :songId")
     suspend fun isFavorite(songId: Long): Boolean?
 
-    @Query("SELECT songId FROM favorites WHERE isFavorite = 1 ORDER BY songId")
+    @Query("SELECT song_id FROM favorites WHERE is_favorite = 1 ORDER BY song_id")
     fun getFavoriteSongIdsRaw(): Flow<List<Long>>
 
     fun getFavoriteSongIds(): Flow<List<Long>> = getFavoriteSongIdsRaw().distinctUntilChanged()
 
-    @Query("SELECT songId FROM favorites WHERE isFavorite = 1 ORDER BY songId")
+    @Query("SELECT song_id FROM favorites WHERE is_favorite = 1 ORDER BY song_id")
     suspend fun getFavoriteSongIdsOnce(): List<Long>
 
     @Query("SELECT * FROM favorites")
     suspend fun getAllFavoritesOnce(): List<FavoritesEntity>
 
-    @Query("SELECT rating FROM favorites WHERE songId = :songId")
+    @Query("SELECT rating FROM favorites WHERE song_id = :songId")
     suspend fun getRating(songId: Long): Int?
 
     /** Emits null while the song has no rating row. */
-    @Query("SELECT rating FROM favorites WHERE songId = :songId")
+    @Query("SELECT rating FROM favorites WHERE song_id = :songId")
     fun observeRating(songId: Long): Flow<Int?>
 
     /**
@@ -57,9 +57,9 @@ interface FavoritesDao {
      */
     @Query(
         """
-        INSERT INTO favorites (songId, isFavorite, timestamp, rating)
+        INSERT INTO favorites (song_id, is_favorite, timestamp, rating)
         VALUES (:songId, 0, :timestamp, :rating)
-        ON CONFLICT(songId) DO UPDATE SET rating = excluded.rating
+        ON CONFLICT(song_id) DO UPDATE SET rating = excluded.rating
         """
     )
     suspend fun upsertRating(songId: Long, rating: Int, timestamp: Long)

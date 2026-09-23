@@ -36,7 +36,7 @@ class LocalPlaylistDaoTest {
     fun repeatedTracksRemainAtEachPlaylistPosition() = runTest {
         playlistDao.replacePlaylistSongs(
             playlistId = "playlist-1",
-            songIds = listOf("intro", "chorus", "chorus", "outro"),
+            songIds = listOf("11", "22", "22", "33"),
         )
 
         val storedIds = playlistDao.observePlaylistSongs("playlist-1")
@@ -44,7 +44,7 @@ class LocalPlaylistDaoTest {
             .map(PlaylistSongEntity::songId)
 
         assertThat(storedIds)
-            .containsExactly("intro", "chorus", "chorus", "outro")
+            .containsExactly(11L, 22L, 22L, 33L)
             .inOrder()
     }
 

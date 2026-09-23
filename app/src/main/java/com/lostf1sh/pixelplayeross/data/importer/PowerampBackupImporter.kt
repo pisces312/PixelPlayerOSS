@@ -214,9 +214,10 @@ class PowerampBackupImporter @Inject constructor(
             }
             if (options.replaceMode) {
                 onProgress(ImportProgress(ImportProgress.Step.ENGAGEMENT, 0, 1))
-                engagementDao.replaceAll(statsRecords.map { (songId, r) ->
+                engagementDao.replaceAll(statsRecords.mapNotNull { (songId, r) ->
+                    val id = songId.toLongOrNull() ?: return@mapNotNull null
                     SongEngagementEntity(
-                        songId = songId,
+                        songId = id,
                         playCount = r.playCount,
                         totalPlayDurationMs = 0L,
                         lastPlayedTimestamp = r.lastPlayedAt ?: 0L
@@ -226,11 +227,12 @@ class PowerampBackupImporter @Inject constructor(
                 // 合并模式：读-改-写（本工程 EngagementDao 无 merge 语义，需自行累加）
                 statsRecords.forEachIndexed { index, (songId, r) ->
                     coroutineContext.ensureActive()
-                    val existing = engagementDao.getEngagement(songId)
+                    val id = songId.toLongOrNull() ?: return@forEachIndexed
+                    val existing = engagementDao.getEngagement(id)
                     val importedLastPlayed = r.lastPlayedAt ?: 0L
                     engagementDao.upsertEngagement(
                         SongEngagementEntity(
-                            songId = songId,
+                            songId = id,
                             playCount = (existing?.playCount ?: 0) + r.playCount,
                             // Poweramp 无时长数据，保持本地既有值不被清零
                             totalPlayDurationMs = existing?.totalPlayDurationMs ?: 0L,

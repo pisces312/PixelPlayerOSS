@@ -103,7 +103,7 @@ class CloudOfflineRepository @Inject constructor(
                 OfflineTrackEntity(
                     downloadId = downloadId,
                     attemptId = attemptId,
-                    songId = song.id,
+                    songId = song.id.toLongOrNull() ?: return@withContext,
                     sourceUri = song.contentUriString,
                     provider = provider,
                     title = song.title,

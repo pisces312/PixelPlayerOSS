@@ -226,7 +226,7 @@ fun buildAudioBookmarkFolders(
 
     val normalizedQuery = query.trim().lowercase(Locale.getDefault())
     val bookmarksBySongId = bookmarks
-        .groupBy { it.songId }
+        .groupBy { it.songId.toString() }
         .mapValues { (_, values) -> values.sortedByDescending { it.createdTime } }
 
     return songs

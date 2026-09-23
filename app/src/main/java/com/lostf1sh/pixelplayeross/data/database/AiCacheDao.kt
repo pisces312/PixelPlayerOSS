@@ -10,7 +10,7 @@ interface AiCacheDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(cache: AiCacheEntity)
 
-    @Query("SELECT * FROM ai_cache WHERE promptHash = :hash")
+    @Query("SELECT * FROM ai_cache WHERE prompt_hash = :hash")
     suspend fun getCache(hash: String): AiCacheEntity?
 
     @Query("DELETE FROM ai_cache WHERE timestamp < :olderThanTimestamp")

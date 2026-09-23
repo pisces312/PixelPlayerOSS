@@ -23,11 +23,18 @@ import org.junit.jupiter.api.Test
 class LyricsRepositoryImplTest {
 
     @Test
-    fun getLyrics_returnsSongLyricsBeforeNeedingStorageRead() = runTest {
+    fun getLyrics_returnsStoredTableLyricsBeforeNeedingStorageRead() = runTest {
+        val lyricsDao = mockk<LyricsDao>(relaxed = true)
+        coEvery { lyricsDao.getLyrics(12L) } returns LyricsEntity(
+            songId = 12L,
+            content = "[00:01.00]Hello again",
+            isSynced = true,
+            source = "embedded"
+        )
         val repository = LyricsRepositoryImpl(
             context = mockk<Context>(relaxed = true),
             lrcLibApiService = mockk<LrcLibApiService>(relaxed = true),
-            lyricsDao = mockk<LyricsDao>(relaxed = true),
+            lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
             userPreferencesRepository = userPreferencesRepository()
         )
@@ -42,7 +49,7 @@ class LyricsRepositoryImplTest {
             contentUriString = "",
             albumArtUriString = null,
             duration = 180_000L,
-            lyrics = "[00:01.00]Hello again",
+            lyrics = null,
             mimeType = "audio/mpeg",
             bitrate = 320_000,
             sampleRate = 44_100
@@ -59,10 +66,17 @@ class LyricsRepositoryImplTest {
     @Test
     fun getLyrics_apiFirst_usesStoredLyricsBeforeCallingLrcLib() = runTest {
         val apiService = mockk<LrcLibApiService>(relaxed = true)
+        val lyricsDao = mockk<LyricsDao>(relaxed = true)
+        coEvery { lyricsDao.getLyrics(45L) } returns LyricsEntity(
+            songId = 45L,
+            content = "These lyrics are already saved",
+            isSynced = false,
+            source = "manual"
+        )
         val repository = LyricsRepositoryImpl(
             context = mockk<Context>(relaxed = true),
             lrcLibApiService = apiService,
-            lyricsDao = mockk<LyricsDao>(relaxed = true),
+            lyricsDao = lyricsDao,
             okHttpClient = mockk<OkHttpClient>(relaxed = true),
             userPreferencesRepository = userPreferencesRepository()
         )
@@ -77,7 +91,7 @@ class LyricsRepositoryImplTest {
             contentUriString = "",
             albumArtUriString = null,
             duration = 180_000L,
-            lyrics = "These lyrics are already saved",
+            lyrics = null,
             mimeType = "audio/mpeg",
             bitrate = 320_000,
             sampleRate = 44_100

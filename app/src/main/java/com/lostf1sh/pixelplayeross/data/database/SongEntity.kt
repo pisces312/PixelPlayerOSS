@@ -76,8 +76,6 @@ data class SongEntity(
     @ColumnInfo(name = "genre") val genre: String?,
     @ColumnInfo(name = "file_path") val filePath: String,
     @ColumnInfo(name = "parent_directory_path") val parentDirectoryPath: String,
-    @ColumnInfo(name = "is_favorite", defaultValue = "0") val isFavorite: Boolean = false,
-    @ColumnInfo(name = "lyrics", defaultValue = "null") val lyrics: String? = null,
     @ColumnInfo(name = "track_number", defaultValue = "0") val trackNumber: Int = 0,
     @ColumnInfo(name = "disc_number", defaultValue = "null") val discNumber: Int? = null,
     @ColumnInfo(name = "year", defaultValue = "0") val year: Int = 0,
@@ -122,8 +120,8 @@ private fun SongEntity.toSongInternal(artists: List<ArtistRef>): Song {
         ),
         duration = this.duration,
         genre = this.genre.normalizeMetadataText(),
-        lyrics = this.lyrics?.normalizeMetadataText(),
-        isFavorite = this.isFavorite,
+        lyrics = null,
+        isFavorite = false,
         trackNumber = this.trackNumber,
         discNumber = this.discNumber,
         dateAdded = this.dateAdded,
@@ -198,8 +196,6 @@ fun Song.toEntity(filePathFromMediaStore: String, parentDirFromMediaStore: Strin
         albumArtUriString = this.albumArtUriString,
         duration = this.duration,
         genre = this.genre,
-        isFavorite = this.isFavorite,
-        lyrics = this.lyrics,
         trackNumber = this.trackNumber,
         discNumber = this.discNumber,
         filePath = filePathFromMediaStore,
@@ -234,8 +230,6 @@ data class SongReleaseDateStub(
  * user-owned or first-seen fields.
  *
  * Preserved from [this] (existing):
- * - favorite flag (source of truth is `favorites`, mirrored here by trigger)
- * - lyrics (source of truth is `lyrics` / file tags)
  * - `*_user_edited` flags and, when set, the corresponding display columns
  * - `date_added` (first-added time)
  * - MusicBrainz ids (only filled when previously empty)
@@ -248,8 +242,6 @@ fun SongEntity.mergingUserOwnedFieldsFrom(existing: SongEntity): SongEntity {
         artistName = if (existing.artistUserEdited) existing.artistName else artistName,
         albumName = if (existing.albumUserEdited) existing.albumName else albumName,
         genre = if (existing.genreUserEdited) existing.genre else genre,
-        isFavorite = existing.isFavorite,
-        lyrics = existing.lyrics,
         dateAdded = existing.dateAdded,
         titleUserEdited = existing.titleUserEdited,
         artistUserEdited = existing.artistUserEdited,
@@ -274,8 +266,6 @@ fun Song.toEntityWithoutPaths(): SongEntity {
         albumArtUriString = this.albumArtUriString,
         duration = this.duration,
         genre = this.genre,
-        isFavorite = this.isFavorite,
-        lyrics = this.lyrics,
         trackNumber = this.trackNumber,
         discNumber = this.discNumber,
         filePath = "",

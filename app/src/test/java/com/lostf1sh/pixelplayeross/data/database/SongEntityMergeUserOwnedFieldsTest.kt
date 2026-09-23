@@ -5,7 +5,7 @@ import org.junit.Test
 
 /**
  * Locks the upsert merge rule: sync must not wipe user-owned fields
- * (favorite / lyrics / user-edited / dateAdded / MusicBrainz ids).
+ * (user-edited / dateAdded / MusicBrainz ids).
  */
 class SongEntityMergeUserOwnedFieldsTest {
 
@@ -25,23 +25,17 @@ class SongEntityMergeUserOwnedFieldsTest {
     )
 
     @Test
-    fun `preserves favorite lyrics and dateAdded from existing row`() {
+    fun `preserves dateAdded from existing row`() {
         val existing = baseSong().copy(
-            isFavorite = true,
-            lyrics = "user lyrics",
             dateAdded = 111L,
         )
         val incoming = baseSong().copy(
             title = "New Title",
-            isFavorite = false,
-            lyrics = null,
             dateAdded = 999L,
         )
 
         val merged = incoming.mergingUserOwnedFieldsFrom(existing)
 
-        assertThat(merged.isFavorite).isTrue()
-        assertThat(merged.lyrics).isEqualTo("user lyrics")
         assertThat(merged.dateAdded).isEqualTo(111L)
         assertThat(merged.title).isEqualTo("New Title")
     }

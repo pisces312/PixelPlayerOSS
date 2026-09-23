@@ -21,7 +21,7 @@ data class SongEngagementEntity(
     @PrimaryKey
     @ColumnInfo(name = "song_id")
     @SerializedName(value = "songId", alternate = ["song_id"])
-    val songId: String,
+    val songId: Long,
     
     @ColumnInfo(name = "play_count")
     @SerializedName(value = "playCount", alternate = ["play_count", "score", "plays"])

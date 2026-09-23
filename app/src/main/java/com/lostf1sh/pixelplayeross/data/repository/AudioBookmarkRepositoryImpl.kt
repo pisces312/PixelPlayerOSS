@@ -13,7 +13,7 @@ class AudioBookmarkRepositoryImpl @Inject constructor(
     override fun getAllBookmarksFlow(): Flow<List<AudioBookmarkEntity>> =
         audioBookmarkDao.getAllBookmarksFlow()
 
-    override suspend fun getBookmarksForSong(songId: String): List<AudioBookmarkEntity> =
+    override suspend fun getBookmarksForSong(songId: Long): List<AudioBookmarkEntity> =
         audioBookmarkDao.getBookmarksForSong(songId)
 
     override suspend fun insertBookmark(bookmark: AudioBookmarkEntity) =

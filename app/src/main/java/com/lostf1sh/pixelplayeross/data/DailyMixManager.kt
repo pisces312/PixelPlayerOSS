@@ -68,9 +68,10 @@ class DailyMixManager @Inject constructor(
             try {
                 val legacyData = readLegacyEngagementsLocked()
                 if (legacyData.isNotEmpty()) {
-                    legacyData.map { (songId, stats) ->
+                    legacyData.mapNotNull { (songId, stats) ->
+                        val id = songId.toLongOrNull() ?: return@mapNotNull null
                         SongEngagementEntity(
-                            songId = songId,
+                            songId = id,
                             playCount = stats.playCount.coerceAtLeast(0),
                             totalPlayDurationMs = stats.totalPlayDurationMs.coerceAtLeast(0L),
                             lastPlayedTimestamp = stats.lastPlayedTimestamp.coerceAtLeast(0L)
@@ -106,7 +107,7 @@ class DailyMixManager @Inject constructor(
     private suspend fun readEngagements(): Map<String, SongEngagementStats> {
         ensureLegacyDataMigrated()
         return engagementDao.getAllEngagements().associate { entity ->
-            entity.songId to SongEngagementStats(
+            entity.songId.toString() to SongEngagementStats(
                 playCount = entity.playCount,
                 totalPlayDurationMs = entity.totalPlayDurationMs,
                 lastPlayedTimestamp = entity.lastPlayedTimestamp
@@ -241,8 +242,9 @@ class DailyMixManager @Inject constructor(
         songDurationMs: Long = 0L,
         timestamp: Long = System.currentTimeMillis()
     ) {
+        val id = songId.toLongOrNull() ?: return
         engagementDao.recordPlay(
-            songId = songId,
+            songId = id,
             durationMs = songDurationMs.coerceAtLeast(0L),
             timestamp = timestamp.coerceAtLeast(0L)
         )
@@ -253,11 +255,13 @@ class DailyMixManager @Inject constructor(
     }
 
     suspend fun getScore(songId: String): Int {
-        return engagementDao.getPlayCount(songId) ?: 0
+        val id = songId.toLongOrNull() ?: return 0
+        return engagementDao.getPlayCount(id) ?: 0
     }
 
     suspend fun getEngagementStats(songId: String): SongEngagementStats? {
-        return engagementDao.getEngagement(songId)?.let { entity ->
+        val id = songId.toLongOrNull() ?: return null
+        return engagementDao.getEngagement(id)?.let { entity ->
             SongEngagementStats(
                 playCount = entity.playCount,
                 totalPlayDurationMs = entity.totalPlayDurationMs,

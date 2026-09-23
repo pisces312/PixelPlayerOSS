@@ -34,7 +34,7 @@ interface AudioBookmarkDao {
     fun getAllBookmarksFlow(): Flow<List<AudioBookmarkEntity>>
 
     @Query("SELECT * FROM audio_bookmarks WHERE song_id = :songId ORDER BY created_time DESC")
-    suspend fun getBookmarksForSong(songId: String): List<AudioBookmarkEntity>
+    suspend fun getBookmarksForSong(songId: Long): List<AudioBookmarkEntity>
 
     @Query("SELECT * FROM audio_bookmarks WHERE id = :id")
     suspend fun getBookmarkById(id: Long): AudioBookmarkEntity?

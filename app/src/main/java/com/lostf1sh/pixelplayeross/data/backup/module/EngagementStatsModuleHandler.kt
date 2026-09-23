@@ -40,9 +40,9 @@ class EngagementStatsModuleHandler @Inject constructor(
     override suspend fun export(): String = withContext(Dispatchers.IO) {
         val summaries = musicDao.getAllLocalSongSummaries().associateBy { it.id.toString() }
         val payload = engagementDao.getAllEngagements().map { row ->
-            val meta = summaries[row.songId]
+            val meta = summaries[row.songId.toString()]
             EngagementBackupEntry(
-                songId = row.songId,
+                songId = row.songId.toString(),
                 playCount = row.playCount,
                 totalPlayDurationMs = row.totalPlayDurationMs,
                 lastPlayedTimestamp = row.lastPlayedTimestamp,
@@ -93,7 +93,7 @@ class EngagementStatsModuleHandler @Inject constructor(
         array: com.google.gson.JsonArray,
         matcher: PlaylistSongMatcher,
     ): List<SongEngagementEntity> {
-        val merged = linkedMapOf<String, SongEngagementEntity>()
+        val merged = linkedMapOf<Long, SongEngagementEntity>()
         array.forEach { element ->
             val entry = parseEntry(element, matcher) ?: return@forEach
             merged.merge(entry.songId, entry, ::mergeEntries)
@@ -111,7 +111,7 @@ class EngagementStatsModuleHandler @Inject constructor(
             ?: return null
 
         val meta = buildMeta(obj)
-        val resolvedId = matcher.resolve(songId, meta) ?: songId
+        val resolvedId = (matcher.resolve(songId, meta) ?: songId).toLongOrNull() ?: return null
 
         return SongEngagementEntity(
             songId = resolvedId,

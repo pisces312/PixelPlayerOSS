@@ -28,7 +28,7 @@ class EngagementStatsModuleHandlerTest {
     fun `export uses stable canonical field names`() = runTest {
         coEvery { engagementDao.getAllEngagements() } returns listOf(
             SongEngagementEntity(
-                songId = "song-1",
+                songId = 1L,
                 playCount = 3,
                 totalPlayDurationMs = 1200,
                 lastPlayedTimestamp = 100
@@ -49,9 +49,9 @@ class EngagementStatsModuleHandlerTest {
     fun `restore sanitizes legacy fields skips malformed rows and merges duplicates`() = runTest {
         val payload = """
             [
-              {"songId":"song-1","playCount":3,"totalDuration":1200,"lastPlayedAt":100},
-              {"song_id":"song-2","play_count":"-4","duration_ms":"500","last_played_timestamp":"250"},
-              {"songId":"song-1","playCount":2,"totalPlayDurationMs":4000,"lastPlayedTimestamp":300},
+              {"songId":"1","playCount":3,"totalDuration":1200,"lastPlayedAt":100},
+              {"song_id":"2","play_count":"-4","duration_ms":"500","last_played_timestamp":"250"},
+              {"songId":"1","playCount":2,"totalPlayDurationMs":4000,"lastPlayedTimestamp":300},
               {"songId":"   ","playCount":8},
               "bad-row"
             ]
@@ -65,13 +65,13 @@ class EngagementStatsModuleHandlerTest {
             engagementDao.replaceAll(
                 listOf(
                     SongEngagementEntity(
-                        songId = "song-1",
+                        songId = 1L,
                         playCount = 3,
                         totalPlayDurationMs = 4000,
                         lastPlayedTimestamp = 300
                     ),
                     SongEngagementEntity(
-                        songId = "song-2",
+                        songId = 2L,
                         playCount = 0,
                         totalPlayDurationMs = 500,
                         lastPlayedTimestamp = 250

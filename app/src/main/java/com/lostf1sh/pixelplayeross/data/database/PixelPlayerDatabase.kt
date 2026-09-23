@@ -29,7 +29,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AiCacheEntity::class,
         AiUsageEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 abstract class PixelPlayerDatabase : RoomDatabase() {
@@ -50,42 +50,6 @@ abstract class PixelPlayerDatabase : RoomDatabase() {
     abstract fun aiUsageDao(): AiUsageDao
 
     companion object {
-        fun installFavoriteSyncTriggers(db: SupportSQLiteDatabase) {
-            db.execSQL("DROP TRIGGER IF EXISTS trg_favorites_insert_sync_song")
-            db.execSQL("DROP TRIGGER IF EXISTS trg_favorites_update_sync_song")
-            db.execSQL("DROP TRIGGER IF EXISTS trg_favorites_delete_sync_song")
-
-            db.execSQL(
-                """
-                    CREATE TRIGGER IF NOT EXISTS trg_favorites_insert_sync_song
-                    AFTER INSERT ON favorites
-                    BEGIN
-                        UPDATE songs SET is_favorite = NEW.isFavorite WHERE id = NEW.songId;
-                    END
-                """.trimIndent()
-            )
-
-            db.execSQL(
-                """
-                    CREATE TRIGGER IF NOT EXISTS trg_favorites_update_sync_song
-                    AFTER UPDATE ON favorites
-                    BEGIN
-                        UPDATE songs SET is_favorite = NEW.isFavorite WHERE id = NEW.songId;
-                    END
-                """.trimIndent()
-            )
-
-            db.execSQL(
-                """
-                    CREATE TRIGGER IF NOT EXISTS trg_favorites_delete_sync_song
-                    AFTER DELETE ON favorites
-                    BEGIN
-                        UPDATE songs SET is_favorite = 0 WHERE id = OLD.songId;
-                    END
-                """.trimIndent()
-            )
-        }
-
         private fun createSongsSearchVirtualTable(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
@@ -142,27 +106,22 @@ abstract class PixelPlayerDatabase : RoomDatabase() {
         }
 
         /**
-         * Installs favorite + FTS sync triggers.
+         * Installs FTS sync triggers.
          *
          * Called from `onOpen` (not only `onCreate`) so upgrades and Auto Backup restores — which
-         * never fire `onCreate` — still end up with a complete trigger set. Both installers are
-         * idempotent (`DROP TRIGGER IF EXISTS` + `CREATE`), so running them on every open is safe
-         * and keeps `songs.is_favorite` / `songs_fts` recoverable after drift.
-         *
-         * `songs.is_favorite` is a derived cache: the only write source is the `favorites` table
-         * (see `FavoritesDao` / `MusicRepositoryImpl.setFavoriteStatus`).
+         * never fire `onCreate` — still end up with a complete trigger set. The installer is
+         * idempotent (`DROP TRIGGER IF EXISTS` + `CREATE`), so running it on every open is safe
+         * and keeps `songs_fts` recoverable after drift.
          */
         fun createRuntimeArtifactsCallback(): RoomDatabase.Callback {
             return object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
-                    installFavoriteSyncTriggers(db)
                     installSongsSearchSyncTriggers(db)
                 }
 
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
-                    installFavoriteSyncTriggers(db)
                     installSongsSearchSyncTriggers(db)
                 }
             }

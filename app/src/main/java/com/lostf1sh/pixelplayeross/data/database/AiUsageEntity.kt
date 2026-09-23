@@ -1,5 +1,6 @@
 package com.lostf1sh.pixelplayeross.data.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -12,11 +13,11 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "ai_usage")
 data class AiUsageEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val timestamp: Long,
-    val provider: String,
-    val model: String,
-    val promptType: String,
-    val promptTokens: Int,
-    val outputTokens: Int,
-    val thoughtTokens: Int
+    @ColumnInfo(name = "timestamp") val timestamp: Long,
+    @ColumnInfo(name = "provider") val provider: String,
+    @ColumnInfo(name = "model") val model: String,
+    @ColumnInfo(name = "prompt_type") val promptType: String,
+    @ColumnInfo(name = "prompt_tokens") val promptTokens: Int,
+    @ColumnInfo(name = "output_tokens") val outputTokens: Int,
+    @ColumnInfo(name = "thought_tokens") val thoughtTokens: Int
 )
