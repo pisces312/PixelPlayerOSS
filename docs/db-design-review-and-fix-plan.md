@@ -338,7 +338,7 @@ clearLocalSongs()
 |---|---|---|---|
 | P0 | 提交 v15 层 + `15.json` | **完成** | `2c8c540c`：`Normalize schema to v15: drop legacy song columns, snake_case, Long song ids`（41 files，含 `15.json`） |
 | P0 | `CloudUnifiedIds` 62 位掩码 | **完成** | `stableHash62`：`hash and (Long.MAX_VALUE shr 1)`；`CloudUnifiedIdsTest` 6 例锁溢出/负 id/稳定性 |
-| P0 | `MIGRATION_14_15` + 12→15 迁移测试 | 未开始 | 手写 DDL 唯一未验证路径；`MigrationTestHelper` 需设备 |
+| P0 | `MIGRATION_14_15` + 12→15 迁移测试 | **完成** | `SchemaV15MigrationTest` 2 例（14→15 / 12→15）`runMigrationsAndValidate` 对照 `15.json` 全绿；手写 DDL 已对齐。顺带修既有 13→14 用例：13.json 的 `songs.artist_id` FK 是 `SET NULL`、14.json 是 `NO ACTION`，且 `MIGRATION_13_14` 只改 id 不改表结构，故校验版本改为 15（由 14→15 重建对齐） |
 | P0 | `PRAGMA foreign_keys` 注释 / 空 `if` 清理 | 未开始 | 事务内 pragma 是 no-op；前提=全局未开 FK |
 | P1 | `deleteOrphanedFavorites/Lyrics` 接线 | 未开始 | 接到 `deleteSongsAndRelatedData` / `incrementalSyncMusicData` 末尾 |
 | P1 | 备份 engagement `songId` 类型统一 | 未开始 | String vs Long，cosmetic |

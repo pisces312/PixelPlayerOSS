@@ -67,18 +67,22 @@ class LyricsAndCloudIdMigrationTest {
             close()
         }
 
+        // Validate at v15, not v14: 13.json still has songs.artist_id FK SET NULL while 14.json
+        // expects NO ACTION, and MIGRATION_13_14 only rewrites ids. MIGRATION_14_15 rebuilds
+        // songs and realigns the constraint — that is the schema users actually open.
         migrationHelper.runMigrationsAndValidate(
             name = DATABASE_NAME,
-            version = 14,
+            version = 15,
             validateDroppedTables = true,
             MIGRATION_13_14,
+            MIGRATION_14_15,
         ).use { db ->
             val newId = CloudUnifiedIds.unifiedSongId(9_000_000_000_000L, "ext-1")
             db.query("SELECT COUNT(*) FROM songs WHERE id = ?", arrayOf(newId)).use { c ->
                 c.moveToFirst()
                 assertThat(c.getInt(0)).isEqualTo(1)
             }
-            db.query("SELECT COUNT(*) FROM favorites WHERE songId = ?", arrayOf(newId)).use { c ->
+            db.query("SELECT COUNT(*) FROM favorites WHERE song_id = ?", arrayOf(newId)).use { c ->
                 c.moveToFirst()
                 assertThat(c.getInt(0)).isEqualTo(1)
             }

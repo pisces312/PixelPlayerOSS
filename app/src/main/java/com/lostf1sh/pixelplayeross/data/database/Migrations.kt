@@ -335,7 +335,7 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
 }
 
 /**
- * v13 -> v14: cloud unified ids switch from 32-bit `hashCode` to [CloudUnifiedIds] (SHA-256 / 63-bit).
+ * v13 -> v14: cloud unified ids switch from 32-bit `hashCode` to [CloudUnifiedIds] (SHA-256 / 62-bit).
  *
  * Old ids can collide and silently merge two cloud songs. Rewrites `songs` / `albums` / `artists`
  * primary keys and every referencing table (favorites, lyrics, engagements, playlist_songs, …).
