@@ -93,14 +93,18 @@
             android:theme="@style/Theme.PixelPlayer.ExternalPlayer"
             android:excludeFromRecents="true"
             android:grantUriPermissions="true">
-            <intent-filter>
+            <!-- Mirror AmazeFileExplorer's audio alias: VIEW + audio/* with NO scheme constraint.
+                 OEM "default music player" pickers (Honor MagicOS etc.) list candidates via
+                 Intent(VIEW).setType("audio/*") without a data URI — a filter that declares
+                 scheme="content" fails that match and is omitted from the candidate list.
+                 OPENABLE is what file-manager open-with dialogs filter on. -->
+            <intent-filter android:label="@string/intent_label_music_player">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.OPENABLE" />
 
                 <data android:mimeType="audio/*" />
-                <data android:scheme="content" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
