@@ -4,11 +4,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Search
@@ -31,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -101,21 +107,42 @@ fun AiSettingsSection(
                         singleLine = true
                 )
             }
-            if (uiState.availableModels.isEmpty()) {
-                OutlinedTextField(
-                        value = uiState.model,
-                        onValueChange = viewModel::setModel,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.ai_model_label)) },
-                        placeholder = { Text(stringResource(R.string.ai_model_placeholder)) },
-                        supportingText = { Text(stringResource(R.string.ai_model_no_list)) },
-                        singleLine = true
-                )
-            } else {
-                ModelDropdown(
-                        model = uiState.model,
-                        models = uiState.availableModels,
-                        onSelect = viewModel::setModel
+            val modelsEmpty = uiState.availableModels.isEmpty()
+            Row(
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (modelsEmpty) {
+                    OutlinedTextField(
+                            value = uiState.model,
+                            onValueChange = viewModel::setModel,
+                            modifier = Modifier.weight(1f),
+                            label = { Text(stringResource(R.string.ai_model_label)) },
+                            placeholder = { Text(stringResource(R.string.ai_model_placeholder)) },
+                            singleLine = true
+                    )
+                } else {
+                    ModelDropdown(
+                            model = uiState.model,
+                            models = uiState.availableModels,
+                            onSelect = viewModel::setModel,
+                            modifier = Modifier.weight(1f)
+                    )
+                }
+                FilledTonalButton(
+                        onClick = viewModel::fetchModels,
+                        enabled = !uiState.modelsLoading,
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.fillMaxHeight()
+                ) { Text(stringResource(R.string.ai_model_fetch)) }
+            }
+            if (modelsEmpty) {
+                Text(
+                        text = stringResource(R.string.ai_model_no_list),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp)
                 )
             }
             SwitchSettingItem(
@@ -152,11 +179,6 @@ fun AiSettingsSection(
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionLabel(stringResource(R.string.ai_section_actions))
-            ActionRow(
-                    label = stringResource(R.string.ai_model_fetch),
-                    enabled = !uiState.modelsLoading,
-                    onClick = viewModel::fetchModels
-            )
             ActionRow(
                     label = stringResource(R.string.ai_action_test),
                     enabled = !uiState.testing,
@@ -233,9 +255,18 @@ private fun ProviderDropdown(current: AiProvider, onSelect: (AiProvider) -> Unit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ModelDropdown(model: String, models: List<String>, onSelect: (String) -> Unit) {
+private fun ModelDropdown(
+    model: String,
+    models: List<String>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+    ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = it },
+            modifier = modifier
+    ) {
         OutlinedTextField(
                 value = model,
                 onValueChange = {},
