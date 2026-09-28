@@ -56,7 +56,7 @@ class ThemeStateHolderArtworkTest {
     @Test
     fun `artwork refresh regenerates subscribed local palettes and leaves remote palettes intact`() = runTest {
         val holder = holder()
-        holder.initialize(backgroundScope)
+        holder.initialize("ThemeStateHolderArtworkTest", backgroundScope)
         val localUri = LocalArtworkUri.buildSongUri(1L)
         val inactiveUri = LocalArtworkUri.buildSongUri(2L)
         val remoteUri = "https://example.com/cover.jpg"
@@ -84,7 +84,7 @@ class ThemeStateHolderArtworkTest {
     @Test
     fun `artwork refresh updates current playing local palette without an album subscriber`() = runTest {
         val holder = holder()
-        holder.initialize(backgroundScope)
+        holder.initialize("ThemeStateHolderArtworkTest", backgroundScope)
         val localUri = LocalArtworkUri.buildSongUri(1L)
         val uri = mockk<Uri>()
         every { uri.toString() } returns localUri
