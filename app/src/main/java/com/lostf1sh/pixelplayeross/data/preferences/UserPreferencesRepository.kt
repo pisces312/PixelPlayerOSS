@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -90,6 +91,9 @@ constructor(
 
     private val backupExcludedKeyNames = setOf(
         PreferencesKeys.INITIAL_SETUP_DONE.name,
+        // Describes this device's artwork cache, not a user choice — restoring another
+        // device's value would misreport what the local cache was built from.
+        PreferencesKeys.FOLDER_ALBUM_ART_CACHE_STATE.name,
         "listenbrainz_token",
         "lastfm_session_key"
     )
@@ -219,6 +223,8 @@ constructor(
 
         val ALBUM_ART_QUALITY = stringPreferencesKey("album_art_quality")
         val ALBUM_ART_CACHE_LIMIT_MB = intPreferencesKey("album_art_cache_limit_mb")
+        val USE_FOLDER_ALBUM_ART = booleanPreferencesKey("use_folder_album_art")
+        val FOLDER_ALBUM_ART_CACHE_STATE = booleanPreferencesKey("folder_album_art_cache_state")
         val TAP_BACKGROUND_CLOSES_PLAYER = booleanPreferencesKey("tap_background_closes_player")
         val HAPTICS_ENABLED = booleanPreferencesKey("haptics_enabled")
         val ADVANCED_PERFORMANCE_DIAGNOSTICS_ENABLED =
@@ -1398,6 +1404,21 @@ constructor(
         /** Car lyric title lead: measured 0.3–1.0 s of downstream latency on the reference setup. */
         const val DEFAULT_CAR_LYRIC_TITLE_LEAD_MS = 500
         const val MAX_CAR_LYRIC_TITLE_LEAD_MS = 1_000
+
+        /**
+         * Synchronous read of the folder-cover-art opt-in.
+         *
+         * [com.lostf1sh.pixelplayeross.utils.AlbumArtUtils] resolves artwork from a Coil fetcher
+         * and a ContentProvider, both off the main thread, and it cannot proceed without knowing
+         * this value: resolving under a wrong assumption persists a cache entry or a "no art"
+         * marker that later reads then trust. The mirror is normally pushed in long before any
+         * artwork is requested, so this only runs if a very early request wins that race.
+         */
+        fun readUseFolderAlbumArtBlocking(context: Context): Boolean = runBlocking {
+            runCatching {
+                context.applicationContext.dataStore.data.first()[PreferencesKeys.USE_FOLDER_ALBUM_ART]
+            }.getOrNull() ?: false
+        }
     }
 
     val navBarCornerRadiusFlow: Flow<Int> =
@@ -1767,6 +1788,43 @@ constructor(
     suspend fun setAlbumArtCacheLimitMb(limitMb: Int) {
         dataStore.edit { preferences ->
             preferences[PreferencesKeys.ALBUM_ART_CACHE_LIMIT_MB] = limitMb.coerceIn(50, 1500)
+        }
+    }
+
+    /**
+     * Whether a cover image sitting next to the audio file (cover.jpg, folder.jpg, …) should be
+     * used as album art in preference to embedded artwork. Off by default: folder images are only
+     * trusted when the user explicitly opts in, because generic directories can hold unrelated
+     * pictures. See [com.lostf1sh.pixelplayeross.utils.AlbumArtUtils.findExternalAlbumArtFile].
+     */
+    val useFolderAlbumArtFlow: Flow<Boolean> =
+        dataStore.data.map { preferences ->
+            preferences[PreferencesKeys.USE_FOLDER_ALBUM_ART] ?: false
+        }.distinctUntilChanged()
+
+    suspend fun setUseFolderAlbumArt(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.USE_FOLDER_ALBUM_ART] = enabled
+        }
+    }
+
+    /**
+     * The effective folder-cover state the artwork cache was last built under, or null if it has
+     * never been recorded.
+     *
+     * Persisted because the cache it describes is: covers live in `filesDir` and outlive the
+     * process, so an in-memory flag could not tell whether entries were produced with or without
+     * folder access. Effective means the preference *and* the image permission — losing the
+     * permission silently changes what gets cached just as much as switching the setting off.
+     */
+    val folderAlbumArtCacheStateFlow: Flow<Boolean?> =
+        dataStore.data.map { preferences ->
+            preferences[PreferencesKeys.FOLDER_ALBUM_ART_CACHE_STATE]
+        }
+
+    suspend fun setFolderAlbumArtCacheState(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.FOLDER_ALBUM_ART_CACHE_STATE] = enabled
         }
     }
 

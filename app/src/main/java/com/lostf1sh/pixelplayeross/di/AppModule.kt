@@ -536,8 +536,9 @@ object AppModule {
     fun provideArtistImageRepository(
         deezerApiService: DeezerApiService,
         musicDao: MusicDao,
-        userPreferencesRepository: UserPreferencesRepository
+        userPreferencesRepository: UserPreferencesRepository,
+        @ApplicationContext context: Context
     ): ArtistImageRepository {
-        return ArtistImageRepository(deezerApiService, musicDao, userPreferencesRepository)
+        return ArtistImageRepository(deezerApiService, musicDao, userPreferencesRepository, context)
     }
 }
