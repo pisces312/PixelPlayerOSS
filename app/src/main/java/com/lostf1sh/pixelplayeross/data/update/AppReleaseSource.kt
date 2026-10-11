@@ -49,14 +49,14 @@ class AppReleaseSource @Inject constructor(
     }
 
     companion object {
-        private const val PROJECT_URL = "https://github.com/PixelPlayerHQ/PixelPlayerOSS"
+        private const val PROJECT_URL = "https://github.com/pisces312/PixelPlayerOSS"
 
         /** Release applicationId; debug builds add a suffix but should still see real releases. */
         internal const val PUBLISHED_PACKAGE = "com.lostf1sh.pixelplayeross"
         private const val FDROID_API = "https://f-droid.org/api/v1/packages"
         private const val FDROID_REPO = "https://f-droid.org/repo"
         private const val GITHUB_RELEASES_API =
-            "https://api.github.com/repos/PixelPlayerHQ/PixelPlayerOSS/releases?per_page=30"
+            "https://api.github.com/repos/pisces312/PixelPlayerOSS/releases?per_page=30"
 
         fun fdroidPageUrl(packageName: String) = "https://f-droid.org/packages/$packageName/"
 
@@ -82,12 +82,15 @@ class AppReleaseSource @Inject constructor(
 
         /**
          * Newest alpha prerelease with an APK for one of [supportedAbis] (in device preference
-         * order). Alpha workflow assets are named `PixelPlayerOSS-<version>-<abi>.apk`.
+         * order). This fork publishes one lowercase APK per release named
+         * `pixelplayeross-<abi>-<version>-release.apk` (abi in the middle, ends with `.apk`).
          */
         internal fun parseLatestAlpha(releases: JSONArray, supportedAbis: List<String>): AppRelease? {
             return (0 until releases.length())
                 .mapNotNull { releases.optJSONObject(it) }
-                .filter { it.optBoolean("prerelease") && !it.optBoolean("draft") }
+                // This fork publishes plain (non-prerelease) GitHub releases, so we must not
+                // filter by `prerelease` the way upstream does; keep the `!draft` guard only.
+                .filter { !it.optBoolean("draft") }
                 .mapNotNull { release ->
                     val tag = release.optString("tag_name")
                     val version = AlphaVersion.parse(tag) ?: return@mapNotNull null
@@ -113,7 +116,10 @@ class AppReleaseSource @Inject constructor(
                     it.optString("name").endsWith(".apk") && it.optString("browser_download_url").isNotBlank()
                 }
             return supportedAbis.firstNotNullOfOrNull { abi ->
-                apks.firstOrNull { it.optString("name").endsWith("-$abi.apk") }
+                apks.firstOrNull {
+                    val n = it.optString("name")
+                    n.contains("-$abi") && n.endsWith(".apk")
+                }
             }
         }
     }

@@ -34,7 +34,7 @@ data class AlphaVersion(
     )
 
     companion object {
-        private val PATTERN = Regex("""^v?(\d+)\.(\d+)\.(\d+)-alpha\.(\d+)$""")
+        private val PATTERN = Regex("""^v?(\d+)\.(\d+)\.(\d+)-(?:alpha|pisces)\.(\d+)$""")
 
         fun parse(value: String): AlphaVersion? {
             val groups = PATTERN.matchEntire(value.trim())?.groupValues ?: return null
