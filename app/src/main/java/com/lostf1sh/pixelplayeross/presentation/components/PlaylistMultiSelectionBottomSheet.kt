@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Headphones
@@ -75,6 +76,8 @@ import androidx.compose.runtime.remember
  * @param onExportAll Export all selected playlists as M3U files
  * @param onMergeAll Merge all selected playlists into one
  * @param onShareAll Share all selected playlists as ZIP file
+ * @param onRename Rename the single selected playlist. Null hides the action — used when more than one
+ *   playlist is selected or the playlist cannot be renamed (folder / smart playlist).
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -84,7 +87,8 @@ fun PlaylistMultiSelectionBottomSheet(
     onDeleteAll: () -> Unit,
     onExportAll: () -> Unit,
     onMergeAll: () -> Unit,
-    onShareAll: () -> Unit
+    onShareAll: () -> Unit,
+    onRename: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalSheetState(skipPartiallyExpanded = true)
     val evenCornerRadius = 26.dp
@@ -158,6 +162,32 @@ fun PlaylistMultiSelectionBottomSheet(
                     contentPadding = PaddingValues(bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    if (onRename != null) {
+                        item {
+                            FilledTonalButton(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 66.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                ),
+                                shape = CircleShape,
+                                onClick = {
+                                    onRename()
+                                    onDismiss()
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Edit,
+                                    contentDescription = stringResource(R.string.action_rename)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.action_rename))
+                            }
+                        }
+                    }
+
                     item {
                         Row(
                             modifier = Modifier

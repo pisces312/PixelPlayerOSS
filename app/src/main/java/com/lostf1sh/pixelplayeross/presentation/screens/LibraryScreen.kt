@@ -151,6 +151,8 @@ import com.lostf1sh.pixelplayeross.data.offline.CloudOfflineRepository
 import com.lostf1sh.pixelplayeross.data.model.SortOption
 import com.lostf1sh.pixelplayeross.data.model.StorageFilter
 import com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter
+import com.lostf1sh.pixelplayeross.data.model.Playlist
+import com.lostf1sh.pixelplayeross.data.model.isSmartPlaylist
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
 import com.lostf1sh.pixelplayeross.presentation.components.SmartImage
 import com.lostf1sh.pixelplayeross.presentation.components.resolveMainScreenBottomGradientHeight
@@ -548,6 +550,7 @@ fun LibraryScreen(
     var pendingMergePlaylistIds by remember { mutableStateOf(emptyList<String>()) }
     var showDeletePlaylistsConfirmDialog by remember { mutableStateOf(false) }
     var pendingDeletePlaylistIds by remember { mutableStateOf(emptyList<String>()) }
+    var pendingRenamePlaylist by remember { mutableStateOf<Playlist?>(null) }
 
     val onPlaylistLongPress: (com.lostf1sh.pixelplayeross.data.model.Playlist) -> Unit = remember(playlistMultiSelectionState, haptic) {
         { playlist ->
@@ -1860,6 +1863,25 @@ fun LibraryScreen(
                     playlistViewModel.shareSelectedPlaylistsAsZip(selectedPlaylistIds.toList(), it)
                 }
                 showPlaylistMultiSelectionSheet = false
+                playlistMultiSelectionState.clearSelection()
+            },
+            onRename = selectedPlaylists
+                .singleOrNull()
+                ?.takeIf { playlist ->
+                    !playlist.id.startsWith(PlaylistViewModel.FOLDER_PLAYLIST_PREFIX) &&
+                        !playlist.isSmartPlaylist
+                }
+                ?.let { playlist -> { pendingRenamePlaylist = playlist } }
+        )
+    }
+
+    pendingRenamePlaylist?.let { playlist ->
+        RenamePlaylistDialog(
+            currentName = playlist.name,
+            onDismiss = { pendingRenamePlaylist = null },
+            onRename = { newName ->
+                playlistViewModel.renamePlaylist(playlist.id, newName)
+                pendingRenamePlaylist = null
                 playlistMultiSelectionState.clearSelection()
             }
         )
