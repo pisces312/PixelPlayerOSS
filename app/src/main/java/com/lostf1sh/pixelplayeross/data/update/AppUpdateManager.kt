@@ -81,9 +81,12 @@ class AppUpdateManager @Inject constructor(
     val selectedChannel: Flow<UpdateChannel> =
         preferences.updateChannelFlow.map { it ?: installedChannel }
 
-    /** F-Droid already notifies its users, so background checks are opt-in there. */
+    /**
+     * Opt-in on every channel: this fork reaches GitHub's API from networks where it is often
+     * unreachable, so a daily check nobody asked for would only spend battery on retries.
+     */
     val autoCheckEnabled: Flow<Boolean> =
-        preferences.updateAutoCheckFlow.map { it ?: (installedChannel == UpdateChannel.ALPHA) }
+        preferences.updateAutoCheckFlow.map { it ?: false }
 
     private val _status = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
     val status: StateFlow<UpdateStatus> = _status.asStateFlow()

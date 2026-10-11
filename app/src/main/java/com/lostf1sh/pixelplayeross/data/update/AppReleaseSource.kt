@@ -116,10 +116,23 @@ class AppReleaseSource @Inject constructor(
                     it.optString("name").endsWith(".apk") && it.optString("browser_download_url").isNotBlank()
                 }
             return supportedAbis.firstNotNullOfOrNull { abi ->
-                apks.firstOrNull {
-                    val n = it.optString("name")
-                    n.contains("-$abi") && n.endsWith(".apk")
-                }
+                apks.firstOrNull { hasAbiSegment(it.optString("name"), abi) }
+            }
+        }
+
+        /**
+         * Matches the ABI as a whole `-`-separated segment of the file name, so `x86` never picks
+         * up an `x86_64` build while `arm64-v8a` stays one segment in either naming scheme.
+         */
+        private fun hasAbiSegment(fileName: String, abi: String): Boolean {
+            val stem = fileName.removeSuffix(".apk")
+            var from = 0
+            while (true) {
+                val start = stem.indexOf("-$abi", from)
+                if (start < 0) return false
+                val end = start + 1 + abi.length
+                if (end == stem.length || stem[end] == '-' || stem[end] == '.') return true
+                from = start + 1
             }
         }
     }
