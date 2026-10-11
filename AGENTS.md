@@ -204,11 +204,17 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 - **删除歌曲**：所有 UI 的 `onDeleteFromDevice` 最终都走 `PlayerViewModel.deleteSelectedFromDevice`（批量）/ `deleteFromDevice`（单曲）—— 拦截删除只需改这两处。`removeSongFromLibrary` 是"仅移出曲库、不删文件"。
 - **五星评分**：入口 `SongInfoBottomSheet`（Info/Edit 两页）→ `EditSongSheet`，写**音频文件内嵌标签**（`SongMetadataEditor`，读键 `RATING` / `POPULARIMETER`），不是数据库字段；云端曲目无法写入。
 - **设备能力**：`DeviceCapabilitiesScreen` 展示解码器支持（`supportedCodecs` / `isDecoderAvailable`）。
+- **返回键**：`LibraryScreen` 的文件夹返回 / 选择态清除走 `PlayerSheetAwareBackHandler` + `PlayerViewModel.playerSheetBackCoordinator`
+  （主线程直接改 `OnBackPressedCallback.isEnabled`，绕开 Flow→重组的一帧延迟），播放器或队列展开时它让位给播放器。
+  **不要把它改回普通 `BackHandler`**：会重现 #136 —— 文件夹内按返回退出文件夹而不是收起播放器（该机制是三步修成的，见 2026-10-11 记录）。
 - **性能诊断**：`data/diagnostics/`（`AdvancedPerformanceDiagnostics`、`MainThreadStallMonitor`）。
 - 提示统一走 `PlayerViewModel._toastEvents`；脚本 `run-tests.bat` / `test_summary.py` 尚未移植（china-only 有）。
 
 ## 约定
 
-- commit message 用英文；不修改上游 `CHANGELOG.md`（自用分支不提 PR）。
+- commit message 用英文；不修改上游 `CHANGELOG.md`（自用分支不提 PR，**指不向上游仓库提 PR；fork 自己的 `CHANGELOG.md` 每版都要改**）。
+- **合并上游后必须人工补 CHANGELOG**：上游的条目写在它自己的 `## [Unreleased]` 段，合并时只有上下文能对上 fork 段落的那条会被带进来，**其余 `### Fixed` 会静默丢失**（2026-10-11 那次丢了 4 条，只捞回 Updates 一条）。
+  合并后先 `git show upstream/main:CHANGELOG.md` 看它的 Unreleased 段，把丢掉的条目补进 fork 的 `## [Unreleased]` 段（`ChangelogParser` 会跳过无日期的块，应用内 changelog 不显示）；发版时把该段标题改成 `## [<版本名>] - <日期>`。
+  上游条目里与 fork 已有条目重复的（例：Jellyfin playlists 那条 0.3.0 段已有）不重复补。
 - 新功能字符串同时加中文（`values-zh-rCN/`）与英文（`values/`）两种语言，不手写其他语言。
 - 改动后至少跑 `assembleRelease`（默认构建）；UI 类改动装真机验证（**验收范围见「目标设备与屏幕尺寸」**，小屏被裁不算缺陷）。需要逐行调试时才额外构建 `debug`。

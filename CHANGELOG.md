@@ -2,6 +2,13 @@
 
 All notable changes to PixelPlayerOSS will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Navidrome/Subsonic and Jellyfin album artwork no longer gets stuck on the placeholder after a few songs. The player loaded cloud covers through the app's own artwork content provider, and concurrent loads could exhaust the image decoder slots that provider waited on, freezing every artwork load until the app restarted. Server error responses are also no longer cached as cover images, and concurrent cover downloads no longer corrupt each other's cache file ([#138](https://github.com/PixelPlayerHQ/PixelPlayerOSS/issues/138)).
+- System media controls can load album artwork through the app's artwork URI again. System UI reads that URI without connecting as a media controller, so it never received the per-track read grant and was refused on every track; privileged media surfaces (holders of `MEDIA_CONTENT_CONTROL`) may now open the artwork the session currently shows, while every other cover, and every other app, still needs the explicit grant. Stock Android fell back to the session bitmap, but System UIs without that fallback could show no artwork.
+- Pressing back with the Now Playing screen or the Next up queue open inside a folder in the Folders tab now closes the player instead of leaving the folder ([#136](https://github.com/PixelPlayerHQ/PixelPlayerOSS/issues/136)).
+
 ## [0.4.3-pisces.1] - 2026-09-19
 
 Songs now carry the release date their own tags declare, so the year list can be sorted by it
@@ -13,13 +20,11 @@ to give up on.
 - A source filter on the library's playlist tab, so AI-generated and hand-built playlists can be listed separately. The choice survives a restart, and each of the two empty states names which kind of playlist is missing instead of showing a blank page.
 - Split long lines, under Settings > Playback > Bluetooth car. A lyric line wider than the head unit can display is cut into segments shown in turn; turning it off sends the line whole, for units that scroll a long title by themselves. On by default.
 - Tapping the title in the full player opens the song sheet on its Details tab rather than on its first tab.
+- An Updates screen (Settings → Updates, also linked from Settings → About) that checks for new versions on a chosen channel: Stable pulls from F-Droid, Alpha from the GitHub releases of this fork. Same-channel updates download and install in the app; switching channels walks through backing up, downloading the other build, and uninstalling, since the two are signed with different keys. An optional daily check notifies when an update is available, off by default.
 
 ### Changed
 - Tracks started from Quick play no longer reach listening statistics, recently played or the songs the AI samples from, since Quick play deliberately previews songs that stay outside the library. The notification and its controls are unchanged.
 - The rating control in the player is raised as an overlay pill instead of expanding in place, so opening it no longer reflows the row around it, and the expanded pill is wider with tighter star spacing.
-
-### Added
-- An Updates screen (Settings → Updates, also linked from Settings → About) that checks for new versions on a chosen channel: Stable pulls from F-Droid, Alpha from the GitHub prereleases built for every merged change. Same-channel updates download and install in the app; switching channels walks through backing up, downloading the other build, and uninstalling, since F-Droid and GitHub builds are signed with different keys. An optional daily check notifies when an update is available (on by default for alpha builds, off for F-Droid builds).
 
 ### Fixed
 - The car lyric title fell back to the real track title far more often than the gaps in a song call for, which is what made a head unit alternate between lyrics and the song name. An untimed blank line in the file cleared the override unconditionally, so a marker that merely ends one lyric line and starts the next dropped the title as well. A blank marker now clears it only when it stands for an actual gap, which is what makes it mean intro, interlude or outro. On a real track with 44 blank markers this cut the fallbacks from 44 to 3.
