@@ -79,6 +79,9 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
     @Inject
     lateinit var m3uSyncCoordinator: dagger.Lazy<M3uSyncCoordinator>
 
+    @Inject
+    lateinit var updateCheckScheduler: dagger.Lazy<com.lostf1sh.pixelplayeross.data.update.UpdateCheckScheduler>
+
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     companion object {
@@ -138,6 +141,8 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
 
         m3uSyncCoordinator.get().start()
 
+        updateCheckScheduler.get().start()
+
         advancedPerformanceDiagnosticsController.get().start(startupScope)
 
         startupScope.launch {
@@ -162,6 +167,8 @@ class PixelPlayerApplication : Application(), ImageLoaderFactory, Configuration.
     override fun newImageLoader(): ImageLoader {
         return imageLoader.get().newBuilder()
             .components {
+                add(com.lostf1sh.pixelplayeross.data.image.SharedCloudArtworkStringMapper(packageName))
+                add(com.lostf1sh.pixelplayeross.data.image.SharedCloudArtworkUriMapper(packageName))
                 add(localArtworkCoilFetcherFactory.get())
                 add(navidromeCoilFetcherFactory.get())
                 add(jellyfinCoilFetcherFactory.get())

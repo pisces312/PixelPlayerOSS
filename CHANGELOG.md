@@ -18,6 +18,9 @@ to give up on.
 - Tracks started from Quick play no longer reach listening statistics, recently played or the songs the AI samples from, since Quick play deliberately previews songs that stay outside the library. The notification and its controls are unchanged.
 - The rating control in the player is raised as an overlay pill instead of expanding in place, so opening it no longer reflows the row around it, and the expanded pill is wider with tighter star spacing.
 
+### Added
+- An Updates screen (Settings → Updates, also linked from Settings → About) that checks for new versions on a chosen channel: Stable pulls from F-Droid, Alpha from the GitHub prereleases built for every merged change. Same-channel updates download and install in the app; switching channels walks through backing up, downloading the other build, and uninstalling, since F-Droid and GitHub builds are signed with different keys. An optional daily check notifies when an update is available (on by default for alpha builds, off for F-Droid builds).
+
 ### Fixed
 - The car lyric title fell back to the real track title far more often than the gaps in a song call for, which is what made a head unit alternate between lyrics and the song name. An untimed blank line in the file cleared the override unconditionally, so a marker that merely ends one lyric line and starts the next dropped the title as well. A blank marker now clears it only when it stands for an actual gap, which is what makes it mean intro, interlude or outro. On a real track with 44 blank markers this cut the fallbacks from 44 to 3.
 - A segment of a long lyric line could sit on screen well past the line it belongs to, because nothing bounded how long a segment lasts. A segment now waits at most four seconds before the next one takes over.
@@ -120,7 +123,6 @@ along with everything that landed on `main` afterwards.
 
 ### Security
 - AI request logging redacts `key`, `token` and `secret` URL parameters before anything is written to disk, and API keys never enter a log entry.
-
 ## [0.3.0] - 2026-08-15
 
 ### Added
