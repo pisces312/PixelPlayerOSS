@@ -240,11 +240,10 @@ constructor(private val baseClient: OkHttpClient) {
             }
 
     /**
-     * Streams a chat completion and returns the assembled answer.
+     * Streams a one-shot chat completion and returns the assembled answer.
      *
-     * [listener] is called for every thinking / answer delta while the stream is open, which is how
-     * the mix sheet shows the model reasoning. Cancelling the calling coroutine closes the socket,
-     * so a dismissed sheet stops paying for tokens.
+     * Kept as a convenience wrapper for the playlist and settings probes; feature code that has a
+     * real conversation should call the [messages] overload instead.
      */
     suspend fun chat(
         baseUrl: String,
@@ -252,6 +251,33 @@ constructor(private val baseClient: OkHttpClient) {
         model: String,
         systemPrompt: String,
         userPrompt: String,
+        thinkingEnabled: Boolean?,
+        listener: AiProgressListener? = null
+    ): ChatResult =
+            chat(
+                    baseUrl = baseUrl,
+                    apiKey = apiKey,
+                    model = model,
+                    messages =
+                            listOf(
+                                    AiChatMessage(AiChatMessage.Role.SYSTEM, systemPrompt),
+                                    AiChatMessage(AiChatMessage.Role.USER, userPrompt)
+                            ),
+                    thinkingEnabled = thinkingEnabled,
+                    listener = listener
+            )
+
+    /**
+     * Streams a chat completion and returns the assembled answer.
+     *
+     * [listener] is called for every thinking / answer delta while the stream is open. Cancelling
+     * the calling coroutine closes the socket, so a dismissed sheet stops paying for tokens.
+     */
+    suspend fun chat(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        messages: List<AiChatMessage>,
         thinkingEnabled: Boolean?,
         listener: AiProgressListener? = null
     ): ChatResult =
@@ -267,18 +293,14 @@ constructor(private val baseClient: OkHttpClient) {
                                     put(
                                             "messages",
                                             buildJsonArray {
-                                                add(
-                                                        buildJsonObject {
-                                                            put("role", "system")
-                                                            put("content", systemPrompt)
-                                                        }
-                                                )
-                                                add(
-                                                        buildJsonObject {
-                                                            put("role", "user")
-                                                            put("content", userPrompt)
-                                                        }
-                                                )
+                                                messages.forEach { message ->
+                                                    add(
+                                                            buildJsonObject {
+                                                                put("role", message.role.apiValue)
+                                                                put("content", message.content)
+                                                            }
+                                                    )
+                                                }
                                             }
                                     )
                                     if (thinkingEnabled != null) {

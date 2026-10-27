@@ -79,6 +79,9 @@ import com.lostf1sh.pixelplayeross.presentation.components.scoped.rememberSheetM
 import com.lostf1sh.pixelplayeross.presentation.components.scoped.rememberSheetOverlayState
 import com.lostf1sh.pixelplayeross.presentation.components.scoped.rememberSheetThemeState
 import com.lostf1sh.pixelplayeross.presentation.components.scoped.rememberSheetVisualState
+import com.lostf1sh.pixelplayeross.presentation.model.SettingsCategory
+import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
+import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafely
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerSheetState
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.StablePlayerState
@@ -375,17 +378,21 @@ fun UnifiedPlayerSheetV2(
     val queueSheetController = queueSheetState.queueSheetController
     val onQueueSheetHeightPxChange = queueSheetState.onQueueSheetHeightPxChange
 
+    var showAiQaSheet by remember { mutableStateOf(false) }
+    var aiQaInitialSong by remember { mutableStateOf<Song?>(null) }
     val sheetBackAndDragState = rememberSheetBackAndDragState(
         showPlayerContentArea = showPlayerContentArea,
         currentSheetContentState = currentSheetContentState
     )
     val canHandlePlayerBack by remember(
         sheetBackAndDragState.predictiveBackEnabled,
-        showQueueSheet
+        showQueueSheet,
+        showAiQaSheet
     ) {
         derivedStateOf {
             sheetBackAndDragState.predictiveBackEnabled &&
-                !showQueueSheet
+                !showQueueSheet &&
+                !showAiQaSheet
         }
     }
     val velocityTracker = remember { VelocityTracker() }
@@ -667,6 +674,10 @@ fun UnifiedPlayerSheetV2(
                             rating = currentSongRating,
                             shouldRenderFullPlayer = shouldRenderFullPlayer,
                             onShowQueueClicked = sheetActionHandlers.openQueueSheet,
+                            onAskAiClick = {
+                                aiQaInitialSong = infrequentPlayerState.currentSong
+                                showAiQaSheet = true
+                            },
                             onSongTitleClick = {
                                 sheetModalOverlayController.updateSelectedSongForInfo(
                                     infrequentPlayerState.currentSong,
@@ -697,6 +708,7 @@ fun UnifiedPlayerSheetV2(
                     onShowQueueClicked = sheetActionHandlers.openQueueSheet,
                     // Prewarm layer is invisible (alpha 0f) but still hit-testable: keep it inert
                     // so taps on the collapsed player cannot open the song info sheet.
+                    onAskAiClick = {},
                     onSongTitleClick = {},
                     onQueueDragStart = sheetActionHandlers.beginQueueDrag,
                     onQueueDrag = sheetActionHandlers.dragQueueBy,
@@ -735,6 +747,19 @@ fun UnifiedPlayerSheetV2(
                 onNavigateToAlbum = sheetActionHandlers.onNavigateToAlbum,
                 onNavigateToArtist = sheetActionHandlers.onNavigateToArtist,
                 onNavigateToGenre = sheetActionHandlers.onNavigateToGenre
+            )
+
+            UnifiedPlayerAiQaLayer(
+                show = showAiQaSheet,
+                initialSong = aiQaInitialSong,
+                currentPlayerSong = infrequentPlayerState.currentSong,
+                albumColorScheme = albumColorScheme,
+                onDismiss = { showAiQaSheet = false },
+                onOpenAiSettings = {
+                    navController.navigateSafely(
+                        Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)
+                    )
+                }
             )
         }
     }

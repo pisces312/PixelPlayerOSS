@@ -5,6 +5,7 @@ All notable changes to PixelPlayerOSS will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- AI Q&A for the current song, reachable from the sparkle action in the full player. It opens a conversation sheet with the song attached as context by default, quick prompts for the song, artist, album, style and lyrics, streamed follow-up answers, and a one-tap switch to general AI without song context. The request sends only song metadata by default; stored lyrics are opt-in per question, and the snapshot keeps the conversation tied to the song it was opened for even if playback changes. It reuses the existing AI provider settings, diagnostics and token accounting.
 - An Updates screen (Settings → Updates, also linked from Settings → About) that looks for a newer build among this fork's GitHub releases and installs it over the running one. A daily check can notify when an update is available; it is off by default. Builds that cannot replace this one — a debug install, or one signed with another key — are reported instead, with a link to the release page.
 - Simplified Chinese translation for the Updates screen.
 

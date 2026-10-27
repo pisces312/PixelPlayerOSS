@@ -135,6 +135,32 @@
     <string name="ai_mix_remove_song">移除歌曲</string>
     <string name="ai_mix_saved">已保存「%1$s」</string>
 
+    <!-- 当前歌曲 AI 问答 -->
+    <string name="ai_song_qa_cd_open">AI 问答</string>
+    <string name="ai_song_qa_title">AI 问答</string>
+    <string name="ai_song_qa_new_conversation">新对话</string>
+    <string name="ai_song_qa_context_attached">已附带歌曲信息</string>
+    <string name="ai_song_qa_context_removed">歌曲信息已移除</string>
+    <string name="ai_song_qa_context_remove">移除</string>
+    <string name="ai_song_qa_context_add">添加</string>
+    <string name="ai_song_qa_switch_current">切换到当前歌曲</string>
+    <string name="ai_song_qa_include_lyrics">附带歌词</string>
+    <string name="ai_song_qa_suggestions_label">可以这样问</string>
+    <string name="ai_song_qa_suggest_intro_song">介绍一下这首歌</string>
+    <string name="ai_song_qa_suggest_artist">介绍一下歌手</string>
+    <string name="ai_song_qa_suggest_album">这张专辑有什么背景？</string>
+    <string name="ai_song_qa_suggest_style">这首歌属于什么风格？</string>
+    <string name="ai_song_qa_suggest_lyrics">歌词表达了什么？</string>
+    <string name="ai_song_qa_privacy_hint">默认只发送歌曲元数据；只有你选择时才会发送歌词。</string>
+    <string name="ai_song_qa_input_hint">问点关于这首歌的问题……</string>
+    <string name="ai_song_qa_send">发送</string>
+    <string name="ai_song_qa_stop">停止</string>
+    <string name="ai_song_qa_retry">重试</string>
+    <string name="ai_song_qa_answering">正在回答……</string>
+    <string name="ai_song_qa_unconfigured_title">请先配置 AI</string>
+    <string name="ai_song_qa_unconfigured_subtitle">提问前请先在 AI 设置中选择兼容 OpenAI 的服务商。</string>
+    <string name="ai_song_qa_open_settings">打开 AI 设置</string>
+
     <!-- Status messages -->
     <string name="ai_status_models_loaded">可用模型 %1$d 个</string>
     <string name="ai_status_test_ok">连接正常</string>

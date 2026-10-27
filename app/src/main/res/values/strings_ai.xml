@@ -135,6 +135,32 @@
     <string name="ai_mix_remove_song">Remove song</string>
     <string name="ai_mix_saved">Saved “%1$s”</string>
 
+    <!-- Current-song Q&A sheet -->
+    <string name="ai_song_qa_cd_open">AI Q&amp;A</string>
+    <string name="ai_song_qa_title">AI Q&amp;A</string>
+    <string name="ai_song_qa_new_conversation">New chat</string>
+    <string name="ai_song_qa_context_attached">Song info attached</string>
+    <string name="ai_song_qa_context_removed">Song info removed</string>
+    <string name="ai_song_qa_context_remove">Remove</string>
+    <string name="ai_song_qa_context_add">Add</string>
+    <string name="ai_song_qa_switch_current">Switch to current song</string>
+    <string name="ai_song_qa_include_lyrics">Include lyrics</string>
+    <string name="ai_song_qa_suggestions_label">Try asking</string>
+    <string name="ai_song_qa_suggest_intro_song">Tell me about this song</string>
+    <string name="ai_song_qa_suggest_artist">Who is the artist?</string>
+    <string name="ai_song_qa_suggest_album">What is the background of this album?</string>
+    <string name="ai_song_qa_suggest_style">What style is this song?</string>
+    <string name="ai_song_qa_suggest_lyrics">What do the lyrics mean?</string>
+    <string name="ai_song_qa_privacy_hint">Only song metadata is sent by default. Lyrics are sent only when you opt in.</string>
+    <string name="ai_song_qa_input_hint">Ask anything about this song…</string>
+    <string name="ai_song_qa_send">Send</string>
+    <string name="ai_song_qa_stop">Stop</string>
+    <string name="ai_song_qa_retry">Retry</string>
+    <string name="ai_song_qa_answering">Answering…</string>
+    <string name="ai_song_qa_unconfigured_title">Set up AI first</string>
+    <string name="ai_song_qa_unconfigured_subtitle">Choose an OpenAI-compatible provider in AI settings before asking questions.</string>
+    <string name="ai_song_qa_open_settings">Open AI settings</string>
+
     <!-- Status messages -->
     <string name="ai_status_models_loaded">%1$d models available</string>
     <string name="ai_status_test_ok">Connection OK</string>

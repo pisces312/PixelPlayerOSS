@@ -257,6 +257,95 @@ constructor(
         return result.content
     }
 
+    /**
+     * Streams one multi-turn chat request with no cache.
+     *
+     * [messages] must start with the system message and contain the bounded user/assistant
+     * transcript. Q&A answers are intentionally uncached: the same words can mean something else
+     * after the song context changes, and a cache hit would also bypass the streaming UI.
+     */
+    suspend fun chat(
+        messages: List<AiChatMessage>,
+        promptType: String,
+        listener: AiProgressListener? = null
+    ): String {
+        require(messages.firstOrNull()?.role == AiChatMessage.Role.SYSTEM) {
+            "The first chat message must be the system prompt"
+        }
+        val (provider, apiKey, baseUrl) = credentials()
+        val model = preferences.getModel(provider).first()
+        // Conversational answers should start immediately; thinking stays a playlist-only option.
+        val thinking = if (provider.supportsThinkingParam) false else null
+        val endpoint = AiRequestLogStore.redactUrl("${baseUrl.trimEnd('/')}/chat/completions")
+        val systemPrompt = messages.first().content
+        val transcript = messages.drop(1).joinToString(separator = "\n\n") { message ->
+            "${message.role.apiValue}: ${message.content}"
+        }
+
+        val requestStart = System.currentTimeMillis()
+        val result =
+                try {
+                    client.chat(
+                            baseUrl = baseUrl,
+                            apiKey = apiKey,
+                            model = model,
+                            messages = messages,
+                            thinkingEnabled = thinking,
+                            listener = listener
+                    )
+                } catch (t: Throwable) {
+                    // Closing the sheet cancels the request: that is not a failure worth logging.
+                    if (t is CancellationException) throw t
+                    requestLogStore.write(
+                            AiRequestLog(
+                                    timestamp = System.currentTimeMillis(),
+                                    status = AiRequestLog.STATUS_FAILED,
+                                    promptType = promptType,
+                                    provider = provider.displayName,
+                                    model = model,
+                                    endpoint = endpoint,
+                                    durationMs = System.currentTimeMillis() - requestStart,
+                                    systemPrompt = systemPrompt,
+                                    userPrompt = transcript,
+                                    errorMessage = t.message ?: t.javaClass.simpleName
+                            )
+                    )
+                    throw t
+                }
+
+        val now = System.currentTimeMillis()
+        usageDao.insertUsage(
+                AiUsageEntity(
+                        timestamp = now,
+                        provider = provider.name,
+                        model = model,
+                        promptType = promptType,
+                        promptTokens = result.promptTokens,
+                        outputTokens = result.outputTokens,
+                        thoughtTokens = result.thoughtTokens
+                )
+        )
+        requestLogStore.write(
+                AiRequestLog(
+                        timestamp = now,
+                        status = AiRequestLog.STATUS_SUCCESS,
+                        promptType = promptType,
+                        provider = provider.displayName,
+                        model = model,
+                        endpoint = endpoint,
+                        durationMs = now - requestStart,
+                        systemPrompt = systemPrompt,
+                        userPrompt = transcript,
+                        responseText = result.content,
+                        promptTokens = result.promptTokens,
+                        outputTokens = result.outputTokens,
+                        thoughtTokens = result.thoughtTokens
+                )
+        )
+
+        return result.content
+    }
+
     private suspend fun credentials(): Triple<AiProvider, String, String> {
         val provider = preferences.getProvider()
         val apiKey = preferences.getApiKey(provider).first()
@@ -280,6 +369,9 @@ constructor(
 
         /** Serendipity's optional "let the AI rephrase it" step. */
         const val PROMPT_TYPE_SERENDIPITY_PROMPT = "serendipity_prompt"
+
+        /** Multi-turn Q&A opened from the player. */
+        const val PROMPT_TYPE_SONG_QA = "song_qa"
 
         private const val CACHE_TTL_MILLIS = AiPreferencesRepository.CACHE_TTL_MILLIS
     }
