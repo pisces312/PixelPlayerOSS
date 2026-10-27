@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="about_contributions_format">%1$d bidrag.</string>
-    <string name="about_link_fdroid_subtitle">Tilgjengelig i F-Droid-katalogen</string>
-    <string name="about_link_fdroid_title">F-Droid</string>
     <string name="about_link_source_title">Kildekode</string>
     <string name="about_maintainer_subtitle">Vedlikehold av FOSS-utgaven og den opprinnelige, ikke-FOSS-utgaven.</string>
     <string name="about_maintainer_title">Vedlikeholdere</string>

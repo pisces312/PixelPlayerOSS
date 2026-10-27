@@ -192,8 +192,6 @@
     <string name="about_project_subtitle">源代码、发布版本以及社区入口。</string>
     <string name="about_link_source_title">源代码</string>
     <string name="about_link_source_subtitle">github.com/lostf1sh/PixelPlayerOSS</string>
-    <string name="about_link_fdroid_title">F‑Droid</string>
-    <string name="about_link_fdroid_subtitle">可在 F‑Droid 软件库获取</string>
     <string name="cd_about_open_link">打开 %1$s</string>
     <string name="about_signal_open_source">开源</string>
     <string name="about_signal_community_first">社区驱动</string>

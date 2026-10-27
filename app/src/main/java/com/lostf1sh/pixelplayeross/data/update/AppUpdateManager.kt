@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
@@ -39,11 +38,12 @@ import javax.inject.Singleton
 sealed interface UpdateStatus {
     data object Idle : UpdateStatus
     data object Checking : UpdateStatus
-    data class UpToDate(val channel: UpdateChannel) : UpdateStatus
+    data object UpToDate : UpdateStatus
 
     /**
-     * [requiresReinstall] means the release is signed differently from this install (other
-     * channel, or a side-loaded build), so Android refuses to install it over the app.
+     * [requiresReinstall] means the release cannot be installed over this build: Android refuses
+     * to replace an app whose package name or signing key differs, as with a debug install
+     * (which carries an applicationId suffix) or a build signed by another key.
      */
     data class Available(val release: AppRelease, val requiresReinstall: Boolean) : UpdateStatus
     data class Downloading(val release: AppRelease, val progress: Float?) : UpdateStatus
@@ -63,9 +63,9 @@ enum class UpdateError {
 }
 
 /**
- * Checks the selected channel for a newer build and installs same-channel updates through
- * [PackageInstaller]. Cross-channel releases are only reported: F-Droid and GitHub builds are
- * signed with different keys, so moving between them needs an uninstall the user drives.
+ * Checks GitHub for a newer build and installs it through [PackageInstaller]. A release that
+ * cannot replace this build - a debug install carries an applicationId suffix, and a build signed
+ * with another key is refused outright - is only reported, so the user can fetch it manually.
  */
 @Singleton
 class AppUpdateManager @Inject constructor(
@@ -76,14 +76,10 @@ class AppUpdateManager @Inject constructor(
     @AppScope private val scope: CoroutineScope,
 ) {
     val installedVersionName: String = BuildConfig.VERSION_NAME
-    val installedChannel: UpdateChannel = UpdateChannel.ofVersionName(installedVersionName)
-
-    val selectedChannel: Flow<UpdateChannel> =
-        preferences.updateChannelFlow.map { it ?: installedChannel }
 
     /**
-     * Opt-in on every channel: this fork reaches GitHub's API from networks where it is often
-     * unreachable, so a daily check nobody asked for would only spend battery on retries.
+     * Opt-in: this fork reaches GitHub's API from networks where it is often unreachable, so a
+     * daily check nobody asked for would only spend battery on retries.
      */
     val autoCheckEnabled: Flow<Boolean> =
         preferences.updateAutoCheckFlow.map { it ?: false }
@@ -120,14 +116,6 @@ class AppUpdateManager @Inject constructor(
         }
     }
 
-    fun setChannel(channel: UpdateChannel) {
-        job?.cancel()
-        job = scope.launch {
-            preferences.setUpdateChannel(channel)
-            runCheck()
-        }
-    }
-
     fun setAutoCheck(enabled: Boolean) {
         scope.launch { preferences.setUpdateAutoCheck(enabled) }
     }
@@ -148,19 +136,17 @@ class AppUpdateManager @Inject constructor(
         }
     }
 
-    /** One lookup of the selected channel, without touching [status]; used by the background worker. */
+    /** One lookup of the published release, without touching [status]; used by the background worker. */
     suspend fun findUpdate(): UpdateStatus {
-        val channel = selectedChannel.first()
-        val release = releaseSource.latest(channel)
+        val release = releaseSource.latest()
             ?: return UpdateStatus.Failed(UpdateError.NOTHING_PUBLISHED, release = null)
         return when {
-            channel != installedChannel -> UpdateStatus.Available(release, requiresReinstall = true)
-            release.isNewerThan(installedVersionName, installedVersionCode()) -> UpdateStatus.Available(
+            release.isNewerThan(installedVersionName) -> UpdateStatus.Available(
                 release,
                 // Debug builds carry an applicationId suffix; the published APK installs beside them.
                 requiresReinstall = context.packageName != AppReleaseSource.PUBLISHED_PACKAGE,
             )
-            else -> UpdateStatus.UpToDate(channel)
+            else -> UpdateStatus.UpToDate
         }
     }
 
@@ -386,9 +372,6 @@ class AppUpdateManager @Inject constructor(
             throw error
         }
     }
-
-    private fun installedVersionCode(): Long =
-        context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
 
     private fun updatesDir() = File(context.cacheDir, UPDATES_DIR)
 

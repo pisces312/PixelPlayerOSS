@@ -193,8 +193,6 @@
     <string name="about_project_subtitle">Source, releases, and community entry points.</string>
     <string name="about_link_source_title">Source code</string>
     <string name="about_link_source_subtitle">github.com/lostf1sh/PixelPlayerOSS</string>
-    <string name="about_link_fdroid_title">F-Droid</string>
-    <string name="about_link_fdroid_subtitle">Available on the F-Droid catalog</string>
     <string name="cd_about_open_link">Open %1$s</string>
     <string name="about_signal_open_source">Open source</string>
     <string name="about_signal_community_first">Community-first</string>

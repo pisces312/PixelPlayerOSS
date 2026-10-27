@@ -207,6 +207,8 @@ OSS 有**设置搜索**，开关不注册就搜不到：
 - **返回键**：`LibraryScreen` 的文件夹返回 / 选择态清除走 `PlayerSheetAwareBackHandler` + `PlayerViewModel.playerSheetBackCoordinator`
   （主线程直接改 `OnBackPressedCallback.isEnabled`，绕开 Flow→重组的一帧延迟），播放器或队列展开时它让位给播放器。
   **不要把它改回普通 `BackHandler`**：会重现 #136 —— 文件夹内按返回退出文件夹而不是收起播放器（该机制是三步修成的，见 2026-10-11 记录）。
+- **应用内更新器**：`data/update/` —— 只认本 fork 的 GitHub releases：`AppReleaseSource.parseLatestRelease()` 按 ABI 整段匹配 asset（`-x86` 不能命中 `-x86_64`），`AppUpdateManager` 下载后走 `PackageInstaller` 安装。
+  **没有 F-Droid/Stable 通道**（2026-10-11 移除）：本 fork 没上架 F-Droid、国内也访问不到，所以 `UpdateChannel`、`update_channel` 偏好、跨签名「备份→下载→卸载」引导与 `REQUEST_DELETE_PACKAGES` 都已删除，**不要从上游恢复**。无法覆盖安装的场景（debug 包 / 异签名）只提示并打开发布页。
 - **性能诊断**：`data/diagnostics/`（`AdvancedPerformanceDiagnostics`、`MainThreadStallMonitor`）。
 - 提示统一走 `PlayerViewModel._toastEvents`；脚本 `run-tests.bat` / `test_summary.py` 尚未移植（china-only 有）。
 

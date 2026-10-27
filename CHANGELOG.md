@@ -4,6 +4,10 @@ All notable changes to PixelPlayerOSS will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- An Updates screen (Settings → Updates, also linked from Settings → About) that looks for a newer build among this fork's GitHub releases and installs it over the running one. A daily check can notify when an update is available; it is off by default. Builds that cannot replace this one — a debug install, or one signed with another key — are reported instead, with a link to the release page.
+- Simplified Chinese translation for the Updates screen.
+
 ### Fixed
 - Navidrome/Subsonic and Jellyfin album artwork no longer gets stuck on the placeholder after a few songs. The player loaded cloud covers through the app's own artwork content provider, and concurrent loads could exhaust the image decoder slots that provider waited on, freezing every artwork load until the app restarted. Server error responses are also no longer cached as cover images, and concurrent cover downloads no longer corrupt each other's cache file ([#138](https://github.com/PixelPlayerHQ/PixelPlayerOSS/issues/138)).
 - System media controls can load album artwork through the app's artwork URI again. System UI reads that URI without connecting as a media controller, so it never received the per-track read grant and was refused on every track; privileged media surfaces (holders of `MEDIA_CONTENT_CONTROL`) may now open the artwork the session currently shows, while every other cover, and every other app, still needs the explicit grant. Stock Android fell back to the session bitmap, but System UIs without that fallback could show no artwork.
@@ -20,7 +24,6 @@ to give up on.
 - A source filter on the library's playlist tab, so AI-generated and hand-built playlists can be listed separately. The choice survives a restart, and each of the two empty states names which kind of playlist is missing instead of showing a blank page.
 - Split long lines, under Settings > Playback > Bluetooth car. A lyric line wider than the head unit can display is cut into segments shown in turn; turning it off sends the line whole, for units that scroll a long title by themselves. On by default.
 - Tapping the title in the full player opens the song sheet on its Details tab rather than on its first tab.
-- An Updates screen (Settings → Updates, also linked from Settings → About) that checks for new versions on a chosen channel: Stable pulls from F-Droid, Alpha from the GitHub releases of this fork. Same-channel updates download and install in the app; switching channels walks through backing up, downloading the other build, and uninstalling, since the two are signed with different keys. An optional daily check notifies when an update is available, off by default.
 
 ### Changed
 - Tracks started from Quick play no longer reach listening statistics, recently played or the songs the AI samples from, since Quick play deliberately previews songs that stay outside the library. The notification and its controls are unchanged.

@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="about_contributions_format">%1$d katkı</string>
-    <string name="about_link_fdroid_subtitle">F-Droid kataloğunda mevcut</string>
-    <string name="about_link_fdroid_title">F-Droid</string>
     <string name="about_link_source_title">Kaynak kodu</string>
     <string name="about_maintainer_subtitle">FOSS ve orijinal/FOSS olmayan sürümlerin bakımı.</string>
     <string name="about_maintainer_title">Bakımcılar</string>

@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="about_contributions_format">%1$d Beiträge</string>
-    <string name="about_link_fdroid_subtitle">Im F-Droid-Katalog verfügbar</string>
-    <string name="about_link_fdroid_title">F-Droid</string>
     <string name="about_link_source_title">Quellcode</string>
     <string name="about_maintainer_subtitle">Betreuung der FOSS- und der ursprünglichen/nicht-FOSS-Version.</string>
     <string name="about_maintainer_title">Maintainer</string>

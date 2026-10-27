@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,10 +17,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.SystemUpdate
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -35,14 +31,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -55,8 +47,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lostf1sh.pixelplayeross.R
-import com.lostf1sh.pixelplayeross.data.update.AppRelease
-import com.lostf1sh.pixelplayeross.data.update.UpdateChannel
 import com.lostf1sh.pixelplayeross.data.update.UpdateError
 import com.lostf1sh.pixelplayeross.data.update.UpdateStatus
 import com.lostf1sh.pixelplayeross.presentation.components.MiniPlayerHeight
@@ -67,12 +57,10 @@ import timber.log.Timber
 @Composable
 fun UpdatesScreen(
     onBack: () -> Unit,
-    onOpenBackup: () -> Unit,
     viewModel: UpdatesViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var switchRelease by rememberSaveable { mutableStateOf<String?>(null) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onResume() }
 
@@ -120,36 +108,10 @@ fun UpdatesScreen(
                     },
                     onOpenPrompt = { intent -> context.startActivitySafely(Intent(intent)) },
                     onOpenUrl = { url -> context.openUrl(url) },
-                    onShowSwitch = { switchRelease = it.versionName },
                 )
             }
             item(key = "settings") {
                 ExpressiveSettingsGroup {
-                    ThemeSelectorItem(
-                        label = stringResource(R.string.updates_channel_title),
-                        description = stringResource(
-                            when (state.selectedChannel) {
-                                UpdateChannel.STABLE -> R.string.updates_channel_stable_description
-                                UpdateChannel.ALPHA -> R.string.updates_channel_alpha_description
-                            }
-                        ),
-                        options = mapOf(
-                            UpdateChannel.STABLE.storageKey to stringResource(R.string.updates_channel_stable_source),
-                            UpdateChannel.ALPHA.storageKey to stringResource(R.string.updates_channel_alpha_source),
-                        ),
-                        optionDescriptions = mapOf(
-                            UpdateChannel.STABLE.storageKey to stringResource(R.string.updates_channel_stable_description),
-                            UpdateChannel.ALPHA.storageKey to stringResource(R.string.updates_channel_alpha_description),
-                        ),
-                        selectedKey = state.selectedChannel.storageKey,
-                        onSelectionChanged = { key ->
-                            UpdateChannel.fromStorageKey(key)?.let(viewModel::setChannel)
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Rounded.NewReleases, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                        }
-                    )
-                    Spacer(Modifier.height(4.dp))
                     SwitchSettingItem(
                         title = stringResource(R.string.updates_auto_check_title),
                         subtitle = stringResource(R.string.updates_auto_check_subtitle),
@@ -163,27 +125,6 @@ fun UpdatesScreen(
             }
         }
     }
-
-    val pendingSwitch = (state.status as? UpdateStatus.Available)?.release
-        ?.takeIf { switchRelease != null && it.versionName == switchRelease }
-    if (pendingSwitch != null) {
-        ChannelSwitchDialog(
-            release = pendingSwitch,
-            onBackup = {
-                switchRelease = null
-                onOpenBackup()
-            },
-            onDownload = {
-                context.openUrl(
-                    if (pendingSwitch.channel == UpdateChannel.STABLE) pendingSwitch.pageUrl else pendingSwitch.apkUrl
-                )
-            },
-            onUninstall = {
-                context.startActivitySafely(Intent(Intent.ACTION_DELETE, "package:${context.packageName}".toUri()))
-            },
-            onDismiss = { switchRelease = null }
-        )
-    }
 }
 
 @Composable
@@ -196,7 +137,6 @@ private fun UpdateStatusCard(
     onAllowInstalls: () -> Unit,
     onOpenPrompt: (Intent) -> Unit,
     onOpenUrl: (String) -> Unit,
-    onShowSwitch: (AppRelease) -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -211,18 +151,11 @@ private fun UpdateStatusCard(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(32.dp)
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = stringResource(R.string.updates_installed_version, state.installedVersion),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = stringResource(channelSource(state.installedChannel)),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.updates_installed_version, state.installedVersion),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
             Text(
@@ -237,7 +170,9 @@ private fun UpdateStatusCard(
                 is UpdateStatus.UpToDate -> SecondaryAction(stringResource(R.string.updates_action_check_again), onCheck)
                 is UpdateStatus.Available -> {
                     if (status.requiresReinstall) {
-                        PrimaryAction(stringResource(R.string.updates_action_switch)) { onShowSwitch(status.release) }
+                        PrimaryAction(stringResource(R.string.updates_action_open_release)) {
+                            onOpenUrl(status.release.pageUrl)
+                        }
                     } else {
                         PrimaryAction(stringResource(R.string.updates_action_install), onInstall)
                     }
@@ -284,17 +219,9 @@ private fun SecondaryAction(label: String, onClick: () -> Unit) {
 private fun statusMessage(state: UpdatesUiState): String = when (val status = state.status) {
     UpdateStatus.Idle -> stringResource(R.string.updates_status_idle)
     UpdateStatus.Checking -> stringResource(R.string.updates_status_checking)
-    is UpdateStatus.UpToDate -> stringResource(
-        R.string.updates_status_up_to_date,
-        stringResource(channelLabel(status.channel))
-    )
+    is UpdateStatus.UpToDate -> stringResource(R.string.updates_status_up_to_date)
     is UpdateStatus.Available -> when {
         !status.requiresReinstall -> stringResource(R.string.updates_status_available, status.release.versionName)
-        status.release.channel != state.installedChannel -> stringResource(
-            R.string.updates_status_reinstall,
-            status.release.versionName,
-            stringResource(channelLabel(status.release.channel))
-        )
         else -> stringResource(R.string.updates_status_reinstall_signature, status.release.versionName)
     }
     is UpdateStatus.Downloading -> status.progress
@@ -313,57 +240,6 @@ private fun statusMessage(state: UpdatesUiState): String = when (val status = st
             UpdateError.INSTALL_FAILED -> R.string.updates_error_install
         }
     )
-}
-
-@Composable
-private fun ChannelSwitchDialog(
-    release: AppRelease,
-    onBackup: () -> Unit,
-    onDownload: () -> Unit,
-    onUninstall: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.updates_switch_dialog_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(R.string.updates_switch_dialog_body))
-                Text(stringResource(R.string.updates_switch_step_backup))
-                FilledTonalButton(onClick = onBackup, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.updates_switch_action_backup))
-                }
-                if (release.channel == UpdateChannel.STABLE) {
-                    Text(stringResource(R.string.updates_switch_step_download_stable))
-                    FilledTonalButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.updates_switch_action_open_fdroid))
-                    }
-                } else {
-                    Text(stringResource(R.string.updates_switch_step_download_alpha, release.versionName))
-                    FilledTonalButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(R.string.updates_switch_action_download))
-                    }
-                }
-                Text(stringResource(R.string.updates_switch_step_uninstall))
-                OutlinedButton(onClick = onUninstall, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.updates_switch_action_uninstall), color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.updates_switch_action_close)) }
-        }
-    )
-}
-
-private fun channelLabel(channel: UpdateChannel): Int = when (channel) {
-    UpdateChannel.STABLE -> R.string.updates_channel_stable
-    UpdateChannel.ALPHA -> R.string.updates_channel_alpha
-}
-
-private fun channelSource(channel: UpdateChannel): Int = when (channel) {
-    UpdateChannel.STABLE -> R.string.updates_channel_stable_source
-    UpdateChannel.ALPHA -> R.string.updates_channel_alpha_source
 }
 
 private fun Context.openUrl(url: String) = startActivitySafely(Intent(Intent.ACTION_VIEW, url.toUri()))

@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="about_contributions_format">기여 %1$d회</string>
-    <string name="about_link_fdroid_subtitle">F-Droid 카탈로그에서 이용 가능</string>
-    <string name="about_link_fdroid_title">F-Droid</string>
     <string name="about_link_source_title">소스 코드</string>
     <string name="about_maintainer_subtitle">FOSS 버전과 원본/비FOSS 버전의 메인테이너입니다.</string>
     <string name="about_maintainer_title">메인테이너</string>

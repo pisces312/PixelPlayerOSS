@@ -787,15 +787,7 @@ fun AppNavigation(
             ) {
                 ScreenWrapper(navController = navController, playerViewModel = playerViewModel) {
                     UpdatesScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenBackup = {
-                            navController.navigateSafely(
-                                Screen.SettingsCategory.createRoute(
-                                    SettingsCategory.BACKUP_RESTORE.id,
-                                    highlightKey = "item_backup_export"
-                                )
-                            )
-                        }
+                        onBack = { navController.popBackStack() }
                     )
                 }
             }

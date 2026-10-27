@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="about_contributions_format">%1$d kontrib.</string>
-    <string name="about_link_fdroid_subtitle">Tersedia di katalog F-Droid</string>
-    <string name="about_link_fdroid_title">F-Droid</string>
     <string name="about_link_source_title">Kode sumber</string>
     <string name="about_maintainer_subtitle">Pemeliharaan edisi FOSS dan edisi asli/non-FOSS.</string>
     <string name="about_maintainer_title">Pemelihara</string>

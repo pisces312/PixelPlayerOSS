@@ -23,7 +23,6 @@ import com.lostf1sh.pixelplayeross.data.model.TransitionSettings
 import com.lostf1sh.pixelplayeross.data.equalizer.EqualizerPreset
 import com.lostf1sh.pixelplayeross.data.model.StorageFilter
 import com.lostf1sh.pixelplayeross.data.model.PlaylistSourceFilter
-import com.lostf1sh.pixelplayeross.data.update.UpdateChannel
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.text.get
@@ -97,9 +96,8 @@ constructor(
         PreferencesKeys.FOLDER_ALBUM_ART_CACHE_STATE.name,
         "listenbrainz_token",
         "lastfm_session_key",
-        // Update settings describe this install (F-Droid vs. GitHub signed), not user taste;
-        // restoring them onto the other channel's install would offer a cross-signed update.
-        PreferencesKeys.UPDATE_CHANNEL.name,
+        // Update settings are about this install, not user taste: restoring another device's
+        // auto-check choice or its already-notified version would silently change behaviour.
         PreferencesKeys.UPDATE_AUTO_CHECK.name,
         PreferencesKeys.UPDATE_LAST_NOTIFIED_VERSION.name
     )
@@ -267,21 +265,11 @@ constructor(
         val REPLAYGAIN_USE_ALBUM_GAIN = booleanPreferencesKey("replaygain_use_album_gain")
         val STATS_RANKING_LIMIT = intPreferencesKey("stats_ranking_limit")
 
-        val UPDATE_CHANNEL = stringPreferencesKey("update_channel")
         val UPDATE_AUTO_CHECK = booleanPreferencesKey("update_auto_check")
         val UPDATE_LAST_NOTIFIED_VERSION = stringPreferencesKey("update_last_notified_version")
     }
 
-    /** Null until the user picks a channel; the updater then follows the installed build. */
-    val updateChannelFlow: Flow<UpdateChannel?> = dataStore.data.map { preferences ->
-        UpdateChannel.fromStorageKey(preferences[PreferencesKeys.UPDATE_CHANNEL])
-    }
-
-    suspend fun setUpdateChannel(channel: UpdateChannel) {
-        dataStore.edit { preferences -> preferences[PreferencesKeys.UPDATE_CHANNEL] = channel.storageKey }
-    }
-
-    /** Null until the user toggles it; the default depends on the installed channel. */
+    /** Null until the user toggles it; off unless they opted in. */
     val updateAutoCheckFlow: Flow<Boolean?> = dataStore.data.map { preferences ->
         preferences[PreferencesKeys.UPDATE_AUTO_CHECK]
     }
