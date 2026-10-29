@@ -151,6 +151,7 @@
     <string name="ai_song_qa_suggest_album">What is the background of this album?</string>
     <string name="ai_song_qa_suggest_style">What style is this song?</string>
     <string name="ai_song_qa_suggest_lyrics">What do the lyrics mean?</string>
+    <string name="ai_song_qa_suggest_translate">Translate the title and lyrics</string>
     <string name="ai_song_qa_privacy_hint">Only song metadata is sent by default. Lyrics are sent only when you opt in.</string>
     <string name="ai_song_qa_input_hint">Ask anything about this song…</string>
     <string name="ai_song_qa_send">Send</string>

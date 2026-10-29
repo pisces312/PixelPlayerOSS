@@ -219,6 +219,7 @@ fun FullPlayerContent(
     onCollapse: () -> Unit,
     onShowQueueClicked: () -> Unit,
     onAskAiClick: () -> Unit,
+    onAskAiTranslateLyrics: () -> Unit,
     onSongTitleClick: () -> Unit,
     onQueueDragStart: () -> Unit,
     onQueueDrag: (Float) -> Unit,
@@ -865,6 +866,7 @@ fun FullPlayerContent(
             colorScheme = LocalMaterialTheme.current,
             onBackClick = { showLyricsSheet = false },
             onSaveLyricsToFile = playerViewModel::saveLyricsToFile,
+            onAskAiTranslate = onAskAiTranslateLyrics,
             onSeekTo = { playerViewModel.seekTo(it) },
             onPlayPause = {
                 playerViewModel.playPause()

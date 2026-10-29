@@ -60,6 +60,7 @@ import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.ai.AiChatMessage
 import com.lostf1sh.pixelplayeross.data.model.Song
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.AiSongQaMessage
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.AiSongQaPreset
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.AiSongQaUiState
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.AiSongQaViewModel
 import kotlinx.coroutines.launch
@@ -76,6 +77,7 @@ import kotlinx.coroutines.launch
 internal fun UnifiedPlayerAiQaLayer(
     show: Boolean,
     initialSong: Song?,
+    preset: AiSongQaPreset?,
     currentPlayerSong: Song?,
     albumColorScheme: ColorScheme,
     onDismiss: () -> Unit,
@@ -91,7 +93,7 @@ internal fun UnifiedPlayerAiQaLayer(
     // Keyed on the opening transition only: a track change while the sheet is open must not
     // silently retarget the conversation. The switch action is explicit.
     LaunchedEffect(show) {
-        initialSong?.let(viewModel::openSession)
+        initialSong?.let { viewModel.openSession(it, preset) }
     }
     LaunchedEffect(currentPlayerSong?.id) {
         viewModel.updateCurrentPlayerSong(currentPlayerSong)
@@ -373,13 +375,27 @@ private fun SuggestionSection(
     onSendMessage: (String, Boolean?) -> Unit,
     onToggleLyrics: (Boolean) -> Unit
 ) {
-    val lyricSuggestion = stringResource(R.string.ai_song_qa_suggest_lyrics)
+    // The chip text doubles as the question, so the lyrics flag has to travel with it instead of
+    // being recovered by comparing strings later.
     val suggestions = buildList {
-        add(stringResource(R.string.ai_song_qa_suggest_intro_song))
-        add(stringResource(R.string.ai_song_qa_suggest_artist))
-        add(stringResource(R.string.ai_song_qa_suggest_album))
-        add(stringResource(R.string.ai_song_qa_suggest_style))
-        if (state.hasStoredLyrics) add(lyricSuggestion)
+        add(QaSuggestion(stringResource(R.string.ai_song_qa_suggest_intro_song)))
+        add(QaSuggestion(stringResource(R.string.ai_song_qa_suggest_artist)))
+        add(QaSuggestion(stringResource(R.string.ai_song_qa_suggest_album)))
+        add(QaSuggestion(stringResource(R.string.ai_song_qa_suggest_style)))
+        if (state.hasStoredLyrics) {
+            add(
+                QaSuggestion(
+                    text = stringResource(R.string.ai_song_qa_suggest_lyrics),
+                    attachLyrics = true
+                )
+            )
+        }
+        add(
+            QaSuggestion(
+                text = stringResource(R.string.ai_song_qa_suggest_translate),
+                attachLyrics = state.hasStoredLyrics
+            )
+        )
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -393,16 +409,15 @@ private fun SuggestionSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             suggestions.forEach { suggestion ->
-                val isLyricsQuestion = suggestion == lyricSuggestion
                 FilterChip(
                     selected = false,
                     onClick = {
                         onSendMessage(
-                            suggestion,
-                            if (isLyricsQuestion) true else null
+                            suggestion.text,
+                            suggestion.attachLyrics.takeIf { it }
                         )
                     },
-                    label = { Text(suggestion) }
+                    label = { Text(suggestion.text) }
                 )
             }
         }
@@ -416,6 +431,11 @@ private fun SuggestionSection(
         }
     }
 }
+
+private data class QaSuggestion(
+    val text: String,
+    val attachLyrics: Boolean = false
+)
 
 @Composable
 private fun UnconfiguredAiCard(onOpenAiSettings: () -> Unit) {

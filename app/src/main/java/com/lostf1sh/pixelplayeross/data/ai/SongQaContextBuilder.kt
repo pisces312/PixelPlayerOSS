@@ -46,6 +46,11 @@ object SongQaContextBuilder {
             Do not claim that you searched the web; this request has no live web retrieval.
             Reply in the same language as the user's latest question. If it is ambiguous, use the app
             language tag: $appLanguageTag.
+            When the user asks for a translation of the title or the lyrics, translate into the
+            language identified by that same tag. Print the translated title on its own line, then one
+            line per original lyric line as "<original> → <translation>", preserving the original order.
+            Translate only: no commentary, no romanization, no merged or repeated lines. If the text is
+            already in the target language, say so in one sentence instead of repeating it.
             """.trimIndent()
 
         if (contextSong == null) return basePrompt

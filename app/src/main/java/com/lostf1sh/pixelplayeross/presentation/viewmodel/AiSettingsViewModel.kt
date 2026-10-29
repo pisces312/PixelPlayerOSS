@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.ai.AiHandler
+import com.lostf1sh.pixelplayeross.data.ai.AiLyricsTranslationCache
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiErrorKind
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProvider
 import com.lostf1sh.pixelplayeross.data.ai.provider.AiProviderException
@@ -38,6 +39,7 @@ constructor(
     private val preferences: AiPreferencesRepository,
     private val handler: AiHandler,
     private val cacheDao: AiCacheDao,
+    private val translationCache: AiLyricsTranslationCache,
     private val cityCatalog: CityCatalog,
     usageDao: AiUsageDao
 ) : ViewModel() {
@@ -229,6 +231,7 @@ constructor(
     fun clearCache() {
         viewModelScope.launch {
             cacheDao.clearAllCache()
+            translationCache.clear()
             _status.value =
                     StatusMessage(context.getString(R.string.ai_status_cache_cleared), false)
         }

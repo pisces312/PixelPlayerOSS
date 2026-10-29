@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.lostf1sh.pixelplayeross.R
 import com.lostf1sh.pixelplayeross.data.ai.AiChatMessage
 import com.lostf1sh.pixelplayeross.data.ai.AiHandler
+import com.lostf1sh.pixelplayeross.data.ai.AiLyricsTranslationCache
 import com.lostf1sh.pixelplayeross.data.ai.AiProgressEvent
 import com.lostf1sh.pixelplayeross.data.ai.AiProgressListener
 import com.lostf1sh.pixelplayeross.data.ai.SongQaContextBuilder
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -52,7 +54,8 @@ constructor(
     @ApplicationContext private val context: Context,
     private val handler: AiHandler,
     private val preferences: AiPreferencesRepository,
-    private val lyricsRepository: LyricsRepository
+    private val lyricsRepository: LyricsRepository,
+    private val translationCache: AiLyricsTranslationCache
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AiSongQaUiState())
@@ -70,9 +73,11 @@ constructor(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private var requestJob: Job? = null
+    private var lyricsJob: Job? = null
     private var requestGeneration = 0
     private var storedLyrics: Lyrics? = null
     private var failedQuestion: String? = null
+    private var failedCacheKey: String? = null
 
     init {
         viewModelScope.launch {
@@ -85,18 +90,25 @@ constructor(
     /**
      * Opens or re-opens the sheet. Reopening the same song keeps its in-memory transcript; opening
      * another song starts a clean session so one answer can never be attributed to two tracks.
+     *
+     * [preset] is how the lyrics screen starts a question the user has already chosen. It runs only
+     * after the stored lyrics are resolved, otherwise a translation request would leave without the
+     * lyrics it was asked about.
      */
-    fun openSession(song: Song) {
+    fun openSession(song: Song, preset: AiSongQaPreset? = null) {
         val current = _uiState.value
         if (current.song?.id == song.id) {
             _uiState.update { it.copy(currentPlayerSongId = song.id) }
+            preset?.let(::requestPreset)
             return
         }
 
         requestGeneration++
         requestJob?.cancel()
         requestJob = null
+        lyricsJob?.cancel()
         failedQuestion = null
+        failedCacheKey = null
         storedLyrics = null
         _uiState.update {
             AiSongQaUiState(
@@ -105,7 +117,14 @@ constructor(
                 isConfigured = it.isConfigured
             )
         }
-        loadStoredLyrics(song)
+        lyricsJob = viewModelScope.launch {
+            val loaded = readStoredLyrics(song)
+            // Another song can win the race while the repository is reading.
+            if (_uiState.value.song?.id != song.id) return@launch
+            storedLyrics = loaded
+            _uiState.update { it.copy(hasStoredLyrics = loaded != null) }
+            preset?.let(::requestPreset)
+        }
     }
 
     /** Tracks the live player song without replacing the conversation's frozen context. */
@@ -137,6 +156,7 @@ constructor(
     fun startNewConversation() {
         cancelActiveRequest()
         failedQuestion = null
+        failedCacheKey = null
         _uiState.update {
             it.copy(
                 messages = emptyList(),
@@ -161,6 +181,7 @@ constructor(
         val useLyrics = includeLyrics ?: state.includeLyrics
         if (includeLyrics != null) setIncludeLyrics(includeLyrics)
         failedQuestion = null
+        failedCacheKey = null
         _uiState.update { it.copy(draft = "") }
         startRequest(text, reuseLastUserMessage = false, includeLyrics = useLyrics)
     }
@@ -172,12 +193,15 @@ constructor(
         val canReuseBubble = state.messages.lastOrNull()?.let {
             it.role == AiChatMessage.Role.USER && it.content == question
         } == true
+        val cacheKey = failedCacheKey
         failedQuestion = null
+        failedCacheKey = null
         _uiState.update { it.copy(errorMessage = null) }
         startRequest(
             question = question,
             reuseLastUserMessage = canReuseBubble,
-            includeLyrics = state.includeLyrics
+            includeLyrics = state.includeLyrics,
+            cacheKey = cacheKey
         )
     }
 
@@ -188,7 +212,8 @@ constructor(
     private fun startRequest(
         question: String,
         reuseLastUserMessage: Boolean,
-        includeLyrics: Boolean
+        includeLyrics: Boolean,
+        cacheKey: String? = null
     ) {
         val state = _uiState.value
         val song = state.song ?: return
@@ -248,6 +273,7 @@ constructor(
                 )
                 if (generation == requestGeneration) {
                     updateAssistantMessage(assistantId, answer, isStreaming = false)
+                    cacheKey?.let { translationCache.write(it, answer) }
                 }
             } catch (t: Throwable) {
                 if (generation != requestGeneration) return@launch
@@ -255,6 +281,7 @@ constructor(
                     finishCancelledAssistant(assistantId)
                 } else {
                     failedQuestion = question
+                    failedCacheKey = cacheKey
                     _uiState.update { current ->
                         current.copy(
                             messages = current.messages.filterNot { it.id == assistantId },
@@ -306,22 +333,92 @@ constructor(
         requestJob = null
     }
 
-    private fun loadStoredLyrics(song: Song) {
+    private suspend fun readStoredLyrics(song: Song): Lyrics? {
+        val loaded = runCatching { lyricsRepository.getStoredLyrics(song)?.first }.getOrNull()
+            ?: song.lyrics
+                ?.takeIf { it.isNotBlank() }
+                ?.let { Lyrics(plain = it.lines().filter(String::isNotBlank)) }
+        return loaded?.takeIf { SongQaContextBuilder.lyricsText(it).isNotBlank() }
+    }
+
+    /** Runs a question the user already chose, e.g. the translation started from the lyrics screen. */
+    private fun requestPreset(preset: AiSongQaPreset) {
+        when (preset) {
+            AiSongQaPreset.TRANSLATE_TITLE_AND_LYRICS -> translateTitleAndLyrics()
+        }
+    }
+
+    /**
+     * Sends the built-in translation question, reusing a cached answer when the song, the lyric text,
+     * the target language and the model are unchanged. A re-imported lyric sheet or a different
+     * target language therefore falls through to a fresh request instead of showing stale text.
+     */
+    private fun translateTitleAndLyrics() {
+        val state = _uiState.value
+        val song = state.song ?: return
+        if (!state.isConfigured || state.isSending) return
+        val useLyrics = state.hasStoredLyrics
+        if (useLyrics != state.includeLyrics) setIncludeLyrics(useLyrics)
+        val question = context.getString(R.string.ai_song_qa_suggest_translate)
+
         viewModelScope.launch {
-            val loaded = runCatching { lyricsRepository.getStoredLyrics(song)?.first }.getOrNull()
-                ?: song.lyrics
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { Lyrics(plain = it.lines().filter(String::isNotBlank)) }
-            storedLyrics = loaded?.takeIf { SongQaContextBuilder.lyricsText(it).isNotBlank() }
-            _uiState.update {
-                if (it.song?.id == song.id) {
-                    it.copy(hasStoredLyrics = storedLyrics != null)
-                } else {
-                    it
+            val cacheKey = translationCacheKey(song, if (useLyrics) storedLyrics else null)
+            val cached = cacheKey?.let { translationCache.read(it) }
+            if (_uiState.value.song?.id != song.id) return@launch
+            if (cached != null) {
+                _uiState.update {
+                    it.copy(
+                        messages =
+                            it.messages +
+                                userMessage(question) +
+                                assistantMessage(cached),
+                        draft = "",
+                        errorMessage = null
+                    )
                 }
+            } else {
+                startRequest(
+                    question = question,
+                    reuseLastUserMessage = false,
+                    includeLyrics = useLyrics,
+                    cacheKey = cacheKey
+                )
             }
         }
     }
+
+    /** Null when the provider/model cannot be read; the request still runs, it just is not cached. */
+    private suspend fun translationCacheKey(song: Song, lyrics: Lyrics?): String? = runCatching {
+        val provider = preferences.providerFlow.first()
+        val model = preferences.getModel(provider).first()
+        val source = buildString {
+            append(song.title)
+            append('\n')
+            append(song.displayArtist)
+            append('\n')
+            lyrics?.let { append(SongQaContextBuilder.lyricsText(it)) }
+        }
+        AiLyricsTranslationCache.keyFor(
+            songId = song.id,
+            languageTag = Locale.getDefault().toLanguageTag(),
+            modelLabel = "${provider.name}/$model",
+            source = source
+        )
+    }.getOrNull()
+
+    private fun userMessage(text: String) =
+        AiSongQaMessage(
+            id = UUID.randomUUID().toString(),
+            role = AiChatMessage.Role.USER,
+            content = text
+        )
+
+    private fun assistantMessage(text: String) =
+        AiSongQaMessage(
+            id = UUID.randomUUID().toString(),
+            role = AiChatMessage.Role.ASSISTANT,
+            content = text
+        )
 
     private fun errorText(throwable: Throwable): String {
         val kind = (throwable as? AiProviderException)?.kind
@@ -339,4 +436,12 @@ constructor(
         val detail = (throwable as? AiProviderException)?.message
         return if (detail.isNullOrBlank()) text else "$text\n$detail"
     }
+}
+
+/**
+ * A question the user picked before the sheet opened. Kept as an enum rather than a raw string so
+ * callers cannot pass arbitrary text through the "open with a preset" path.
+ */
+enum class AiSongQaPreset {
+    TRANSLATE_TITLE_AND_LYRICS
 }

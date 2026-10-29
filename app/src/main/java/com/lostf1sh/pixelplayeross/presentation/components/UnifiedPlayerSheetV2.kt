@@ -82,6 +82,7 @@ import com.lostf1sh.pixelplayeross.presentation.components.scoped.rememberSheetV
 import com.lostf1sh.pixelplayeross.presentation.model.SettingsCategory
 import com.lostf1sh.pixelplayeross.presentation.navigation.Screen
 import com.lostf1sh.pixelplayeross.presentation.navigation.navigateSafely
+import com.lostf1sh.pixelplayeross.presentation.viewmodel.AiSongQaPreset
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerSheetState
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.PlayerViewModel
 import com.lostf1sh.pixelplayeross.presentation.viewmodel.StablePlayerState
@@ -380,6 +381,7 @@ fun UnifiedPlayerSheetV2(
 
     var showAiQaSheet by remember { mutableStateOf(false) }
     var aiQaInitialSong by remember { mutableStateOf<Song?>(null) }
+    var aiQaPreset by remember { mutableStateOf<AiSongQaPreset?>(null) }
     val sheetBackAndDragState = rememberSheetBackAndDragState(
         showPlayerContentArea = showPlayerContentArea,
         currentSheetContentState = currentSheetContentState
@@ -676,6 +678,12 @@ fun UnifiedPlayerSheetV2(
                             onShowQueueClicked = sheetActionHandlers.openQueueSheet,
                             onAskAiClick = {
                                 aiQaInitialSong = infrequentPlayerState.currentSong
+                                aiQaPreset = null
+                                showAiQaSheet = true
+                            },
+                            onAskAiTranslateLyrics = {
+                                aiQaInitialSong = infrequentPlayerState.currentSong
+                                aiQaPreset = AiSongQaPreset.TRANSLATE_TITLE_AND_LYRICS
                                 showAiQaSheet = true
                             },
                             onSongTitleClick = {
@@ -752,9 +760,13 @@ fun UnifiedPlayerSheetV2(
             UnifiedPlayerAiQaLayer(
                 show = showAiQaSheet,
                 initialSong = aiQaInitialSong,
+                preset = aiQaPreset,
                 currentPlayerSong = infrequentPlayerState.currentSong,
                 albumColorScheme = albumColorScheme,
-                onDismiss = { showAiQaSheet = false },
+                onDismiss = {
+                    showAiQaSheet = false
+                    aiQaPreset = null
+                },
                 onOpenAiSettings = {
                     navController.navigateSafely(
                         Screen.SettingsCategory.createRoute(SettingsCategory.AI.id)

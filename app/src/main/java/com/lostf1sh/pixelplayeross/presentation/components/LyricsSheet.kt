@@ -251,6 +251,7 @@ fun LyricsSheet(
     isImmersiveTemporarilyDisabled: Boolean,
     onSetImmersiveTemporarilyDisabled: (Boolean) -> Unit,
     onSaveLyricsToFile: (Song, Lyrics, Boolean) -> Unit,
+    onAskAiTranslate: () -> Unit,
     isShuffleEnabled: Boolean,
     repeatMode: Int,
     isFavoriteProvider: () -> Boolean,
@@ -976,6 +977,7 @@ fun LyricsSheet(
                     showSyncedLyrics = showSyncedLyrics == true,
                     isSyncControlsVisible = showSyncControls,
                     onSaveLyricsAsLrc = { showSaveLyricsDialog = true },
+                    onAskAiTranslate = onAskAiTranslate,
                     onResetImportedLyrics = {
                         wasResetTriggered = true
                         resetLyricsForCurrentSong()

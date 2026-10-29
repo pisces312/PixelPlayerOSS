@@ -25,6 +25,7 @@
     <string name="lyrics_more_adjust_sync">调整歌词同步</string>
     <string name="lyrics_more_show_romanization">显示罗马音</string>
     <string name="lyrics_more_show_translations">显示翻译</string>
+    <string name="lyrics_more_ai_translate">AI 翻译歌词</string>
     <string name="lyrics_more_disable_immersive_once">临时退出沉浸模式</string>
     <string name="lyrics_more_keep_screen_on">保持屏幕常亮</string>
     <string name="cd_lyrics_align_left">歌词居左</string>

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.rounded.FormatAlignRight
 import androidx.compose.material.icons.rounded.Abc
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.FormatAlignCenter
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Translate
@@ -70,6 +71,7 @@ fun LyricsMoreBottomSheet(
     isSyncControlsVisible: Boolean,
     onSaveLyricsAsLrc: () -> Unit,
     onResetImportedLyrics: () -> Unit,
+    onAskAiTranslate: () -> Unit,
     onToggleSyncControls: () -> Unit,
     isImmersiveTemporarilyDisabled: Boolean,
     onSetImmersiveTemporarilyDisabled: (Boolean) -> Unit,
@@ -157,9 +159,34 @@ fun LyricsMoreBottomSheet(
                 }
 
                 val resetShape = if (lyrics != null) {
-                    RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 18.dp, bottomEnd = 18.dp)
+                    RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
                 } else {
                     RoundedCornerShape(24.dp)
+                }
+
+                if (lyrics != null) {
+                    ListItem(
+                        content = { Text(stringResource(R.string.lyrics_more_ai_translate)) },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = null
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 8.dp, bottomEnd = 8.dp))
+                            .background(itemBackgroundColor)
+                            .clickable {
+                                onDismissRequest()
+                                onAskAiTranslate()
+                            },
+                        colors = ListItemDefaults.colors(
+                            containerColor = Color.Transparent,
+                            headlineColor = contentColor,
+                            leadingIconColor = contentColor
+                        )
+                    )
                 }
 
                 ListItem(

@@ -19,6 +19,7 @@ import com.lostf1sh.pixelplayeross.BuildConfig
 import com.lostf1sh.pixelplayeross.PixelPlayerApplication
 import com.lostf1sh.pixelplayeross.data.database.AiCacheDao
 import com.lostf1sh.pixelplayeross.data.database.AiUsageDao
+import com.lostf1sh.pixelplayeross.data.ai.AiLyricsTranslationCache
 import com.lostf1sh.pixelplayeross.data.database.AlbumArtThemeDao
 import com.lostf1sh.pixelplayeross.data.database.EngagementDao
 import com.lostf1sh.pixelplayeross.data.database.FavoritesDao
@@ -69,6 +70,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
+import java.io.File
 import javax.inject.Qualifier
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -253,6 +255,12 @@ object AppModule {
     @Provides
     fun provideAiUsageDao(database: PixelPlayerDatabase): AiUsageDao {
         return database.aiUsageDao()
+    }
+
+    @Singleton
+    @Provides
+    fun provideAiLyricsTranslationCache(@ApplicationContext context: Context): AiLyricsTranslationCache {
+        return AiLyricsTranslationCache(File(context.filesDir, AiLyricsTranslationCache.DIRECTORY_NAME))
     }
 
     @Provides
